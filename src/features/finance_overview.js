@@ -341,14 +341,31 @@ function addKeyMetricsSection(sheet) {
   
   // Find expense categories (these should be subcategories under "Expenses")
   const expenseCategories = [];
+  
+  // Log all types found in the data for debugging
+  const typesFound = new Set();
   for (let i = 1; i < data.length; i++) {
-    if (data[i][0] === "Expenses" && data[i][1]) {
+    if (data[i][0]) {
+      typesFound.add(data[i][0]);
+    }
+  }
+  Logger.log("Types found in data: " + Array.from(typesFound).join(", "));
+  
+  // Look for expense categories based on the user's specific expense types
+  const expenseTypes = ["Essentials", "Wants/Pleasure", "Extra"];
+  
+  for (let i = 1; i < data.length; i++) {
+    // Check if this row has a type that's considered an expense
+    if (expenseTypes.includes(data[i][0]) && data[i][1]) {
       expenseCategories.push({
         category: data[i][1],
         row: i + 1
       });
+      Logger.log("Found expense category: " + data[i][1] + " from type: " + data[i][0] + " at row " + (i + 1));
     }
   }
+  
+  Logger.log("Found " + expenseCategories.length + " expense categories in total");
   
   // Add rows for each expense category
   currentRow = expenseStartRow + 1;
@@ -370,8 +387,13 @@ function addKeyMetricsSection(sheet) {
   sheet.getRange(currentRow, 14).setFormula(`=IFERROR((L${currentRow}-M${currentRow})/M${currentRow}, 0)`);
   sheet.getRange(currentRow, 15).setFormula(`=IFERROR(K${currentRow}-(H${incomeRow}*M${currentRow}), 0)`);
   
-  // Create expenditure breakdown chart
-  createExpenditureChart(sheet, expenseStartRow + 1, currentRow - 1, 10);
+  // Create expenditure breakdown chart only if we have expense categories
+  if (expenseCategories.length > 0) {
+    Logger.log("Creating expenditure chart with " + expenseCategories.length + " categories");
+    createExpenditureChart(sheet, expenseStartRow + 1, currentRow - 1, 10);
+  } else {
+    Logger.log("Skipping chart creation - no expense categories found");
+  }
 }
 
 /**
