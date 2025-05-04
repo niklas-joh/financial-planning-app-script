@@ -193,31 +193,65 @@ function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetNam
   const month = monthDate.getMonth() + 1; // 1-indexed month
   const year = monthDate.getFullYear();
   
-  // Base conditions for matching transactions
-  let conditions = [
-    `${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}="${type}"`,
-    `${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}="${category}"`,
-    `MONTH(${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)})=${month}`,
-    `YEAR(${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)})=${year}`
-  ];
+  // Calculate the start and end dates for the month
+  const startDate = new Date(year, month - 1, 1); // Month is 0-indexed in Date constructor
+  const endDate = new Date(year, month, 0); // Last day of the month
   
-  // Add subcategory condition if it exists
+  // Format dates for Google Sheets (yyyy-mm-dd)
+  const startDateFormatted = Utilities.formatDate(startDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  const endDateFormatted = Utilities.formatDate(endDate, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  
+  // Create the sum range
+  const sumRange = `${sheetName}!${columnToLetter(amountCol)}:${columnToLetter(amountCol)}`;
+  
+  // Create the criteria pairs for SUMIFS
+  let formula = `SUMIFS(${sumRange}`;
+  
+  // Add type criteria
+  formula += `, ${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}, "${type}"`;
+  
+  // Add category criteria
+  formula += `, ${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}, "${category}"`;
+  
+  // Add date range criteria (instead of separate month and year)
+  formula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, ">=${startDateFormatted}"`;
+  formula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, "<=${endDateFormatted}"`;
+  
+  // Add subcategory criteria if it exists
   if (subcategory) {
-    conditions.push(`${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}="${subcategory}"`);
+    formula += `, ${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`;
   }
   
-  // Join conditions with commas
-  const conditionsStr = conditions.join(", ");
-  
-  // Different handling for shared expenses
-  const basicFormula = `SUMIFS(${sheetName}!${columnToLetter(amountCol)}:${columnToLetter(amountCol)}, ${conditionsStr})`;
+  formula += `)`;
   
   // If this is a shared expense category, add logic to divide by 2 when shared column is TRUE
   if (sharedCol > 0) {
-    return `SUMIFS(${sheetName}!${columnToLetter(amountCol)}:${columnToLetter(amountCol)}, ${conditionsStr}, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, FALSE) + (SUMIFS(${sheetName}!${columnToLetter(amountCol)}:${columnToLetter(amountCol)}, ${conditionsStr}, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, TRUE)/2)`;
+    // Non-shared expenses (Shared = FALSE)
+    let nonSharedFormula = `SUMIFS(${sumRange}`;
+    nonSharedFormula += `, ${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}, "${type}"`;
+    nonSharedFormula += `, ${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}, "${category}"`;
+    nonSharedFormula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, ">=${startDateFormatted}"`;
+    nonSharedFormula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, "<=${endDateFormatted}"`;
+    if (subcategory) {
+      nonSharedFormula += `, ${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`;
+    }
+    nonSharedFormula += `, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, FALSE)`;
+    
+    // Shared expenses (Shared = TRUE, divided by 2)
+    let sharedFormula = `SUMIFS(${sumRange}`;
+    sharedFormula += `, ${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}, "${type}"`;
+    sharedFormula += `, ${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}, "${category}"`;
+    sharedFormula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, ">=${startDateFormatted}"`;
+    sharedFormula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, "<=${endDateFormatted}"`;
+    if (subcategory) {
+      sharedFormula += `, ${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`;
+    }
+    sharedFormula += `, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, TRUE)/2`;
+    
+    return `${nonSharedFormula} + (${sharedFormula})`;
   }
   
-  return basicFormula;
+  return formula;
 }
 
 /**
