@@ -143,10 +143,9 @@ function setupHeaderRow(sheet) {
   const showSubCategories = getUserPreference("ShowSubCategories", true);
   
   // Create a separate section for the checkbox
-  const labelRange = sheet.getRange("R1:S1");
-  labelRange.merge();
-  labelRange.setValue("Show Sub-Categories");
-  labelRange.setFontWeight("bold");
+  const label = sheet.getRange("R1");
+  label.setValue("Show Sub-Categories");
+  label.setFontWeight("bold");
   
   // Add the checkbox in cell S1 (after the label)
   const checkbox = sheet.getRange("S1");
