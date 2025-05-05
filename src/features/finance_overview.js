@@ -139,16 +139,15 @@ function setupHeaderRow(sheet) {
     sheet.getRange(1, i).setTextRotation(90);
   }
   
-  // Add the sub-category toggle checkbox in cell A1:B1
-  const checkboxCell = "B1";
+  // Add the sub-category toggle checkbox in a more visible location
   const showSubCategories = getUserPreference("ShowSubCategories", true);
   
   // Create a separate section for the checkbox
-  sheet.getRange("P1:R1").merge();
-  sheet.getRange("P1").setValue("Show Sub-Categories");
-  sheet.getRange("P1").setFontWeight("bold");
+  const label = sheet.getRange("R1");
+  label.setValue("Show Sub-Categories");
+  label.setFontWeight("bold");
   
-  // Add the checkbox in cell R1 (after the label)
+  // Add the checkbox in cell S1 (after the label)
   const checkbox = sheet.getRange("S1");
   checkbox.insertCheckboxes();
   checkbox.setValue(showSubCategories);
