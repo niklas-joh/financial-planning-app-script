@@ -39,11 +39,44 @@ function importFeatures() {
   
   // Monthly spending report functions
   const reportFunctions = [
-    'generateMonthlySpendingReport'
+    'generateMonthlySpendingReport',
+    // New report functions
+    'generateYearlySummary',
+    'generateCategoryBreakdown',
+    'generateSavingsAnalysis'
+  ];
+  
+  // Visualization functions
+  const visualizationFunctions = [
+    'createSpendingTrendsChart',
+    'createBudgetVsActualChart',
+    'createIncomeVsExpensesChart',
+    'createCategoryPieChart'
+  ];
+  
+  // Financial analysis functions
+  const financialAnalysisFunctions = [
+    'suggestSavingsOpportunities',
+    'detectSpendingAnomalies',
+    'analyzeFixedVsVariableExpenses',
+    'generateCashFlowForecast'
+  ];
+  
+  // Settings functions
+  const settingsFunctions = [
+    'setBudgetTargets',
+    'setupEmailReports'
   ];
   
   // Make feature functions globally available
-  [...dropdownFunctions, ...overviewFunctions, ...reportFunctions].forEach(funcName => {
+  [
+    ...dropdownFunctions, 
+    ...overviewFunctions, 
+    ...reportFunctions,
+    ...visualizationFunctions,
+    ...financialAnalysisFunctions,
+    ...settingsFunctions
+  ].forEach(funcName => {
     this[funcName] = this[funcName] || global[funcName];
   });
 }

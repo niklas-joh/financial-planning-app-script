@@ -16,12 +16,29 @@
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   
-  // Create single Financial Tools menu with all items
+  // Create enhanced Financial Tools menu with submenus
   ui.createMenu('Financial Tools')
-    .addItem('Refresh Dropdown Cache', 'refreshCache')
+    .addItem('Generate Overview', 'createFinancialOverview')
     .addSeparator()
-    .addItem('Generate Overview Sheet', 'createFinancialOverview')
+    .addSubMenu(ui.createMenu('Reports')
+      .addItem('Monthly Spending Report', 'generateMonthlySpendingReport')
+      .addItem('Yearly Summary', 'generateYearlySummary')
+      .addItem('Category Breakdown', 'generateCategoryBreakdown')
+      .addItem('Savings Analysis', 'generateSavingsAnalysis'))
     .addSeparator()
-    .addItem('Generate Monthly Spending Report', 'generateMonthlySpendingReport')
+    .addSubMenu(ui.createMenu('Visualizations')
+      .addItem('Spending Trends Chart', 'createSpendingTrendsChart')
+      .addItem('Budget vs Actual', 'createBudgetVsActualChart')
+      .addItem('Income vs Expenses', 'createIncomeVsExpensesChart')
+      .addItem('Category Pie Chart', 'createCategoryPieChart'))
+    .addSeparator()
+    .addSubMenu(ui.createMenu('Financial Analysis')
+      .addItem('Suggest Savings Opportunities', 'suggestSavingsOpportunities')
+      .addItem('Spending Anomaly Detection', 'detectSpendingAnomalies')
+      .addItem('Fixed vs Variable Expenses', 'analyzeFixedVsVariableExpenses')
+      .addItem('Cash Flow Forecast', 'generateCashFlowForecast'))
+    .addSeparator()
+    .addItem('Set Budget Targets', 'setBudgetTargets')
+    .addItem('Setup Email Reports', 'setupEmailReports')
     .addToUi();
 }
