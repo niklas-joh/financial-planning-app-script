@@ -52,22 +52,80 @@ function createFinancialOverview() {
   // Group by Type
   const groupedCombinations = groupCategoryCombinations(categoryCombinations);
   
-  // For each type (Income, Expenses, etc.)
-  Object.keys(groupedCombinations).forEach(type => {
-    // Add Type header row
+  // Define the order of main types
+  const typeOrder = ["Income", "Expenses", "Savings"];
+  
+  // For each type in the defined order
+  typeOrder.forEach(type => {
+    // Skip if this type doesn't exist in the data
+    if (!groupedCombinations[type]) return;
+    // Define colors based on type
+    let typeBgColor;
+    let typeFontColor = "#FFFFFF"; // White text for all type headers
+    
+    if (type === "Income") {
+      typeBgColor = "#2E7D32"; // Green for Income
+    } else if (type === "Expenses") {
+      typeBgColor = "#C62828"; // Red for Expenses
+    } else if (type === "Savings") {
+      typeBgColor = "#1565C0"; // Blue for Savings
+    } else {
+      typeBgColor = "#424242"; // Dark gray for other types
+    }
+    
+    // Add Type header row with appropriate color
     overviewSheet.getRange(rowIndex, 1).setValue(type);
-    overviewSheet.getRange(rowIndex, 1, 1, 8).setBackground("#f3f3f3").setFontWeight("bold");
+    overviewSheet.getRange(rowIndex, 1, 1, 17) // Adjusted for new column count
+      .setBackground(typeBgColor)
+      .setFontWeight("bold")
+      .setFontColor(typeFontColor);
     rowIndex++;
+    
+    // Define category background colors based on type
+    let categoryBgColor;
+    let categoryLightBgColor;
+    
+    if (type === "Income") {
+      categoryBgColor = "#C8E6C9"; // Light green for Income categories
+      categoryLightBgColor = "#E8F5E9"; // Very light green for subcategories
+    } else if (type === "Expenses") {
+      categoryBgColor = "#FFCDD2"; // Light red for Expense categories
+      categoryLightBgColor = "#FFEBEE"; // Very light red for subcategories
+    } else if (type === "Savings") {
+      categoryBgColor = "#BBDEFB"; // Light blue for Savings categories
+      categoryLightBgColor = "#E3F2FD"; // Very light blue for subcategories
+    } else {
+      categoryBgColor = "#F5F5F5"; // Light gray for other categories
+      categoryLightBgColor = "#FAFAFA"; // Very light gray for subcategories
+    }
     
     // Add rows for each category/subcategory in this type
     groupedCombinations[type].forEach(combo => {
+      // Set values for Type, Category, Sub-Category
       overviewSheet.getRange(rowIndex, 1).setValue(combo.type);
       overviewSheet.getRange(rowIndex, 2).setValue(combo.category);
       overviewSheet.getRange(rowIndex, 3).setValue(combo.subcategory);
       
-      // Add formula for each month column (columns 4-15 for Jan-Dec)
-      for (let monthCol = 4; monthCol <= 15; monthCol++) {
-        const monthDate = getMonthDateFromColIndex(monthCol);
+      // Set Shared? column value (checkbox)
+      if (combo.type === "Expenses") {
+        overviewSheet.getRange(rowIndex, 4).insertCheckboxes();
+        // We'll leave it unchecked by default, but this could be enhanced to show actual shared status
+      }
+      
+      // Apply styling to the row
+      if (combo.subcategory) {
+        // This is a subcategory row - use lighter background and indent
+        overviewSheet.getRange(rowIndex, 1, 1, 17).setBackground(categoryLightBgColor);
+        overviewSheet.getRange(rowIndex, 3).setIndent(5); // Indent subcategory for visual hierarchy
+      } else {
+        // This is a main category row - use standard category background
+        overviewSheet.getRange(rowIndex, 1, 1, 17).setBackground(categoryBgColor);
+        overviewSheet.getRange(rowIndex, 2).setFontWeight("bold"); // Bold category name
+      }
+      
+      // Add formula for each month column (columns 5-16 for Jan-Dec, adjusted for Shared? column)
+      for (let monthCol = 5; monthCol <= 16; monthCol++) {
+        const monthDate = getMonthDateFromColIndex(monthCol - 1); // Adjust for Shared? column
         const monthFormula = buildMonthlySumFormula(
           combo.type, 
           combo.category, 
@@ -82,10 +140,19 @@ function createFinancialOverview() {
           sharedIndex + 1
         );
         overviewSheet.getRange(rowIndex, monthCol).setFormula(monthFormula);
+        
+        // Apply conditional formatting for positive/negative values
+        if (combo.type === "Income") {
+          // Income should be displayed in green
+          overviewSheet.getRange(rowIndex, monthCol).setFontColor("#388E3C"); // Green for income
+        } else if (combo.type === "Expenses") {
+          // Expenses should be displayed in red
+          overviewSheet.getRange(rowIndex, monthCol).setFontColor("#D32F2F"); // Red for expenses
+        }
       }
       
-      // Add average formula in column 16 that properly accounts for empty months
-      overviewSheet.getRange(rowIndex, 16).setFormula(`=SUM(D${rowIndex}:O${rowIndex})/12`);
+      // Add average formula in column 17 that properly accounts for empty months (adjusted for Shared? column)
+      overviewSheet.getRange(rowIndex, 17).setFormula(`=AVERAGE(E${rowIndex}:P${rowIndex})`);
       
       rowIndex++;
     });
@@ -125,17 +192,28 @@ function createFinancialOverview() {
  * Sets up the header row in the overview sheet and adds the sub-category toggle checkbox
  */
 function setupHeaderRow(sheet) {
-  const headers = ["Type", "Category", "Sub-Category", "Jan-24", "Feb-24", "Mar-24", "Apr-24", "May-24", "Jun-24", "Jul-24", "Aug-24", "Sep-24", "Oct-24", "Nov-24", "Dec-24", "Average"];
+  // Define color constants for better consistency
+  const HEADER_BG_COLOR = "#C62828"; // Deep red for headers
+  const HEADER_TEXT_COLOR = "#FFFFFF"; // White text for better contrast on red
   
+  // Updated headers array with Shared? column
+  const headers = ["Type", "Category", "Sub-Category", "Shared?", "Jan-25", "Feb-25", "Mar-25", "Apr-25", "May-25", "Jun-25", "Jul-25", "Aug-25", "Sep-25", "Oct-25", "Nov-25", "Dec-25", "Average"];
+  
+  // Set header values
   for (let i = 0; i < headers.length; i++) {
     sheet.getRange(1, i + 1).setValue(headers[i]);
   }
   
-  // Format header row
-  sheet.getRange(1, 1, 1, headers.length).setBackground("#d9d9d9").setFontWeight("bold");
+  // Format header row with bold red background and white text
+  const headerRange = sheet.getRange(1, 1, 1, headers.length);
+  headerRange.setBackground(HEADER_BG_COLOR)
+             .setFontWeight("bold")
+             .setFontColor(HEADER_TEXT_COLOR)
+             .setHorizontalAlignment("center")
+             .setVerticalAlignment("middle");
   
   // Format the month columns for better readability
-  for (let i = 4; i <= 15; i++) {
+  for (let i = 5; i <= 16; i++) { // Adjusted for the new Shared? column
     sheet.getRange(1, i).setTextRotation(90);
   }
   
@@ -143,17 +221,23 @@ function setupHeaderRow(sheet) {
   const showSubCategories = getUserPreference("ShowSubCategories", true);
   
   // Create a separate section for the checkbox
-  const label = sheet.getRange("R1");
+  const label = sheet.getRange("S1"); // Moved one column to the right due to Shared? column
   label.setValue("Show Sub-Categories");
   label.setFontWeight("bold");
   
-  // Add the checkbox in cell S1 (after the label)
-  const checkbox = sheet.getRange("S1");
+  // Add the checkbox in cell T1 (after the label)
+  const checkbox = sheet.getRange("T1"); // Moved one column to the right
   checkbox.insertCheckboxes();
   checkbox.setValue(showSubCategories);
   
   // Add a note to explain what the checkbox does
   checkbox.setNote("Toggle to show or hide sub-categories in the overview sheet");
+  
+  // Freeze the header row so it remains visible when scrolling
+  sheet.setFrozenRows(1);
+  
+  // Set column width for the Shared? column
+  sheet.setColumnWidth(4, 80); // Shared? column
 }
 
 /**
@@ -237,15 +321,43 @@ function groupCategoryCombinations(combinations) {
     grouped[combo.type].push(combo);
   });
   
+  // Define the order for expense categories
+  const expenseCategoryOrder = ["Essentials", "Wants/Pleasure", "Extra"];
+  
   // Sort each group by category
   Object.keys(grouped).forEach(type => {
-    grouped[type].sort((a, b) => {
-      // Primary sort by category
-      const categoryCompare = a.category.localeCompare(b.category);
-      // Secondary sort by subcategory if categories are the same
-      return categoryCompare !== 0 ? categoryCompare : 
-             (a.subcategory || "").localeCompare(b.subcategory || "");
-    });
+    if (type === "Expenses") {
+      // For Expenses, sort by the predefined order
+      grouped[type].sort((a, b) => {
+        // Get the index of each category in the order array
+        const indexA = expenseCategoryOrder.indexOf(a.category);
+        const indexB = expenseCategoryOrder.indexOf(b.category);
+        
+        // If both categories are in the order array, sort by their order
+        if (indexA >= 0 && indexB >= 0) {
+          return indexA - indexB;
+        }
+        
+        // If only one is in the order array, prioritize it
+        if (indexA >= 0) return -1;
+        if (indexB >= 0) return 1;
+        
+        // If neither is in the order array, sort alphabetically
+        const categoryCompare = a.category.localeCompare(b.category);
+        // Secondary sort by subcategory if categories are the same
+        return categoryCompare !== 0 ? categoryCompare : 
+               (a.subcategory || "").localeCompare(b.subcategory || "");
+      });
+    } else {
+      // For other types, sort alphabetically
+      grouped[type].sort((a, b) => {
+        // Primary sort by category
+        const categoryCompare = a.category.localeCompare(b.category);
+        // Secondary sort by subcategory if categories are the same
+        return categoryCompare !== 0 ? categoryCompare : 
+               (a.subcategory || "").localeCompare(b.subcategory || "");
+      });
+    }
   });
   
   return grouped;
@@ -333,6 +445,11 @@ function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetNam
  * Adds net calculation rows to the overview sheet
  */
 function addNetCalculations(sheet, startRow) {
+  // Define color constants for better consistency
+  const NET_BG_COLOR = "#424242"; // Dark gray for net calculations
+  const NET_TEXT_COLOR = "#FFFFFF"; // White text for better contrast
+  const BORDER_COLOR = "#FF8F00"; // Amber for borders
+  
   // Find rows containing total Income and total Expenses
   const data = sheet.getDataRange().getValues();
   let incomeRow = -1;
@@ -350,13 +467,25 @@ function addNetCalculations(sheet, startRow) {
     return;
   }
   
+  // Add a section header for Net Calculations
+  sheet.getRange(startRow, 1).setValue("Net Calculations");
+  sheet.getRange(startRow, 1, 1, 17)
+    .setBackground(NET_BG_COLOR)
+    .setFontWeight("bold")
+    .setFontColor(NET_TEXT_COLOR);
+  
+  startRow++;
+  
   // Add Net (Income - Expenses) row
   sheet.getRange(startRow, 1).setValue("Net (Total Income - Expenses)");
-  sheet.getRange(startRow, 1, 1, 3).setBackground("#e6e6e6").setFontWeight("bold");
+  sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
   
-  // Add formulas for each month column
-  for (let monthCol = 4; monthCol <= 8; monthCol++) {
+  // Add formulas for each month column (adjusted for Shared? column)
+  for (let monthCol = 5; monthCol <= 17; monthCol++) {
     sheet.getRange(startRow, monthCol).setFormula(`=${columnToLetter(monthCol)}${incomeRow}-${columnToLetter(monthCol)}${expensesRow}`);
+    
+    // Apply conditional formatting (green for positive, red for negative)
+    sheet.getRange(startRow, monthCol).setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
   }
   
   startRow++;
@@ -364,21 +493,39 @@ function addNetCalculations(sheet, startRow) {
   // Add Total Expenses + Savings row if we found a savings row
   if (savingsRow > 0) {
     sheet.getRange(startRow, 1).setValue("Total Expenses + Savings");
-    sheet.getRange(startRow, 1, 1, 3).setBackground("#e6e6e6").setFontWeight("bold");
+    sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
     
-    for (let monthCol = 4; monthCol <= 8; monthCol++) {
+    for (let monthCol = 5; monthCol <= 17; monthCol++) {
       sheet.getRange(startRow, monthCol).setFormula(`=${columnToLetter(monthCol)}${expensesRow}+${columnToLetter(monthCol)}${savingsRow}`);
+      
+      // Apply conditional formatting
+      sheet.getRange(startRow, monthCol).setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
     }
     
     startRow++;
     
     // Add Net (Income - Expenses - Savings) row
     sheet.getRange(startRow, 1).setValue("Net (Total Income - Expenses - Savings)");
-    sheet.getRange(startRow, 1, 1, 3).setBackground("#e6e6e6").setFontWeight("bold");
+    sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
     
-    for (let monthCol = 4; monthCol <= 8; monthCol++) {
+    for (let monthCol = 5; monthCol <= 17; monthCol++) {
       sheet.getRange(startRow, monthCol).setFormula(`=${columnToLetter(monthCol)}${incomeRow}-${columnToLetter(monthCol)}${expensesRow}-${columnToLetter(monthCol)}${savingsRow}`);
+      
+      // Apply conditional formatting
+      sheet.getRange(startRow, monthCol).setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
     }
+    
+    // Add a bottom border to the last net calculation row
+    sheet.getRange(startRow, 1, 1, 17).setBorder(
+      null, null, true, null, null, null, 
+      BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
+  } else {
+    // If no savings row, add a bottom border to the Net (Income - Expenses) row
+    sheet.getRange(startRow - 1, 1, 1, 17).setBorder(
+      null, null, true, null, null, null, 
+      BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+    );
   }
 }
 
@@ -386,6 +533,12 @@ function addNetCalculations(sheet, startRow) {
  * Adds key metrics section to the overview sheet
  */
 function addKeyMetricsSection(sheet) {
+  // Define color constants for better consistency
+  const HEADER_BG_COLOR = "#C62828"; // Deep red for headers
+  const HEADER_TEXT_COLOR = "#FFFFFF"; // White text for better contrast
+  const METRICS_BG_COLOR = "#FFEBEE"; // Very light red for metrics section
+  const BORDER_COLOR = "#FF8F00"; // Amber for borders
+  
   // Find the last row with content
   const lastRow = sheet.getLastRow();
   const metricsStartRow = lastRow + 3;
@@ -404,39 +557,95 @@ function addKeyMetricsSection(sheet) {
   
   // Add Key Metrics header
   sheet.getRange(metricsStartRow, 10).setValue("Key Metrics");
-  sheet.getRange(metricsStartRow, 10, 1, 2).setBackground("#d9d9d9").setFontWeight("bold");
-  
-  // Add Rate header
-  sheet.getRange(metricsStartRow, 12).setValue("Rate");
-  sheet.getRange(metricsStartRow, 12).setBackground("#d9d9d9").setFontWeight("bold");
+  sheet.getRange(metricsStartRow, 10, 1, 3)
+    .setBackground(HEADER_BG_COLOR)
+    .setFontWeight("bold")
+    .setFontColor(HEADER_TEXT_COLOR)
+    .setHorizontalAlignment("center");
   
   // Add metrics rows
   let currentRow = metricsStartRow + 1;
   
+  // Create a metrics table with better formatting
+  const metricsTable = [
+    ["Metric", "Value", "Target"],
+  ];
+  
+  // Add table headers
+  sheet.getRange(currentRow, 10, 1, 3)
+    .setValues([["Metric", "Value", "Target"]])
+    .setBackground("#F5F5F5")
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center");
+  
+  currentRow++;
+  
   // Savings Rate
   if (incomeRow > 0 && savingsRow > 0) {
     sheet.getRange(currentRow, 10).setValue("Savings Rate");
-    sheet.getRange(currentRow, 12).setFormula(`=H${savingsRow}/H${incomeRow}`);
+    sheet.getRange(currentRow, 11).setFormula(`=Q${savingsRow}/Q${incomeRow}`); // Using Average column (Q)
+    sheet.getRange(currentRow, 12).setValue(0.2); // 20% target
+    sheet.getRange(currentRow, 10, 1, 3).setBackground(METRICS_BG_COLOR);
+    
+    // Format as percentage
+    sheet.getRange(currentRow, 11, 1, 2).setNumberFormat("0.0%");
+    
+    // Add conditional formatting (green if meeting target, red if not)
+    const rule = SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberLessThan(sheet.getRange(currentRow, 12).getValue())
+      .setBackground("#FFCDD2") // Light red if below target
+      .setRanges([sheet.getRange(currentRow, 11)])
+      .build();
+    
+    const rules = sheet.getConditionalFormatRules();
+    rules.push(rule);
+    sheet.setConditionalFormatRules(rules);
+    
     currentRow++;
   }
   
-  // Expenses/Income
+  // Expenses/Income Ratio
   if (incomeRow > 0 && expensesRow > 0) {
-    sheet.getRange(currentRow, 10).setValue("Expenses/Income");
-    sheet.getRange(currentRow, 12).setFormula(`=H${expensesRow}/H${incomeRow}`);
+    sheet.getRange(currentRow, 10).setValue("Expenses/Income Ratio");
+    sheet.getRange(currentRow, 11).setFormula(`=Q${expensesRow}/Q${incomeRow}`); // Using Average column (Q)
+    sheet.getRange(currentRow, 12).setValue(0.8); // 80% target
+    sheet.getRange(currentRow, 10, 1, 3).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : METRICS_BG_COLOR);
+    
+    // Format as percentage
+    sheet.getRange(currentRow, 11, 1, 2).setNumberFormat("0.0%");
+    
+    // Add conditional formatting (green if meeting target, red if not)
+    const rule = SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberGreaterThan(sheet.getRange(currentRow, 12).getValue())
+      .setBackground("#FFCDD2") // Light red if above target
+      .setRanges([sheet.getRange(currentRow, 11)])
+      .build();
+    
+    const rules = sheet.getConditionalFormatRules();
+    rules.push(rule);
+    sheet.setConditionalFormatRules(rules);
+    
     currentRow++;
   }
   
-  // Extra
-  sheet.getRange(currentRow, 10).setValue("Extra");
-  currentRow++;
+  // Add a border below the metrics table
+  sheet.getRange(metricsStartRow + 1, 10, currentRow - metricsStartRow - 1, 3).setBorder(
+    true, true, true, true, true, true, 
+    "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
+  );
   
-  // Total Expenses
-  sheet.getRange(currentRow, 10).setValue("Total Expenses");
-  sheet.getRange(currentRow, 12).setFormula(`=IFERROR(H${expensesRow}/H${incomeRow}, "N/A")`);
+  // Add Expense Categories table with improved formatting
+  const expenseStartRow = currentRow + 2;
   
-  // Add Expense Categories table
-  const expenseStartRow = metricsStartRow + 6;
+  // Add Expense Categories header
+  sheet.getRange(expenseStartRow, 10).setValue("Expense Categories");
+  sheet.getRange(expenseStartRow, 10, 1, 6)
+    .setBackground(HEADER_BG_COLOR)
+    .setFontWeight("bold")
+    .setFontColor(HEADER_TEXT_COLOR)
+    .setHorizontalAlignment("center");
+  
+  expenseStartRow++;
   
   // Add headers
   sheet.getRange(expenseStartRow, 10).setValue("Expense");
@@ -446,19 +655,13 @@ function addKeyMetricsSection(sheet) {
   sheet.getRange(expenseStartRow, 14).setValue("% change");
   sheet.getRange(expenseStartRow, 15).setValue("Amount change");
   
-  sheet.getRange(expenseStartRow, 10, 1, 6).setBackground("#d9d9d9").setFontWeight("bold");
+  sheet.getRange(expenseStartRow, 10, 1, 6)
+    .setBackground("#F5F5F5")
+    .setFontWeight("bold")
+    .setHorizontalAlignment("center");
   
   // Find expense categories (these should be subcategories under "Expenses")
   const expenseCategories = [];
-  
-  // Log all types found in the data for debugging
-  const typesFound = new Set();
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0]) {
-      typesFound.add(data[i][0]);
-    }
-  }
-  Logger.log("Types found in data: " + Array.from(typesFound).join(", "));
   
   // Look for expense categories based on the user's specific expense types
   const expenseTypes = ["Essentials", "Wants/Pleasure", "Extra"];
@@ -468,91 +671,337 @@ function addKeyMetricsSection(sheet) {
     if (expenseTypes.includes(data[i][0]) && data[i][1]) {
       expenseCategories.push({
         category: data[i][1],
+        type: data[i][0],
         row: i + 1
       });
-      Logger.log("Found expense category: " + data[i][1] + " from type: " + data[i][0] + " at row " + (i + 1));
     }
   }
   
-  Logger.log("Found " + expenseCategories.length + " expense categories in total");
-  
-  // Add rows for each expense category
+  // Add rows for each expense category with improved formatting
   currentRow = expenseStartRow + 1;
   expenseCategories.forEach(category => {
     sheet.getRange(currentRow, 10).setValue(category.category);
-    sheet.getRange(currentRow, 11).setFormula(`=H${category.row}`);
-    sheet.getRange(currentRow, 12).setFormula(`=IFERROR(K${currentRow}/H${incomeRow}, 0)`);
-    sheet.getRange(currentRow, 13).setValue(0.2); // Default target rate
+    
+    // Use the Average column (Q) for more accurate calculations
+    sheet.getRange(currentRow, 11).setFormula(`=Q${category.row}`);
+    sheet.getRange(currentRow, 12).setFormula(`=IFERROR(K${currentRow}/Q${incomeRow}, 0)`);
+    
+    // Set target rate based on expense type
+    let targetRate = 0.2; // Default
+    if (category.type === "Essentials") {
+      targetRate = 0.5; // 50% for essentials
+    } else if (category.type === "Wants/Pleasure") {
+      targetRate = 0.3; // 30% for wants
+    } else if (category.type === "Extra") {
+      targetRate = 0.2; // 20% for extras
+    }
+    
+    sheet.getRange(currentRow, 13).setValue(targetRate);
     sheet.getRange(currentRow, 14).setFormula(`=IFERROR((L${currentRow}-M${currentRow})/M${currentRow}, 0)`);
-    sheet.getRange(currentRow, 15).setFormula(`=IFERROR(K${currentRow}-(H${incomeRow}*M${currentRow}), 0)`);
+    sheet.getRange(currentRow, 15).setFormula(`=IFERROR(K${currentRow}-(Q${incomeRow}*M${currentRow}), 0)`);
+    
+    // Apply alternating row colors
+    sheet.getRange(currentRow, 10, 1, 6).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : METRICS_BG_COLOR);
+    
+    // Format cells
+    sheet.getRange(currentRow, 11).setNumberFormat("€#,##0.00");
+    sheet.getRange(currentRow, 12, 1, 2).setNumberFormat("0.0%");
+    sheet.getRange(currentRow, 14).setNumberFormat("0.0%");
+    sheet.getRange(currentRow, 15).setNumberFormat("€#,##0.00");
+    
+    // Add conditional formatting for the % change column
+    const rule = SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberGreaterThan(0)
+      .setBackground("#FFCDD2") // Light red if over budget
+      .setRanges([sheet.getRange(currentRow, 14)])
+      .build();
+    
+    const rules = sheet.getConditionalFormatRules();
+    rules.push(rule);
+    sheet.setConditionalFormatRules(rules);
+    
     currentRow++;
   });
   
-  // Add Total Expenses row
+  // Add Total Expenses row with distinct formatting
   sheet.getRange(currentRow, 10).setValue("Total Expenses");
-  sheet.getRange(currentRow, 11).setFormula(`=H${expensesRow}`);
-  sheet.getRange(currentRow, 12).setFormula(`=IFERROR(K${currentRow}/H${incomeRow}, 0)`);
+  sheet.getRange(currentRow, 11).setFormula(`=Q${expensesRow}`);
+  sheet.getRange(currentRow, 12).setFormula(`=IFERROR(K${currentRow}/Q${incomeRow}, 0)`);
   sheet.getRange(currentRow, 13).setValue(1); // Target 100%
   sheet.getRange(currentRow, 14).setFormula(`=IFERROR((L${currentRow}-M${currentRow})/M${currentRow}, 0)`);
-  sheet.getRange(currentRow, 15).setFormula(`=IFERROR(K${currentRow}-(H${incomeRow}*M${currentRow}), 0)`);
+  sheet.getRange(currentRow, 15).setFormula(`=IFERROR(K${currentRow}-(Q${incomeRow}*M${currentRow}), 0)`);
+  
+  // Format the total row
+  sheet.getRange(currentRow, 10, 1, 6)
+    .setBackground("#C62828")
+    .setFontWeight("bold")
+    .setFontColor("#FFFFFF");
+  
+  // Format cells
+  sheet.getRange(currentRow, 11).setNumberFormat("€#,##0.00");
+  sheet.getRange(currentRow, 12, 1, 2).setNumberFormat("0.0%");
+  sheet.getRange(currentRow, 14).setNumberFormat("0.0%");
+  sheet.getRange(currentRow, 15).setNumberFormat("€#,##0.00");
+  
+  // Add borders to the expense table
+  sheet.getRange(expenseStartRow, 10, currentRow - expenseStartRow + 1, 6).setBorder(
+    true, true, true, true, true, true, 
+    "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
+  );
   
   // Create expenditure breakdown chart only if we have expense categories
   if (expenseCategories.length > 0) {
-    Logger.log("Creating expenditure chart with " + expenseCategories.length + " categories");
     createExpenditureChart(sheet, expenseStartRow + 1, currentRow - 1, 10);
-  } else {
-    Logger.log("Skipping chart creation - no expense categories found");
   }
 }
 
 /**
- * Creates a pie chart for expenditure breakdown
+ * Creates an enhanced chart for expenditure breakdown
  */
 function createExpenditureChart(sheet, startRow, endRow, categoryCol) {
-  const chartBuilder = sheet.newChart();
+  // Define color constants for better consistency
+  const CHART_COLORS = [
+    "#C62828", // Red (for Essentials)
+    "#FF8F00", // Amber (for Wants/Pleasure)
+    "#1565C0", // Blue (for Extra)
+    "#2E7D32", // Green
+    "#6A1B9A", // Purple
+    "#E64A19", // Deep Orange
+    "#00695C", // Teal
+    "#5D4037"  // Brown
+  ];
   
   // Define chart data range (category name and amount)
   const dataRange = sheet.getRange(startRow, categoryCol, endRow - startRow + 1, 2);
   
-  // Create a pie chart
+  // Create a pie chart with enhanced styling
+  const chartBuilder = sheet.newChart();
   chartBuilder
     .setChartType(Charts.ChartType.PIE)
     .addRange(dataRange)
     .setPosition(startRow, categoryCol + 6, 0, 0)
     .setOption('title', 'Expenditure Breakdown')
+    .setOption('titleTextStyle', {
+      color: '#424242',
+      fontSize: 16,
+      bold: true
+    })
     .setOption('pieSliceText', 'percentage')
-    .setOption('legend', { position: 'right' })
-    .setOption('width', 400)
-    .setOption('height', 300);
+    .setOption('pieHole', 0.4) // Create a donut chart for more modern look
+    .setOption('legend', { 
+      position: 'right',
+      textStyle: {
+        color: '#424242',
+        fontSize: 12
+      }
+    })
+    .setOption('colors', CHART_COLORS)
+    .setOption('width', 450)
+    .setOption('height', 300)
+    .setOption('is3D', false)
+    .setOption('pieSliceTextStyle', {
+      color: '#FFFFFF',
+      fontSize: 14,
+      bold: true
+    })
+    .setOption('tooltip', { 
+      showColorCode: true,
+      textStyle: { fontSize: 12 }
+    });
   
   // Add the chart to the sheet
   sheet.insertChart(chartBuilder.build());
+  
+  // Create a second chart - a column chart showing expense categories vs target
+  const columnChartBuilder = sheet.newChart();
+  
+  // Define data range for the column chart (category, amount, target amount)
+  const rateRange = sheet.getRange(startRow, categoryCol, endRow - startRow, 1); // Category names
+  const valueRange = sheet.getRange(startRow, categoryCol + 2, endRow - startRow, 1); // Rate column
+  const targetRange = sheet.getRange(startRow, categoryCol + 3, endRow - startRow, 1); // Target Rate column
+  
+  columnChartBuilder
+    .setChartType(Charts.ChartType.COLUMN)
+    .addRange(rateRange)
+    .addRange(valueRange)
+    .addRange(targetRange)
+    .setPosition(startRow + 15, categoryCol + 6, 0, 0)
+    .setOption('title', 'Expense Rates vs Targets')
+    .setOption('titleTextStyle', {
+      color: '#424242',
+      fontSize: 16,
+      bold: true
+    })
+    .setOption('legend', { 
+      position: 'top',
+      textStyle: {
+        color: '#424242',
+        fontSize: 12
+      }
+    })
+    .setOption('colors', ['#C62828', '#2E7D32']) // Red for actual, green for target
+    .setOption('width', 450)
+    .setOption('height', 300)
+    .setOption('hAxis', {
+      title: 'Category',
+      titleTextStyle: {color: '#424242'},
+      textStyle: {color: '#424242', fontSize: 10}
+    })
+    .setOption('vAxis', {
+      title: 'Rate (% of Income)',
+      titleTextStyle: {color: '#424242'},
+      textStyle: {color: '#424242'},
+      format: 'percent'
+    })
+    .setOption('bar', {groupWidth: '75%'})
+    .setOption('isStacked', false);
+  
+  // Add the column chart to the sheet
+  sheet.insertChart(columnChartBuilder.build());
 }
 
 /**
  * Formats the overview sheet for better readability
  */
 function formatOverviewSheet(sheet) {
-  // Format currency columns
+  // Define color constants for better consistency
+  const INCOME_COLOR = "#388E3C"; // Green for income values
+  const EXPENSE_COLOR = "#D32F2F"; // Red for expense values
+  const SAVINGS_COLOR = "#1565C0"; // Blue for savings values
+  const NEUTRAL_COLOR = "#424242"; // Dark gray for neutral values
+  const BORDER_COLOR = "#FF8F00"; // Amber for borders
+  
+  // Format currency columns (adjusted for Shared? column)
   const lastRow = sheet.getLastRow();
-  const currencyColumns = [4, 5, 6, 7, 8, 11, 15]; // Columns with monetary values
+  const currencyColumns = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]; // All month columns and Average
   
   currencyColumns.forEach(col => {
     formatAsCurrency(sheet.getRange(2, col, lastRow - 1, 1));
   });
   
-  // Format percentage columns
-  const percentColumns = [12, 13, 14]; // Rate columns
+  // Format percentage columns in the metrics section
+  const percentColumns = [12, 13, 14]; // Rate columns in metrics section
   percentColumns.forEach(col => {
     formatAsPercentage(sheet.getRange(2, col, lastRow - 1, 1));
   });
   
-  // Adjust column widths
+  // Adjust column widths for better readability
   sheet.setColumnWidth(1, 150); // Type
   sheet.setColumnWidth(2, 150); // Category
   sheet.setColumnWidth(3, 150); // Sub-Category
-  sheet.setColumnWidth(10, 150); // Expense category
+  sheet.setColumnWidth(4, 80);  // Shared?
   
-  // Set alternative row colors for readability
-  setAlternatingRowColors(sheet, 2, lastRow);
+  // Set month column widths to be consistent
+  for (let i = 5; i <= 16; i++) {
+    sheet.setColumnWidth(i, 90); // Month columns
+  }
+  
+  sheet.setColumnWidth(17, 100); // Average column
+  
+  // Format the metrics section columns
+  sheet.setColumnWidth(10, 150); // Expense category
+  sheet.setColumnWidth(11, 100); // Amount
+  sheet.setColumnWidth(12, 80);  // Rate
+  sheet.setColumnWidth(13, 80);  // Target Rate
+  sheet.setColumnWidth(14, 80);  // % change
+  sheet.setColumnWidth(15, 100); // Amount change
+  
+  // Add borders between major sections
+  const data = sheet.getDataRange().getValues();
+  
+  // Find rows containing total sections
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] && data[i][0].startsWith("Total ")) {
+      // Add a bottom border to total rows
+      sheet.getRange(i + 1, 1, 1, 17).setBorder(
+        null, null, true, null, null, null, 
+        BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+      );
+    }
+  }
+  
+  // Format total rows with bold text and distinct background
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] && data[i][0].startsWith("Total ")) {
+      const row = i + 1;
+      const totalType = data[i][0].replace("Total ", "");
+      let bgColor;
+      let fontColor = "#FFFFFF"; // White text for all total rows
+      
+      if (totalType === "Income") {
+        bgColor = "#2E7D32"; // Green for Income
+      } else if (totalType === "Expenses") {
+        bgColor = "#C62828"; // Red for Expenses
+      } else if (totalType === "Savings") {
+        bgColor = "#1565C0"; // Blue for Savings
+      } else {
+        bgColor = "#424242"; // Dark gray for other types
+      }
+      
+      sheet.getRange(row, 1, 1, 17)
+        .setBackground(bgColor)
+        .setFontWeight("bold")
+        .setFontColor(fontColor);
+    }
+  }
+  
+  // Format the Net calculation rows
+  for (let i = 0; i < data.length; i++) {
+    if (data[i][0] && data[i][0].startsWith("Net (")) {
+      const row = i + 1;
+      sheet.getRange(row, 1, 1, 17)
+        .setBackground("#424242")
+        .setFontWeight("bold")
+        .setFontColor("#FFFFFF");
+      
+      // Format the values in the Net row
+      for (let col = 5; col <= 17; col++) {
+        // Apply conditional formatting based on value
+        const cell = sheet.getRange(row, col);
+        cell.setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+      }
+    }
+  }
+  
+  // Apply number formatting to all value cells
+  for (let row = 2; row <= lastRow; row++) {
+    for (let col = 5; col <= 17; col++) {
+      const cell = sheet.getRange(row, col);
+      
+      // Check if this is a total or net row (already formatted above)
+      const rowValue = data[row - 1][0] || "";
+      if (rowValue.startsWith("Total ") || rowValue.startsWith("Net (")) {
+        continue;
+      }
+      
+      // Apply conditional formatting based on the row type
+      const rowType = data[row - 1][0] || "";
+      if (rowType === "Income") {
+        cell.setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+        cell.setFontColor(INCOME_COLOR);
+      } else if (rowType === "Expenses") {
+        cell.setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+        cell.setFontColor(EXPENSE_COLOR);
+      } else if (rowType === "Savings") {
+        cell.setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+        cell.setFontColor(SAVINGS_COLOR);
+      }
+    }
+  }
+  
+  // Apply alternating row colors for better readability, but only for data rows (not headers or totals)
+  for (let row = 2; row <= lastRow; row++) {
+    const rowValue = data[row - 1][0] || "";
+    // Skip headers and total rows
+    if (rowValue.startsWith("Total ") || rowValue.startsWith("Net (") || 
+        rowValue === "Income" || rowValue === "Expenses" || rowValue === "Savings") {
+      continue;
+    }
+    
+    // Apply subtle alternating colors
+    if (row % 2 === 0) {
+      // Even rows get a very subtle background
+      sheet.getRange(row, 1, 1, 17).setBackground("#F9F9F9");
+    }
+  }
 }
