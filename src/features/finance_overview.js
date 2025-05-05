@@ -173,6 +173,17 @@ function groupCategoryCombinations(combinations) {
     grouped[combo.type].push(combo);
   });
   
+  // Sort each group by category
+  Object.keys(grouped).forEach(type => {
+    grouped[type].sort((a, b) => {
+      // Primary sort by category
+      const categoryCompare = a.category.localeCompare(b.category);
+      // Secondary sort by subcategory if categories are the same
+      return categoryCompare !== 0 ? categoryCompare : 
+             (a.subcategory || "").localeCompare(b.subcategory || "");
+    });
+  });
+  
   return grouped;
 }
 
