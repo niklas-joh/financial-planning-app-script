@@ -16,7 +16,4 @@ function refreshCache() {
   SpreadsheetApp.getUi().alert('Refreshing Dropdown Cache - Coming Soon!');
 }
 
-// Export functions to make them globally accessible
-global.setBudgetTargets = setBudgetTargets;
-global.setupEmailReports = setupEmailReports;
-global.refreshCache = refreshCache;
+// Functions are automatically global in Google Apps Script
