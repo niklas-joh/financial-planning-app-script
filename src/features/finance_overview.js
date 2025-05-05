@@ -1,6 +1,7 @@
 /**
  * Creates a financial overview sheet based on transaction data
  * This function will generate a complete overview sheet with dynamic categories
+ * and optional sub-category display based on user preference
  */
 function createFinancialOverview() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -16,6 +17,9 @@ function createFinancialOverview() {
     SpreadsheetApp.getUi().alert("Error: Could not find required sheets (Transactions or Dropdowns)");
     return;
   }
+  
+  // Get the user preference for showing sub-categories
+  const showSubCategories = getUserPreference("ShowSubCategories", true);
   
   // Get all transaction data
   const transactionData = transactionSheet.getDataRange().getValues();
@@ -111,7 +115,7 @@ function createFinancialOverview() {
 }
 
 /**
- * Sets up the header row in the overview sheet
+ * Sets up the header row in the overview sheet and adds the sub-category toggle checkbox
  */
 function setupHeaderRow(sheet) {
   const headers = ["Type", "Category", "Sub-Category", "Jan-24", "Feb-24", "Mar-24", "Apr-24", "May-24", "Jun-24", "Jul-24", "Aug-24", "Sep-24", "Oct-24", "Nov-24", "Dec-24", "Average"];
@@ -127,21 +131,75 @@ function setupHeaderRow(sheet) {
   for (let i = 4; i <= 15; i++) {
     sheet.getRange(1, i).setTextRotation(90);
   }
+  
+  // Add the sub-category toggle checkbox in cell A1:B1
+  const checkboxCell = "B1";
+  const showSubCategories = getUserPreference("ShowSubCategories", true);
+  
+  // Create a separate section for the checkbox
+  sheet.getRange("P1:R1").merge();
+  sheet.getRange("P1").setValue("Show Sub-Categories");
+  sheet.getRange("P1").setFontWeight("bold");
+  
+  // Add the checkbox in cell R1 (after the label)
+  const checkbox = sheet.getRange("S1");
+  checkbox.insertCheckboxes();
+  checkbox.setValue(showSubCategories);
+  
+  // Add a note to explain what the checkbox does
+  checkbox.setNote("Toggle to show or hide sub-categories in the overview sheet");
+}
+
+/**
+ * Handles edits to the overview sheet, specifically for the sub-category toggle checkbox
+ * Must be triggered from the onEdit(e) function
+ */
+function handleOverviewSheetEdits(e) {
+  // Check if the edit was in the Overview sheet
+  if (e.range.getSheet().getName() !== "Overview") return;
+  
+  // Check if the edit was to the checkbox cell (S1)
+  if (e.range.getA1Notation() === "S1") {
+    const newValue = e.range.getValue();
+    
+    // Update the user preference
+    setUserPreference("ShowSubCategories", newValue);
+    
+    // Regenerate the overview with the new setting
+    SpreadsheetApp.getActiveSpreadsheet().toast("Updating overview...", "Please wait");
+    
+    // Use setTimeout to allow the toast to display before regenerating
+    // Note: In Google Apps Script, this is implemented differently
+    createFinancialOverview();
+    
+    const status = newValue ? "showing" : "hiding";
+    SpreadsheetApp.getActiveSpreadsheet().toast(`Overview updated, ${status} sub-categories`, "Complete");
+  }
 }
 
 /**
  * Gets unique combinations of Type/Category/Subcategory from transaction data
+ * @param {Array} data - Transaction data
+ * @param {Number} typeCol - Column index for transaction type
+ * @param {Number} categoryCol - Column index for category
+ * @param {Number} subcategoryCol - Column index for subcategory
+ * @param {Boolean} showSubCategories - Whether to show subcategories or aggregate by category
+ * @return {Array} List of unique category combinations
  */
 function getUniqueCategoryCombinations(data, typeCol, categoryCol, subcategoryCol) {
   const combinations = [];
   const seen = new Set();
+  const showSubCategories = getUserPreference("ShowSubCategories", true);
+  
+  // For aggregating by category only (when not showing subcategories)
+  const categoryTotals = {};
   
   // Skip header row
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const type = row[typeCol];
     const category = row[categoryCol];
-    const subcategory = row[subcategoryCol];
+    const subcategory = showSubCategories ? row[subcategoryCol] : "";
     
     if (!type || !category) continue;
     

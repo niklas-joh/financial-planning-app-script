@@ -38,7 +38,21 @@ function onOpen() {
       .addItem('📌 Fixed vs Variable Expenses (Coming Soon)', 'analyzeFixedVsVariableExpenses')
       .addItem('🔮 Cash Flow Forecast (Coming Soon)', 'generateCashFlowForecast'))
     .addSeparator()
-    .addItem('⚙️ Set Budget Targets (Coming Soon)', 'setBudgetTargets')
-    .addItem('📧 Setup Email Reports (Coming Soon)', 'setupEmailReports')
+    .addSubMenu(ui.createMenu('⚙️ Settings')
+      .addItem('🔄 Toggle Sub-Categories in Overview', 'toggleShowSubCategories')
+      .addItem('🎯 Set Budget Targets (Coming Soon)', 'setBudgetTargets')
+      .addItem('📧 Setup Email Reports (Coming Soon)', 'setupEmailReports'))
     .addToUi();
+}
+
+/**
+ * Event handler that runs when a user edits the spreadsheet.
+ * Used to detect changes to settings checkboxes and other interactive elements.
+ * @param {Object} e - The edit event object
+ */
+function onEdit(e) {
+  // Pass the edit event to various handlers
+  handleOverviewSheetEdits(e);
+  
+  // More handlers can be added here in the future
 }
