@@ -15,7 +15,4 @@ function generateSavingsAnalysis() {
   SpreadsheetApp.getUi().alert('Savings Analysis - Coming Soon!');
 }
 
-// Export functions to make them globally accessible
-global.generateYearlySummary = generateYearlySummary;
-global.generateCategoryBreakdown = generateCategoryBreakdown;
-global.generateSavingsAnalysis = generateSavingsAnalysis;
+// Functions are automatically global in Google Apps Script

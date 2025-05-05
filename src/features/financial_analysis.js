@@ -20,8 +20,4 @@ function generateCashFlowForecast() {
   SpreadsheetApp.getUi().alert('Cash Flow Forecast - Coming Soon!');
 }
 
-// Export functions to make them globally accessible
-global.suggestSavingsOpportunities = suggestSavingsOpportunities;
-global.detectSpendingAnomalies = detectSpendingAnomalies;
-global.analyzeFixedVsVariableExpenses = analyzeFixedVsVariableExpenses;
-global.generateCashFlowForecast = generateCashFlowForecast;
+// Functions are automatically global in Google Apps Script

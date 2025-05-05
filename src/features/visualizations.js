@@ -20,8 +20,4 @@ function createCategoryPieChart() {
   SpreadsheetApp.getUi().alert('Category Pie Chart - Coming Soon!');
 }
 
-// Export functions to make them globally accessible
-global.createSpendingTrendsChart = createSpendingTrendsChart;
-global.createBudgetVsActualChart = createBudgetVsActualChart;
-global.createIncomeVsExpensesChart = createIncomeVsExpensesChart;
-global.createCategoryPieChart = createCategoryPieChart;
+// Functions are automatically global in Google Apps Script
