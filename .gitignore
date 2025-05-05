@@ -1,2 +1,5 @@
 // exclude clasp
 .clasp.json
+
+// exclude cline folder (for CLI instructions)
+cline/
