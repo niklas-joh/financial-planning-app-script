@@ -115,9 +115,9 @@ function createFinancialOverview() {
   
   // Dynamically show or hide sub-categories column based on user preference
   if (showSubCategories) {
-    overviewSheet.showColumn(3); // Show Sub-Category column
+    overviewSheet.showColumns(3, 1); // Show Sub-Category column (column 3, 1 column wide)
   } else {
-    overviewSheet.hideColumn(3); // Hide Sub-Category column
+    overviewSheet.hideColumns(3, 1); // Hide Sub-Category column (column 3, 1 column wide)
   }
 }
 
