@@ -142,20 +142,17 @@ function setupHeaderRow(sheet) {
   // Add the sub-category toggle checkbox in a more visible location
   const showSubCategories = getUserPreference("ShowSubCategories", true);
   
-  // Create a separate section for the checkbox between Sub-Category and Jan-24
-  sheet.getRange("D1").setValue("Show Sub-Categories");
-  sheet.getRange("D1").setFontWeight("bold");
+  // Create a separate section for the checkbox
+  sheet.getRange("R1").setValue("Show Sub-Categories");
+  sheet.getRange("R1").setFontWeight("bold");
   
-  // Add the checkbox in cell E1 (after the label)
-  const checkbox = sheet.getRange("E1");
+  // Add the checkbox in cell S1 (after the label)
+  const checkbox = sheet.getRange("S1");
   checkbox.insertCheckboxes();
   checkbox.setValue(showSubCategories);
   
   // Add a note to explain what the checkbox does
   checkbox.setNote("Toggle to show or hide sub-categories in the overview sheet");
-  
-  // Adjust column width to accommodate the label
-  sheet.setColumnWidth(4, 150);
 }
 
 /**
