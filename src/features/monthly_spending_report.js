@@ -159,9 +159,9 @@ function generateMonthlySpendingReport() {
   reportSheet.getRange(rowIndex, 1, 1, 6).setBackground("#D9D9D9").setFontWeight("bold");
   
   // Format columns
-  reportSheet.getRange(4, 3, rowIndex - 3, 1).setNumberFormat("€#,##0.00");
+  formatAsCurrency(reportSheet.getRange(4, 3, rowIndex - 3, 1));
   reportSheet.getRange(4, 4, rowIndex - 3, 1).setNumberFormat("0.0%");
-  reportSheet.getRange(4, 5, rowIndex - 3, 1).setNumberFormat("€#,##0.00");
+  formatAsCurrency(reportSheet.getRange(4, 5, rowIndex - 3, 1));
   
   // Add charts
   addMonthlyReportCharts(reportSheet, categoryData, totalExpenses);

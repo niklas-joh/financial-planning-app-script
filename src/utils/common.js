@@ -57,9 +57,11 @@ function getOrCreateSheet(spreadsheet, sheetName) {
  * Formats a range as currency
  * @param {SpreadsheetApp.Range} range - The range to format
  * @param {String} currencySymbol - The currency symbol to use (default: €)
+ * @param {String} locale - The locale code for the currency (default: 2 for Euro)
  */
-function formatAsCurrency(range, currencySymbol = '€') {
-  range.setNumberFormat(`${currencySymbol}#,##0.00;[Red]-${currencySymbol}#,##0.00`);
+function formatAsCurrency(range, currencySymbol = '€', locale = '2') {
+  // Using the specified Google Sheets format for currency
+  range.setNumberFormat(`_-[$${currencySymbol}-${locale}]\\ * #,##0_-;\\-[$${currencySymbol}-${locale}]\\ * #,##0_-;_-[$${currencySymbol}-${locale}]\\ * "-"??_-;_-@`);
 }
 
 /**

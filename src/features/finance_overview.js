@@ -497,7 +497,7 @@ function addNetCalculations(sheet, startRow) {
     sheet.getRange(startRow, monthCol).setFormula(`=${columnToLetter(monthCol)}${incomeRow}-${columnToLetter(monthCol)}${expensesRow}`);
     
     // Apply conditional formatting (green for positive, red for negative)
-    sheet.getRange(startRow, monthCol).setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+    formatAsCurrency(sheet.getRange(startRow, monthCol));
   }
   
   startRow++;
@@ -511,7 +511,7 @@ function addNetCalculations(sheet, startRow) {
       sheet.getRange(startRow, monthCol).setFormula(`=${columnToLetter(monthCol)}${expensesRow}+${columnToLetter(monthCol)}${savingsRow}`);
       
       // Apply conditional formatting
-      sheet.getRange(startRow, monthCol).setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+      formatAsCurrency(sheet.getRange(startRow, monthCol));
     }
     
     startRow++;
@@ -524,7 +524,7 @@ function addNetCalculations(sheet, startRow) {
       sheet.getRange(startRow, monthCol).setFormula(`=${columnToLetter(monthCol)}${incomeRow}-${columnToLetter(monthCol)}${expensesRow}-${columnToLetter(monthCol)}${savingsRow}`);
       
       // Apply conditional formatting
-      sheet.getRange(startRow, monthCol).setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+      formatAsCurrency(sheet.getRange(startRow, monthCol));
     }
     
     // Add a bottom border to the last net calculation row
@@ -716,10 +716,10 @@ function addKeyMetricsSection(sheet) {
     sheet.getRange(currentRow, 10, 1, 6).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : METRICS_BG_COLOR);
     
     // Format cells
-    sheet.getRange(currentRow, 11).setNumberFormat("€#,##0.00");
+    formatAsCurrency(sheet.getRange(currentRow, 11));
     sheet.getRange(currentRow, 12, 1, 2).setNumberFormat("0.0%");
     sheet.getRange(currentRow, 14).setNumberFormat("0.0%");
-    sheet.getRange(currentRow, 15).setNumberFormat("€#,##0.00");
+    formatAsCurrency(sheet.getRange(currentRow, 15));
     
     // Add conditional formatting for the % change column
     const rule = SpreadsheetApp.newConditionalFormatRule()
@@ -750,10 +750,10 @@ function addKeyMetricsSection(sheet) {
     .setFontColor("#FFFFFF");
   
   // Format cells
-  sheet.getRange(currentRow, 11).setNumberFormat("€#,##0.00");
+  formatAsCurrency(sheet.getRange(currentRow, 11));
   sheet.getRange(currentRow, 12, 1, 2).setNumberFormat("0.0%");
   sheet.getRange(currentRow, 14).setNumberFormat("0.0%");
-  sheet.getRange(currentRow, 15).setNumberFormat("€#,##0.00");
+  formatAsCurrency(sheet.getRange(currentRow, 15));
   
   // Add borders to the expense table
   sheet.getRange(expenseStartRow, 10, currentRow - expenseStartRow + 1, 6).setBorder(
@@ -970,7 +970,7 @@ function formatOverviewSheet(sheet) {
       for (let col = 5; col <= 17; col++) {
         // Apply conditional formatting based on value
         const cell = sheet.getRange(row, col);
-        cell.setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+        formatAsCurrency(cell);
       }
     }
   }
@@ -989,13 +989,13 @@ function formatOverviewSheet(sheet) {
       // Apply conditional formatting based on the row type
       const rowType = data[row - 1][0] || "";
       if (rowType === "Income") {
-        cell.setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+        formatAsCurrency(cell);
         cell.setFontColor(INCOME_COLOR);
       } else if (rowType === "Expenses") {
-        cell.setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+        formatAsCurrency(cell);
         cell.setFontColor(EXPENSE_COLOR);
       } else if (rowType === "Savings") {
-        cell.setNumberFormat('[>0]€#,##0.00;[<0][Red]-€#,##0.00;€0.00');
+        formatAsCurrency(cell);
         cell.setFontColor(SAVINGS_COLOR);
       }
     }
