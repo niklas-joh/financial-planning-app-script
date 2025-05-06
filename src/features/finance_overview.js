@@ -715,12 +715,12 @@ function addKeyMetricsSection(sheet) {
     // Apply alternating row colors
     sheet.getRange(currentRow, 10, 1, 6).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : METRICS_BG_COLOR);
     
-    // Format cells - all as currency (columns E to R)
-    // formatAsCurrency(sheet.getRange(currentRow, 11));
-
-    // formatAsCurrency(sheet.getRange(currentRow, 12, 1, 2));
-    // formatAsCurrency(sheet.getRange(currentRow, 14));
-    // formatAsCurrency(sheet.getRange(currentRow, 15));
+    // Format cells
+    formatAsCurrency(sheet.getRange(currentRow, 11)); // Amount column as currency
+    sheet.getRange(currentRow, 12, 1, 1).setNumberFormat("0.0%"); // Rate column as percentage
+    sheet.getRange(currentRow, 13, 1, 1).setNumberFormat("0.0%"); // Target Rate column as percentage
+    sheet.getRange(currentRow, 14, 1, 1).setNumberFormat("0.0%"); // % change column as percentage
+    formatAsCurrency(sheet.getRange(currentRow, 15)); // Amount change column as currency
     
     // Add conditional formatting for the % change column
     const rule = SpreadsheetApp.newConditionalFormatRule()
@@ -892,11 +892,7 @@ function formatOverviewSheet(sheet) {
     formatAsCurrency(sheet.getRange(2, col, lastRow - 1, 1));
   });
   
-  // Format percentage columns in the metrics section
-  const percentColumns = [12, 13, 14]; // Rate columns in metrics section
-  percentColumns.forEach(col => {
-    formatAsPercentage(sheet.getRange(2, col, lastRow - 1, 1));
-  });
+  // We'll format percentage columns only in their specific sections, not globally
   
   // Adjust column widths for better readability
   sheet.setColumnWidth(1, 150); // Type
