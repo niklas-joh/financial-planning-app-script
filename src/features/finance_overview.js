@@ -715,11 +715,12 @@ function addKeyMetricsSection(sheet) {
     // Apply alternating row colors
     sheet.getRange(currentRow, 10, 1, 6).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : METRICS_BG_COLOR);
     
-    // Format cells
-    formatAsCurrency(sheet.getRange(currentRow, 11));
-    sheet.getRange(currentRow, 12, 1, 2).setNumberFormat("0.0%");
-    sheet.getRange(currentRow, 14).setNumberFormat("0.0%");
-    formatAsCurrency(sheet.getRange(currentRow, 15));
+    // Format cells - all as currency (columns E to R)
+    // formatAsCurrency(sheet.getRange(currentRow, 11));
+
+    // formatAsCurrency(sheet.getRange(currentRow, 12, 1, 2));
+    // formatAsCurrency(sheet.getRange(currentRow, 14));
+    // formatAsCurrency(sheet.getRange(currentRow, 15));
     
     // Add conditional formatting for the % change column
     const rule = SpreadsheetApp.newConditionalFormatRule()
@@ -885,7 +886,7 @@ function formatOverviewSheet(sheet) {
   
   // Format currency columns (adjusted for Shared? column)
   const lastRow = sheet.getLastRow();
-  const currencyColumns = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]; // All month columns and Average
+  const currencyColumns = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]; // All month columns and Average (E to R)
   
   currencyColumns.forEach(col => {
     formatAsCurrency(sheet.getRange(2, col, lastRow - 1, 1));
