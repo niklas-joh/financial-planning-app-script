@@ -2,8 +2,8 @@
 node_modules/
 *.log
 
-// Exclude Cline
-Cline/
+// exclude cline folder (for CLI instructions)
+cline/
 
-// Exclude .idea
+// exclude .idea folder
 .idea/
