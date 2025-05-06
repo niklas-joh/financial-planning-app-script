@@ -1,5 +1,6 @@
-// exclude clasp
-.clasp.json
+.DS_Store
+node_modules/
+*.log
 
 // exclude cline folder (for CLI instructions)
 cline/

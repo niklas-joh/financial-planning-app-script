@@ -20,7 +20,11 @@ function importUtils() {
   
   // Make utility functions globally available
   commonUtils.forEach(funcName => {
-    this[funcName] = this[funcName] || global[funcName];
+    // Use this[funcName] to assign to the global scope in Apps Script
+    // Avoid using global[funcName] which causes ReferenceError
+    if (typeof this[funcName] === 'undefined') {
+      Logger.log('Warning: ' + funcName + ' is not defined');
+    }
   });
 }
 
@@ -77,7 +81,11 @@ function importFeatures() {
     ...financialAnalysisFunctions,
     ...settingsFunctions
   ].forEach(funcName => {
-    this[funcName] = this[funcName] || global[funcName];
+    // Use this[funcName] to assign to the global scope in Apps Script
+    // Avoid using global[funcName] which causes ReferenceError
+    if (typeof this[funcName] === 'undefined') {
+      Logger.log('Warning: ' + funcName + ' is not defined');
+    }
   });
 }
 
@@ -85,6 +93,7 @@ function importFeatures() {
 function initialize() {
   importUtils();
   importFeatures();
+  Logger.log('Financial Planning Tools initialized successfully');
 }
 
 // Run initialization
