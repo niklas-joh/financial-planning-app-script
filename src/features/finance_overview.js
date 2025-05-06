@@ -8,6 +8,10 @@ function createFinancialOverview() {
   
   // Get or create the Overview sheet
   const overviewSheet = getOrCreateSheet(ss, "Overview");
+  overviewSheet.clear(); // Clear existing content
+  overviewSheet.clearFormats(); // Clear existing formats
+  // clear check boxes
+  overviewSheet.getRange("A1:Z1000").setDataValidation(null);
   
   // Get transaction and dropdown sheets
   const transactionSheet = ss.getSheetByName("Transactions");
@@ -53,7 +57,7 @@ function createFinancialOverview() {
   const groupedCombinations = groupCategoryCombinations(categoryCombinations);
   
   // Define the order of main types
-  const typeOrder = ["Income", "Expenses", "Savings"];
+  const typeOrder = ["Income", "Essentials", "Wants/Pleasure", "Extra", "Savings"];
   
   // For each type in the defined order
   typeOrder.forEach(type => {
@@ -65,8 +69,12 @@ function createFinancialOverview() {
     
     if (type === "Income") {
       typeBgColor = "#2E7D32"; // Green for Income
-    } else if (type === "Expenses") {
-      typeBgColor = "#C62828"; // Red for Expenses
+    } else if (type === "Essentials") {
+      typeBgColor = "#1976D2"; // Blue for Essentials
+    } else if (type === "Wants/Pleasure") {
+      typeBgColor = "#FFA000"; // Amber for Wants/Pleasure
+    } else if (type === "Extra") {
+      typeBgColor = "#7B1FA2"; // Purple for Extra
     } else if (type === "Savings") {
       typeBgColor = "#1565C0"; // Blue for Savings
     } else {
@@ -88,9 +96,15 @@ function createFinancialOverview() {
     if (type === "Income") {
       categoryBgColor = "#C8E6C9"; // Light green for Income categories
       categoryLightBgColor = "#E8F5E9"; // Very light green for subcategories
-    } else if (type === "Expenses") {
+    } else if (type === "Essentials") {
       categoryBgColor = "#FFCDD2"; // Light red for Expense categories
       categoryLightBgColor = "#FFEBEE"; // Very light red for subcategories
+    } else if (type === "Wants/Pleasure") {
+      categoryBgColor = "#FFE0B2"; // Light orange for Wants/Pleasure categories
+      categoryLightBgColor = "#FFF3E0"; // Very light orange for subcategories
+    } else if (type === "Extra") {
+      categoryBgColor = "#BBDEFB"; // Light blue for Extra categories
+      categoryLightBgColor = "#E3F2FD"; // Very light blue for subcategories
     } else if (type === "Savings") {
       categoryBgColor = "#BBDEFB"; // Light blue for Savings categories
       categoryLightBgColor = "#E3F2FD"; // Very light blue for subcategories
@@ -98,6 +112,10 @@ function createFinancialOverview() {
       categoryBgColor = "#F5F5F5"; // Light gray for other categories
       categoryLightBgColor = "#FAFAFA"; // Very light gray for subcategories
     }
+    
+    // Store all expense types in an array
+    const expenses = ["Essentials", "Wants/Pleasure", "Extra"];
+
     
     // Add rows for each category/subcategory in this type
     groupedCombinations[type].forEach(combo => {
@@ -107,7 +125,8 @@ function createFinancialOverview() {
       overviewSheet.getRange(rowIndex, 3).setValue(combo.subcategory);
       
       // Set Shared? column value (checkbox)
-      if (combo.type === "Expenses") {
+      if (expenses.includes(combo.type)) {
+        // Only show checkbox for these types
         overviewSheet.getRange(rowIndex, 4).insertCheckboxes();
         // We'll leave it unchecked by default, but this could be enhanced to show actual shared status
       }
@@ -145,7 +164,7 @@ function createFinancialOverview() {
         if (combo.type === "Income") {
           // Income should be displayed in green
           overviewSheet.getRange(rowIndex, monthCol).setFontColor("#388E3C"); // Green for income
-        } else if (combo.type === "Expenses") {
+        } else if (expenses.includes(combo.type)) {
           // Expenses should be displayed in red
           overviewSheet.getRange(rowIndex, monthCol).setFontColor("#D32F2F"); // Red for expenses
         }
@@ -211,11 +230,6 @@ function setupHeaderRow(sheet) {
              .setFontColor(HEADER_TEXT_COLOR)
              .setHorizontalAlignment("center")
              .setVerticalAlignment("middle");
-  
-  // Format the month columns for better readability
-  for (let i = 5; i <= 16; i++) { // Adjusted for the new Shared? column
-    sheet.getRange(1, i).setTextRotation(90);
-  }
   
   // Add the sub-category toggle checkbox in a more visible location
   const showSubCategories = getUserPreference("ShowSubCategories", true);
@@ -413,7 +427,7 @@ function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetNam
   
   // If this is a shared expense category, add logic to divide by 2 when shared column is TRUE
   if (sharedCol > 0) {
-    // Non-shared expenses (Shared = FALSE)
+    // Non-shared expenses (Shared = "")
     let nonSharedFormula = `SUMIFS(${sumRange}`;
     nonSharedFormula += `, ${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}, "${type}"`;
     nonSharedFormula += `, ${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}, "${category}"`;
@@ -422,7 +436,7 @@ function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetNam
     if (subcategory) {
       nonSharedFormula += `, ${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`;
     }
-    nonSharedFormula += `, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, FALSE)`;
+    nonSharedFormula += `, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, "")`;
     
     // Shared expenses (Shared = TRUE, divided by 2)
     let sharedFormula = `SUMIFS(${sumRange}`;
@@ -433,7 +447,7 @@ function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetNam
     if (subcategory) {
       sharedFormula += `, ${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`;
     }
-    sharedFormula += `, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, TRUE)/2`;
+    sharedFormula += `, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, "true")/2`;
     
     return `${nonSharedFormula} + (${sharedFormula})`;
   }
@@ -635,7 +649,7 @@ function addKeyMetricsSection(sheet) {
   );
   
   // Add Expense Categories table with improved formatting
-  const expenseStartRow = currentRow + 2;
+  let expenseStartRow = currentRow + 2;
   
   // Add Expense Categories header
   sheet.getRange(expenseStartRow, 10).setValue("Expense Categories");
