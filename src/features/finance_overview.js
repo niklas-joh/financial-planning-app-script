@@ -131,14 +131,12 @@ function createFinancialOverview() {
         // We'll leave it unchecked by default, but this could be enhanced to show actual shared status
       }
       
-      // Apply styling to the row
+      // Apply styling to the row - no background color for regular rows
       if (combo.subcategory) {
-        // This is a subcategory row - use lighter background and indent
-        overviewSheet.getRange(rowIndex, 1, 1, 17).setBackground(categoryLightBgColor);
+        // This is a subcategory row - no background, just indent
         overviewSheet.getRange(rowIndex, 3).setIndent(5); // Indent subcategory for visual hierarchy
       } else {
-        // This is a main category row - use standard category background
-        overviewSheet.getRange(rowIndex, 1, 1, 17).setBackground(categoryBgColor);
+        // This is a main category row - no background, just bold category name
         overviewSheet.getRange(rowIndex, 2).setFontWeight("bold"); // Bold category name
       }
       
@@ -178,7 +176,7 @@ function createFinancialOverview() {
     
     // Add subtotal for this type
     overviewSheet.getRange(rowIndex, 1).setValue(`Total ${type}`);
-    overviewSheet.getRange(rowIndex, 1, 1, 3).setBackground("#e6e6e6").setFontWeight("bold");
+    overviewSheet.getRange(rowIndex, 1, 1, 17).setBackground(typeBgColor).setFontWeight("bold").setFontColor(typeFontColor);
     
     // Add subtotal formulas for each month column
     for (let monthCol = 4; monthCol <= 16; monthCol++) {
@@ -196,7 +194,7 @@ function createFinancialOverview() {
   // Add key metrics section
   addKeyMetricsSection(overviewSheet);
   
-  // Format the overview sheet
+  // Format the overview sheet - with modified row coloring
   formatOverviewSheet(overviewSheet);
   
   // Dynamically show or hide sub-categories column based on user preference
@@ -216,7 +214,7 @@ function setupHeaderRow(sheet) {
   const HEADER_TEXT_COLOR = "#FFFFFF"; // White text for better contrast on red
   
   // Updated headers array with Shared? column
-  const headers = ["Type", "Category", "Sub-Category", "Shared?", "Jan-25", "Feb-25", "Mar-25", "Apr-25", "May-25", "Jun-25", "Jul-25", "Aug-25", "Sep-25", "Oct-25", "Nov-25", "Dec-25", "Average"];
+  const headers = ["Type", "Category", "Sub-Category", "Shared?", "Jan-24", "Feb-24", "Mar-24", "Apr-24", "May-24", "Jun-24", "Jul-24", "Aug-24", "Sep-24", "Oct-24", "Nov-24", "Dec-24", "Average"];
   
   // Set header values
   for (let i = 0; i < headers.length; i++) {
@@ -1003,19 +1001,6 @@ function formatOverviewSheet(sheet) {
     }
   }
   
-  // Apply alternating row colors for better readability, but only for data rows (not headers or totals)
-  for (let row = 2; row <= lastRow; row++) {
-    const rowValue = data[row - 1][0] || "";
-    // Skip headers and total rows
-    if (rowValue.startsWith("Total ") || rowValue.startsWith("Net (") || 
-        rowValue === "Income" || rowValue === "Expenses" || rowValue === "Savings") {
-      continue;
-    }
-    
-    // Apply subtle alternating colors
-    if (row % 2 === 0) {
-      // Even rows get a very subtle background
-      sheet.getRange(row, 1, 1, 17).setBackground("#F9F9F9");
-    }
-  }
+  // No alternating row colors as per new requirements
+  // We're keeping rows with no background color except for headers and totals
 }
