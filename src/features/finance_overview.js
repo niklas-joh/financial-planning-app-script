@@ -476,9 +476,9 @@ function addTypeHeaderRow(sheet, type, rowIndex) {
   // Add Type header row with appropriate color
   sheet.getRange(rowIndex, 1).setValue(type);
   sheet.getRange(rowIndex, 1, 1, 17) // Adjusted for new column count
-    .setBackground(typeColors.bg)
+    .setBackground(typeColors.BG)
     .setFontWeight("bold")
-    .setFontColor(typeColors.font);
+    .setFontColor(typeColors.FONT);
   
   return rowIndex + 1;
 }
@@ -571,9 +571,9 @@ function addTypeSubtotalRow(sheet, type, rowIndex, rowCount) {
   // Add subtotal for this type
   sheet.getRange(rowIndex, 1).setValue(`Total ${type}`);
   sheet.getRange(rowIndex, 1, 1, 17)
-    .setBackground(typeColors.bg)
+    .setBackground(typeColors.BG)
     .setFontWeight("bold")
-    .setFontColor(typeColors.font);
+    .setFontColor(typeColors.FONT);
   
   // Add subtotal formulas for each month column
   for (let monthCol = 5; monthCol <= 17; monthCol++) {
@@ -1038,9 +1038,9 @@ function formatOverviewSheet(sheet) {
       const typeColors = getTypeColors(totalType);
       
       sheet.getRange(row, 1, 1, 17)
-        .setBackground(typeColors.bg)
+        .setBackground(typeColors.BG)
         .setFontWeight("bold")
-        .setFontColor(typeColors.font);
+        .setFontColor(typeColors.FONT);
     }
   }
   
