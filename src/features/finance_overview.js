@@ -112,7 +112,7 @@ const COLORS = {
 /**
  * Configuration for the overview sheet
  */
-const CONFIG = {
+const OVERVIEW_CONFIG = {
   // Sheet names
   SHEETS: {
     OVERVIEW: "Overview",
@@ -156,12 +156,12 @@ function createFinancialOverview() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // Get or create the Overview sheet
-  const overviewSheet = getOrCreateSheet(ss, CONFIG.SHEETS.OVERVIEW);
+  const overviewSheet = getOrCreateSheet(ss, OVERVIEW_CONFIG.SHEETS.OVERVIEW);
   clearSheetContent(overviewSheet);
   
   // Get transaction and dropdown sheets
-  const transactionSheet = ss.getSheetByName(CONFIG.SHEETS.TRANSACTIONS);
-  const dropdownSheet = ss.getSheetByName(CONFIG.SHEETS.DROPDOWNS);
+  const transactionSheet = ss.getSheetByName(OVERVIEW_CONFIG.SHEETS.TRANSACTIONS);
+  const dropdownSheet = ss.getSheetByName(OVERVIEW_CONFIG.SHEETS.DROPDOWNS);
   
   if (!transactionSheet || !dropdownSheet) {
     SpreadsheetApp.getUi().alert("Error: Could not find required sheets (Transactions or Dropdowns)");
@@ -193,7 +193,7 @@ function createFinancialOverview() {
   let rowIndex = 2; // Start after header
   
   // Process each type in the defined order
-  CONFIG.TYPE_ORDER.forEach(type => {
+  OVERVIEW_CONFIG.TYPE_ORDER.forEach(type => {
     // Skip if this type doesn't exist in the data
     if (!groupedCombinations[type]) return;
     
@@ -401,7 +401,7 @@ function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetNam
   }
   
   // If this is a shared expense category, add logic to divide by 2 when shared column is TRUE
-  if (CONFIG.EXPENSE_TYPES.includes(type) && sharedCol > 0) {
+  if (OVERVIEW_CONFIG.EXPENSE_TYPES.includes(type) && sharedCol > 0) {
     // Non-shared expenses (Shared = "")
     const nonSharedCriteria = [...baseCriteria];
     nonSharedCriteria.push(`${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, ""`);
@@ -430,12 +430,12 @@ function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetNam
  */
 function setupHeaderRow(sheet, showSubCategories) {
   // Set header values
-  for (let i = 0; i < CONFIG.HEADERS.length; i++) {
-    sheet.getRange(1, i + 1).setValue(CONFIG.HEADERS[i]);
+  for (let i = 0; i < OVERVIEW_CONFIG.HEADERS.length; i++) {
+    sheet.getRange(1, i + 1).setValue(OVERVIEW_CONFIG.HEADERS[i]);
   }
   
   // Format header row with bold red background and white text
-  const headerRange = sheet.getRange(1, 1, 1, CONFIG.HEADERS.length);
+  const headerRange = sheet.getRange(1, 1, 1, OVERVIEW_CONFIG.HEADERS.length);
   headerRange.setBackground(COLORS.UI.HEADER_BG)
              .setFontWeight("bold")
              .setFontColor(COLORS.UI.HEADER_FONT)
@@ -505,7 +505,7 @@ function addCategoryRows(sheet, combinations, rowIndex, type, columnIndices, tra
     sheet.getRange(rowIndex, 3).setValue(combo.subcategory);
     
     // Set Shared? column value (checkbox) for expense types
-    if (CONFIG.EXPENSE_TYPES.includes(combo.type)) {
+    if (OVERVIEW_CONFIG.EXPENSE_TYPES.includes(combo.type)) {
       // Only show checkbox for expense types
       sheet.getRange(rowIndex, 4).insertCheckboxes();
     }
@@ -527,7 +527,7 @@ function addCategoryRows(sheet, combinations, rowIndex, type, columnIndices, tra
         combo.category, 
         combo.subcategory, 
         monthDate, 
-        CONFIG.SHEETS.TRANSACTIONS, 
+        OVERVIEW_CONFIG.SHEETS.TRANSACTIONS,
         columnIndices.type + 1, 
         columnIndices.category + 1, 
         columnIndices.subcategory + 1, 
@@ -541,7 +541,7 @@ function addCategoryRows(sheet, combinations, rowIndex, type, columnIndices, tra
       if (combo.type === "Income") {
         // Income should be displayed in green
         sheet.getRange(rowIndex, monthCol).setFontColor(COLORS.UI.INCOME_FONT);
-      } else if (CONFIG.EXPENSE_TYPES.includes(combo.type)) {
+      } else if (OVERVIEW_CONFIG.EXPENSE_TYPES.includes(combo.type)) {
         // Expenses should be displayed in red
         sheet.getRange(rowIndex, monthCol).setFontColor(COLORS.UI.EXPENSE_FONT);
       }
@@ -797,7 +797,7 @@ function addKeyMetricsSection(sheet, startRow) {
   // Look for expense categories based on the user's specific expense types
   for (let i = 1; i < data.length; i++) {
     // Check if this row has a type that's considered an expense
-    if (CONFIG.EXPENSE_TYPES.includes(data[i][0]) && data[i][1]) {
+    if (OVERVIEW_CONFIG.EXPENSE_TYPES.includes(data[i][0]) && data[i][1]) {
       expenseCategories.push({
         category: data[i][1],
         type: data[i][0],
@@ -816,13 +816,13 @@ function addKeyMetricsSection(sheet, startRow) {
     sheet.getRange(currentRow, 12).setFormula(`=IFERROR(K${currentRow}/Q${incomeRow}, 0)`);
     
     // Set target rate based on expense type
-    let targetRate = CONFIG.TARGET_RATES.DEFAULT; // Default
+    let targetRate = OVERVIEW_CONFIG.TARGET_RATES.DEFAULT; // Default
     if (category.type === "Essentials") {
-      targetRate = CONFIG.TARGET_RATES.ESSENTIALS;
+      targetRate = OVERVIEW_CONFIG.TARGET_RATES.ESSENTIALS;
     } else if (category.type === "Wants/Pleasure") {
-      targetRate = CONFIG.TARGET_RATES.WANTS_PLEASURE;
+      targetRate = OVERVIEW_CONFIG.TARGET_RATES.WANTS_PLEASURE;
     } else if (category.type === "Extra") {
-      targetRate = CONFIG.TARGET_RATES.EXTRA;
+      targetRate = OVERVIEW_CONFIG.TARGET_RATES.EXTRA;
     }
     
     sheet.getRange(currentRow, 13).setValue(targetRate);
@@ -1078,7 +1078,7 @@ function formatOverviewSheet(sheet) {
       if (rowType === "Income") {
         formatAsCurrency(cell);
         cell.setFontColor(COLORS.UI.INCOME_FONT);
-      } else if (CONFIG.EXPENSE_TYPES.includes(rowType)) {
+      } else if (OVERVIEW_CONFIG.EXPENSE_TYPES.includes(rowType)) {
         formatAsCurrency(cell);
         cell.setFontColor(COLORS.UI.EXPENSE_FONT);
       } else if (rowType === "Savings") {
@@ -1152,7 +1152,7 @@ function getCategoryColors(type) {
  */
 function handleOverviewSheetEdits(e) {
   // Check if the edit was in the Overview sheet
-  if (e.range.getSheet().getName() !== CONFIG.SHEETS.OVERVIEW) return;
+  if (e.range.getSheet().getName() !== OVERVIEW_CONFIG.SHEETS.OVERVIEW) return;
   
   // Check if the edit was to the checkbox cell (T1)
   if (e.range.getA1Notation() === "T1") {
