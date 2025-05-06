@@ -3,3 +3,6 @@
 
 // exclude cline folder (for CLI instructions)
 cline/
+
+// exclude .idea folder
+.idea/
