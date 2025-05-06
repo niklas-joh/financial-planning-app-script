@@ -1,4 +1,153 @@
 /**
+ * Financial Planning Tools - Financial Overview Generator
+ * 
+ * This module creates a comprehensive financial overview sheet based on transaction data.
+ * It generates a complete overview with dynamic categories and optional sub-category display
+ * based on user preference.
+ * 
+ * The code is organized into the following sections:
+ * 1. Configuration and Constants
+ * 2. Main Entry Point
+ * 3. Data Processing Functions
+ * 4. UI Generation Functions
+ * 5. Chart and Visualization Functions
+ * 6. Helper Functions
+ */
+
+// ============================================================================
+// 1. CONFIGURATION AND CONSTANTS
+// ============================================================================
+
+/**
+ * Color scheme configuration for different transaction types and UI elements
+ */
+const COLORS = {
+  // Type header colors
+  TYPE_HEADERS: {
+    INCOME: {
+      BG: "#2E7D32",      // Green for Income
+      FONT: "#FFFFFF"     // White text
+    },
+    ESSENTIALS: {
+      BG: "#1976D2",      // Blue for Essentials
+      FONT: "#FFFFFF"     // White text
+    },
+    WANTS_PLEASURE: {
+      BG: "#FFA000",      // Amber for Wants/Pleasure
+      FONT: "#FFFFFF"     // White text
+    },
+    EXTRA: {
+      BG: "#7B1FA2",      // Purple for Extra
+      FONT: "#FFFFFF"     // White text
+    },
+    SAVINGS: {
+      BG: "#1565C0",      // Blue for Savings
+      FONT: "#FFFFFF"     // White text
+    },
+    DEFAULT: {
+      BG: "#424242",      // Dark gray for other types
+      FONT: "#FFFFFF"     // White text
+    }
+  },
+  
+  // Category background colors
+  CATEGORY_BG: {
+    INCOME: {
+      MAIN: "#C8E6C9",    // Light green for Income categories
+      SUB: "#E8F5E9"      // Very light green for subcategories
+    },
+    ESSENTIALS: {
+      MAIN: "#FFCDD2",    // Light red for Expense categories
+      SUB: "#FFEBEE"      // Very light red for subcategories
+    },
+    WANTS_PLEASURE: {
+      MAIN: "#FFE0B2",    // Light orange for Wants/Pleasure categories
+      SUB: "#FFF3E0"      // Very light orange for subcategories
+    },
+    EXTRA: {
+      MAIN: "#BBDEFB",    // Light blue for Extra categories
+      SUB: "#E3F2FD"      // Very light blue for subcategories
+    },
+    SAVINGS: {
+      MAIN: "#BBDEFB",    // Light blue for Savings categories
+      SUB: "#E3F2FD"      // Very light blue for subcategories
+    },
+    DEFAULT: {
+      MAIN: "#F5F5F5",    // Light gray for other categories
+      SUB: "#FAFAFA"      // Very light gray for subcategories
+    }
+  },
+  
+  // UI element colors
+  UI: {
+    HEADER_BG: "#C62828",       // Deep red for headers
+    HEADER_FONT: "#FFFFFF",     // White text for headers
+    METRICS_BG: "#FFEBEE",      // Very light red for metrics section
+    BORDER: "#FF8F00",          // Amber for borders
+    INCOME_FONT: "#388E3C",     // Green for income values
+    EXPENSE_FONT: "#D32F2F",    // Red for expense values
+    SAVINGS_FONT: "#1565C0",    // Blue for savings values
+    NEUTRAL_FONT: "#424242",    // Dark gray for neutral values
+    NET_BG: "#424242",          // Dark gray for net calculations
+    NET_FONT: "#FFFFFF"         // White text for net calculations
+  },
+  
+  // Chart colors
+  CHART: {
+    SERIES: [
+      "#C62828", // Red (for Essentials)
+      "#FF8F00", // Amber (for Wants/Pleasure)
+      "#1565C0", // Blue (for Extra)
+      "#2E7D32", // Green
+      "#6A1B9A", // Purple
+      "#E64A19", // Deep Orange
+      "#00695C", // Teal
+      "#5D4037"  // Brown
+    ],
+    TITLE: "#424242",
+    TEXT: "#424242"
+  }
+};
+
+/**
+ * Configuration for the overview sheet
+ */
+const CONFIG = {
+  // Sheet names
+  SHEETS: {
+    OVERVIEW: "Overview",
+    TRANSACTIONS: "Transactions",
+    DROPDOWNS: "Dropdowns"
+  },
+  
+  // Transaction types in preferred display order
+  TYPE_ORDER: ["Income", "Essentials", "Wants/Pleasure", "Extra", "Savings"],
+  
+  // Expense types (used for shared checkbox display)
+  EXPENSE_TYPES: ["Essentials", "Wants/Pleasure", "Extra"],
+  
+  // Column headers for the overview sheet
+  HEADERS: [
+    "Type", "Category", "Sub-Category", "Shared?", 
+    "Jan-24", "Feb-24", "Mar-24", "Apr-24", 
+    "May-24", "Jun-24", "Jul-24", "Aug-24", 
+    "Sep-24", "Oct-24", "Nov-24", "Dec-24", "Average"
+  ],
+  
+  // Default target rates for expense categories
+  TARGET_RATES: {
+    ESSENTIALS: 0.5,    // 50% for essentials
+    WANTS_PLEASURE: 0.3, // 30% for wants
+    EXTRA: 0.2,         // 20% for extras
+    DEFAULT: 0.2        // 20% default
+  }
+};
+
+// ============================================================================
+// 2. MAIN ENTRY POINT
+// ============================================================================
+
+/**
  * Creates a financial overview sheet based on transaction data
  * This function will generate a complete overview sheet with dynamic categories
  * and optional sub-category display based on user preference
@@ -7,15 +156,12 @@ function createFinancialOverview() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   
   // Get or create the Overview sheet
-  const overviewSheet = getOrCreateSheet(ss, "Overview");
-  overviewSheet.clear(); // Clear existing content
-  overviewSheet.clearFormats(); // Clear existing formats
-  // clear check boxes
-  overviewSheet.getRange("A1:Z1000").setDataValidation(null);
+  const overviewSheet = getOrCreateSheet(ss, CONFIG.SHEETS.OVERVIEW);
+  clearSheetContent(overviewSheet);
   
   // Get transaction and dropdown sheets
-  const transactionSheet = ss.getSheetByName("Transactions");
-  const dropdownSheet = ss.getSheetByName("Dropdowns");
+  const transactionSheet = ss.getSheetByName(CONFIG.SHEETS.TRANSACTIONS);
+  const dropdownSheet = ss.getSheetByName(CONFIG.SHEETS.DROPDOWNS);
   
   if (!transactionSheet || !dropdownSheet) {
     SpreadsheetApp.getUi().alert("Error: Could not find required sheets (Transactions or Dropdowns)");
@@ -25,176 +171,58 @@ function createFinancialOverview() {
   // Get the user preference for showing sub-categories
   const showSubCategories = getUserPreference("ShowSubCategories", true);
   
-  // Get all transaction data
-  const transactionData = transactionSheet.getDataRange().getValues();
-  const headers = transactionData[0];
-  
-  // Find required column indices
-  const typeIndex = headers.indexOf("Type");
-  const categoryIndex = headers.indexOf("Category");
-  const subcategoryIndex = headers.indexOf("Sub-Category");
-  const dateIndex = headers.indexOf("Date");
-  const amountIndex = headers.indexOf("Amount");
-  const sharedIndex = headers.indexOf("Shared");
-  
-  if (typeIndex < 0 || categoryIndex < 0 || subcategoryIndex < 0 || 
-      dateIndex < 0 || amountIndex < 0) {
-    SpreadsheetApp.getUi().alert("Error: Could not find required columns in Transaction sheet");
-    return;
-  }
+  // Get transaction data and column indices
+  const { transactionData, columnIndices } = getTransactionData(transactionSheet);
   
   // Set up header row in Overview sheet
-  setupHeaderRow(overviewSheet);
+  setupHeaderRow(overviewSheet, showSubCategories);
   
   // Get unique combinations of Type/Category/Subcategory
-  const categoryCombinations = getUniqueCategoryCombinations(transactionData, typeIndex, categoryIndex, subcategoryIndex);
+  const categoryCombinations = getUniqueCategoryCombinations(
+    transactionData, 
+    columnIndices.type, 
+    columnIndices.category, 
+    columnIndices.subcategory,
+    showSubCategories
+  );
+  
+  // Group by Type and sort appropriately
+  const groupedCombinations = groupCategoryCombinations(categoryCombinations);
   
   // Add rows for each category combination
   let rowIndex = 2; // Start after header
-  let currentType = "";
   
-  // Group by Type
-  const groupedCombinations = groupCategoryCombinations(categoryCombinations);
-  
-  // Define the order of main types
-  const typeOrder = ["Income", "Essentials", "Wants/Pleasure", "Extra", "Savings"];
-  
-  // For each type in the defined order
-  typeOrder.forEach(type => {
+  // Process each type in the defined order
+  CONFIG.TYPE_ORDER.forEach(type => {
     // Skip if this type doesn't exist in the data
     if (!groupedCombinations[type]) return;
-    // Define colors based on type
-    let typeBgColor;
-    let typeFontColor = "#FFFFFF"; // White text for all type headers
     
-    if (type === "Income") {
-      typeBgColor = "#2E7D32"; // Green for Income
-    } else if (type === "Essentials") {
-      typeBgColor = "#1976D2"; // Blue for Essentials
-    } else if (type === "Wants/Pleasure") {
-      typeBgColor = "#FFA000"; // Amber for Wants/Pleasure
-    } else if (type === "Extra") {
-      typeBgColor = "#7B1FA2"; // Purple for Extra
-    } else if (type === "Savings") {
-      typeBgColor = "#1565C0"; // Blue for Savings
-    } else {
-      typeBgColor = "#424242"; // Dark gray for other types
-    }
-    
-    // Add Type header row with appropriate color
-    overviewSheet.getRange(rowIndex, 1).setValue(type);
-    overviewSheet.getRange(rowIndex, 1, 1, 17) // Adjusted for new column count
-      .setBackground(typeBgColor)
-      .setFontWeight("bold")
-      .setFontColor(typeFontColor);
-    rowIndex++;
-    
-    // Define category background colors based on type
-    let categoryBgColor;
-    let categoryLightBgColor;
-    
-    if (type === "Income") {
-      categoryBgColor = "#C8E6C9"; // Light green for Income categories
-      categoryLightBgColor = "#E8F5E9"; // Very light green for subcategories
-    } else if (type === "Essentials") {
-      categoryBgColor = "#FFCDD2"; // Light red for Expense categories
-      categoryLightBgColor = "#FFEBEE"; // Very light red for subcategories
-    } else if (type === "Wants/Pleasure") {
-      categoryBgColor = "#FFE0B2"; // Light orange for Wants/Pleasure categories
-      categoryLightBgColor = "#FFF3E0"; // Very light orange for subcategories
-    } else if (type === "Extra") {
-      categoryBgColor = "#BBDEFB"; // Light blue for Extra categories
-      categoryLightBgColor = "#E3F2FD"; // Very light blue for subcategories
-    } else if (type === "Savings") {
-      categoryBgColor = "#BBDEFB"; // Light blue for Savings categories
-      categoryLightBgColor = "#E3F2FD"; // Very light blue for subcategories
-    } else {
-      categoryBgColor = "#F5F5F5"; // Light gray for other categories
-      categoryLightBgColor = "#FAFAFA"; // Very light gray for subcategories
-    }
-    
-    // Store all expense types in an array
-    const expenses = ["Essentials", "Wants/Pleasure", "Extra"];
-
+    // Add type header row
+    rowIndex = addTypeHeaderRow(overviewSheet, type, rowIndex);
     
     // Add rows for each category/subcategory in this type
-    groupedCombinations[type].forEach(combo => {
-      // Set values for Type, Category, Sub-Category
-      overviewSheet.getRange(rowIndex, 1).setValue(combo.type);
-      overviewSheet.getRange(rowIndex, 2).setValue(combo.category);
-      overviewSheet.getRange(rowIndex, 3).setValue(combo.subcategory);
-      
-      // Set Shared? column value (checkbox)
-      if (expenses.includes(combo.type)) {
-        // Only show checkbox for these types
-        overviewSheet.getRange(rowIndex, 4).insertCheckboxes();
-        // We'll leave it unchecked by default, but this could be enhanced to show actual shared status
-      }
-      
-      // Apply styling to the row - no background color for regular rows
-      if (combo.subcategory) {
-        // This is a subcategory row - no background, just indent
-        overviewSheet.getRange(rowIndex, 3).setIndent(5); // Indent subcategory for visual hierarchy
-      } else {
-        // This is a main category row - no background, just bold category name
-        overviewSheet.getRange(rowIndex, 2).setFontWeight("bold"); // Bold category name
-      }
-      
-      // Add formula for each month column (columns 5-16 for Jan-Dec, adjusted for Shared? column)
-      for (let monthCol = 5; monthCol <= 16; monthCol++) {
-        const monthDate = getMonthDateFromColIndex(monthCol - 1); // Adjust for Shared? column
-        const monthFormula = buildMonthlySumFormula(
-          combo.type, 
-          combo.category, 
-          combo.subcategory, 
-          monthDate, 
-          "Transactions", 
-          typeIndex + 1, 
-          categoryIndex + 1, 
-          subcategoryIndex + 1, 
-          dateIndex + 1, 
-          amountIndex + 1,
-          sharedIndex + 1
-        );
-        overviewSheet.getRange(rowIndex, monthCol).setFormula(monthFormula);
-        
-        // Apply conditional formatting for positive/negative values
-        if (combo.type === "Income") {
-          // Income should be displayed in green
-          overviewSheet.getRange(rowIndex, monthCol).setFontColor("#388E3C"); // Green for income
-        } else if (expenses.includes(combo.type)) {
-          // Expenses should be displayed in red
-          overviewSheet.getRange(rowIndex, monthCol).setFontColor("#D32F2F"); // Red for expenses
-        }
-      }
-      
-      // Add average formula in column 17 that properly accounts for empty months (adjusted for Shared? column)
-      overviewSheet.getRange(rowIndex, 17).setFormula(`=AVERAGE(E${rowIndex}:P${rowIndex})`);
-      
-      rowIndex++;
-    });
+    rowIndex = addCategoryRows(
+      overviewSheet, 
+      groupedCombinations[type], 
+      rowIndex, 
+      type, 
+      columnIndices, 
+      transactionData
+    );
     
     // Add subtotal for this type
-    overviewSheet.getRange(rowIndex, 1).setValue(`Total ${type}`);
-    overviewSheet.getRange(rowIndex, 1, 1, 17).setBackground(typeBgColor).setFontWeight("bold").setFontColor(typeFontColor);
-    
-    // Add subtotal formulas for each month column
-    for (let monthCol = 4; monthCol <= 16; monthCol++) {
-      const startRow = rowIndex - groupedCombinations[type].length;
-      const endRow = rowIndex - 1;
-      overviewSheet.getRange(rowIndex, monthCol).setFormula(`=SUM(${columnToLetter(monthCol)}${startRow}:${columnToLetter(monthCol)}${endRow})`);
-    }
+    rowIndex = addTypeSubtotalRow(overviewSheet, type, rowIndex, groupedCombinations[type].length);
     
     rowIndex += 2; // Add space between categories
   });
   
   // Add net calculations
-  addNetCalculations(overviewSheet, rowIndex);
+  rowIndex = addNetCalculations(overviewSheet, rowIndex);
   
   // Add key metrics section
-  addKeyMetricsSection(overviewSheet);
+  addKeyMetricsSection(overviewSheet, rowIndex);
   
-  // Format the overview sheet - with modified row coloring
+  // Format the overview sheet
   formatOverviewSheet(overviewSheet);
   
   // Dynamically show or hide sub-categories column based on user preference
@@ -205,78 +233,50 @@ function createFinancialOverview() {
   }
 }
 
+// ============================================================================
+// 3. DATA PROCESSING FUNCTIONS
+// ============================================================================
+
 /**
- * Sets up the header row in the overview sheet and adds the sub-category toggle checkbox
+ * Clears all content and formatting from a sheet
+ * @param {SpreadsheetApp.Sheet} sheet - The sheet to clear
  */
-function setupHeaderRow(sheet) {
-  // Define color constants for better consistency
-  const HEADER_BG_COLOR = "#C62828"; // Deep red for headers
-  const HEADER_TEXT_COLOR = "#FFFFFF"; // White text for better contrast on red
-  
-  // Updated headers array with Shared? column
-  const headers = ["Type", "Category", "Sub-Category", "Shared?", "Jan-24", "Feb-24", "Mar-24", "Apr-24", "May-24", "Jun-24", "Jul-24", "Aug-24", "Sep-24", "Oct-24", "Nov-24", "Dec-24", "Average"];
-  
-  // Set header values
-  for (let i = 0; i < headers.length; i++) {
-    sheet.getRange(1, i + 1).setValue(headers[i]);
-  }
-  
-  // Format header row with bold red background and white text
-  const headerRange = sheet.getRange(1, 1, 1, headers.length);
-  headerRange.setBackground(HEADER_BG_COLOR)
-             .setFontWeight("bold")
-             .setFontColor(HEADER_TEXT_COLOR)
-             .setHorizontalAlignment("center")
-             .setVerticalAlignment("middle");
-  
-  // Add the sub-category toggle checkbox in a more visible location
-  const showSubCategories = getUserPreference("ShowSubCategories", true);
-  
-  // Create a separate section for the checkbox
-  const label = sheet.getRange("S1"); // Moved one column to the right due to Shared? column
-  label.setValue("Show Sub-Categories");
-  label.setFontWeight("bold");
-  
-  // Add the checkbox in cell T1 (after the label)
-  const checkbox = sheet.getRange("T1"); // Moved one column to the right
-  checkbox.insertCheckboxes();
-  checkbox.setValue(showSubCategories);
-  
-  // Add a note to explain what the checkbox does
-  checkbox.setNote("Toggle to show or hide sub-categories in the overview sheet");
-  
-  // Freeze the header row so it remains visible when scrolling
-  sheet.setFrozenRows(1);
-  
-  // Set column width for the Shared? column
-  sheet.setColumnWidth(4, 80); // Shared? column
+function clearSheetContent(sheet) {
+  sheet.clear(); // Clear existing content
+  sheet.clearFormats(); // Clear existing formats
+  // Clear check boxes
+  sheet.getRange("A1:Z1000").setDataValidation(null);
 }
 
 /**
- * Handles edits to the overview sheet, specifically for the sub-category toggle checkbox
- * Must be triggered from the onEdit(e) function
+ * Gets transaction data and column indices from the transaction sheet
+ * @param {SpreadsheetApp.Sheet} transactionSheet - The transaction sheet
+ * @return {Object} Object containing transaction data and column indices
  */
-function handleOverviewSheetEdits(e) {
-  // Check if the edit was in the Overview sheet
-  if (e.range.getSheet().getName() !== "Overview") return;
+function getTransactionData(transactionSheet) {
+  // Get all transaction data
+  const transactionData = transactionSheet.getDataRange().getValues();
+  const headers = transactionData[0];
   
-  // Check if the edit was to the checkbox cell (S1)
-  if (e.range.getA1Notation() === "S1") {
-    const newValue = e.range.getValue();
-    
-    // Update the user preference
-    setUserPreference("ShowSubCategories", newValue);
-    
-    // Regenerate the overview with the new setting
-    SpreadsheetApp.getActiveSpreadsheet().toast("Updating overview...", "Please wait");
-    
-    // Use setTimeout to allow the toast to display before regenerating
-    // Note: In Google Apps Script, this is implemented differently
-    createFinancialOverview();
-    
-    const status = newValue ? "showing" : "hiding";
-    SpreadsheetApp.getActiveSpreadsheet().toast(`Overview updated, ${status} sub-categories`, "Complete");
+  // Find required column indices
+  const columnIndices = {
+    type: headers.indexOf("Type"),
+    category: headers.indexOf("Category"),
+    subcategory: headers.indexOf("Sub-Category"),
+    date: headers.indexOf("Date"),
+    amount: headers.indexOf("Amount"),
+    shared: headers.indexOf("Shared")
+  };
+  
+  // Validate required columns exist
+  if (columnIndices.type < 0 || columnIndices.category < 0 || 
+      columnIndices.subcategory < 0 || columnIndices.date < 0 || 
+      columnIndices.amount < 0) {
+    SpreadsheetApp.getUi().alert("Error: Could not find required columns in Transaction sheet");
+    return null;
   }
+  
+  return { transactionData, columnIndices };
 }
 
 /**
@@ -288,13 +288,9 @@ function handleOverviewSheetEdits(e) {
  * @param {Boolean} showSubCategories - Whether to show subcategories or aggregate by category
  * @return {Array} List of unique category combinations
  */
-function getUniqueCategoryCombinations(data, typeCol, categoryCol, subcategoryCol) {
+function getUniqueCategoryCombinations(data, typeCol, categoryCol, subcategoryCol, showSubCategories) {
   const combinations = [];
   const seen = new Set();
-  const showSubCategories = getUserPreference("ShowSubCategories", true);
-  
-  // For aggregating by category only (when not showing subcategories)
-  const categoryTotals = {};
   
   // Skip header row
   for (let i = 1; i < data.length; i++) {
@@ -321,9 +317,12 @@ function getUniqueCategoryCombinations(data, typeCol, categoryCol, subcategoryCo
 }
 
 /**
- * Groups category combinations by type
+ * Groups category combinations by type and sorts them appropriately
+ * @param {Array} combinations - Array of category combinations
+ * @return {Object} Grouped and sorted combinations
  */
 function groupCategoryCombinations(combinations) {
+  // Group by type
   const grouped = {};
   
   combinations.forEach(combo => {
@@ -333,60 +332,45 @@ function groupCategoryCombinations(combinations) {
     grouped[combo.type].push(combo);
   });
   
-  // Define the order for expense categories
-  const expenseCategoryOrder = ["Essentials", "Wants/Pleasure", "Extra"];
-  
-  // Sort each group by category
+  // Sort each group by category and subcategory
   Object.keys(grouped).forEach(type => {
-    if (type === "Expenses") {
-      // For Expenses, sort by the predefined order
-      grouped[type].sort((a, b) => {
-        // Get the index of each category in the order array
-        const indexA = expenseCategoryOrder.indexOf(a.category);
-        const indexB = expenseCategoryOrder.indexOf(b.category);
-        
-        // If both categories are in the order array, sort by their order
-        if (indexA >= 0 && indexB >= 0) {
-          return indexA - indexB;
-        }
-        
-        // If only one is in the order array, prioritize it
-        if (indexA >= 0) return -1;
-        if (indexB >= 0) return 1;
-        
-        // If neither is in the order array, sort alphabetically
-        const categoryCompare = a.category.localeCompare(b.category);
-        // Secondary sort by subcategory if categories are the same
-        return categoryCompare !== 0 ? categoryCompare : 
-               (a.subcategory || "").localeCompare(b.subcategory || "");
-      });
-    } else {
-      // For other types, sort alphabetically
-      grouped[type].sort((a, b) => {
-        // Primary sort by category
-        const categoryCompare = a.category.localeCompare(b.category);
-        // Secondary sort by subcategory if categories are the same
-        return categoryCompare !== 0 ? categoryCompare : 
-               (a.subcategory || "").localeCompare(b.subcategory || "");
-      });
-    }
+    grouped[type].sort((a, b) => {
+      // Primary sort by category
+      const categoryCompare = a.category.localeCompare(b.category);
+      // Secondary sort by subcategory if categories are the same
+      return categoryCompare !== 0 ? categoryCompare : 
+             (a.subcategory || "").localeCompare(b.subcategory || "");
+    });
   });
   
   return grouped;
 }
 
-
 /**
  * Gets a Date object for the month represented by a column index
+ * @param {Number} colIndex - The column index (1-based)
+ * @return {Date} Date object for the first day of the month
  */
 function getMonthDateFromColIndex(colIndex) {
-  // Column 4 = Jan 2024, 5 = Feb 2024, etc.
-  const monthOffset = colIndex - 4;
+  // Column 5 = Jan 2024, 6 = Feb 2024, etc. (adjusted for Shared? column)
+  const monthOffset = colIndex - 5;
   return new Date(2024, 0 + monthOffset, 1); // 0 = January (0-indexed)
 }
 
 /**
  * Builds a formula to sum transactions for a specific month
+ * @param {String} type - Transaction type
+ * @param {String} category - Transaction category
+ * @param {String} subcategory - Transaction subcategory
+ * @param {Date} monthDate - Date object for the month
+ * @param {String} sheetName - Name of the transaction sheet
+ * @param {Number} typeCol - Column index for type (1-based)
+ * @param {Number} categoryCol - Column index for category (1-based)
+ * @param {Number} subcategoryCol - Column index for subcategory (1-based)
+ * @param {Number} dateCol - Column index for date (1-based)
+ * @param {Number} amountCol - Column index for amount (1-based)
+ * @param {Number} sharedCol - Column index for shared flag (1-based)
+ * @return {String} SUMIFS formula for the specified criteria
  */
 function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetName, typeCol, categoryCol, subcategoryCol, dateCol, amountCol, sharedCol) {
   const month = monthDate.getMonth() + 1; // 1-indexed month
@@ -403,66 +387,212 @@ function buildMonthlySumFormula(type, category, subcategory, monthDate, sheetNam
   // Create the sum range
   const sumRange = `${sheetName}!${columnToLetter(amountCol)}:${columnToLetter(amountCol)}`;
   
-  // Create the criteria pairs for SUMIFS
-  let formula = `SUMIFS(${sumRange}`;
-  
-  // Add type criteria
-  formula += `, ${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}, "${type}"`;
-  
-  // Add category criteria
-  formula += `, ${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}, "${category}"`;
-  
-  // Add date range criteria (instead of separate month and year)
-  formula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, ">=${startDateFormatted}"`;
-  formula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, "<=${endDateFormatted}"`;
+  // Base criteria for all formulas
+  const baseCriteria = [
+    `${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}, "${type}"`,
+    `${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}, "${category}"`,
+    `${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, ">=${startDateFormatted}"`,
+    `${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, "<=${endDateFormatted}"`
+  ];
   
   // Add subcategory criteria if it exists
   if (subcategory) {
-    formula += `, ${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`;
+    baseCriteria.push(`${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`);
   }
   
-  formula += `)`;
-  
   // If this is a shared expense category, add logic to divide by 2 when shared column is TRUE
-  if (sharedCol > 0) {
+  if (CONFIG.EXPENSE_TYPES.includes(type) && sharedCol > 0) {
     // Non-shared expenses (Shared = "")
-    let nonSharedFormula = `SUMIFS(${sumRange}`;
-    nonSharedFormula += `, ${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}, "${type}"`;
-    nonSharedFormula += `, ${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}, "${category}"`;
-    nonSharedFormula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, ">=${startDateFormatted}"`;
-    nonSharedFormula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, "<=${endDateFormatted}"`;
-    if (subcategory) {
-      nonSharedFormula += `, ${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`;
-    }
-    nonSharedFormula += `, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, "")`;
+    const nonSharedCriteria = [...baseCriteria];
+    nonSharedCriteria.push(`${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, ""`);
+    const nonSharedFormula = `SUMIFS(${sumRange}, ${nonSharedCriteria.join(", ")})`;
     
     // Shared expenses (Shared = TRUE, divided by 2)
-    let sharedFormula = `SUMIFS(${sumRange}`;
-    sharedFormula += `, ${sheetName}!${columnToLetter(typeCol)}:${columnToLetter(typeCol)}, "${type}"`;
-    sharedFormula += `, ${sheetName}!${columnToLetter(categoryCol)}:${columnToLetter(categoryCol)}, "${category}"`;
-    sharedFormula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, ">=${startDateFormatted}"`;
-    sharedFormula += `, ${sheetName}!${columnToLetter(dateCol)}:${columnToLetter(dateCol)}, "<=${endDateFormatted}"`;
-    if (subcategory) {
-      sharedFormula += `, ${sheetName}!${columnToLetter(subcategoryCol)}:${columnToLetter(subcategoryCol)}, "${subcategory}"`;
-    }
-    sharedFormula += `, ${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, "true")/2`;
+    const sharedCriteria = [...baseCriteria];
+    sharedCriteria.push(`${sheetName}!${columnToLetter(sharedCol)}:${columnToLetter(sharedCol)}, "true"`);
+    const sharedFormula = `SUMIFS(${sumRange}, ${sharedCriteria.join(", ")})/2`;
     
     return `${nonSharedFormula} + (${sharedFormula})`;
   }
   
-  return formula;
+  // Standard formula for non-shared items
+  return `SUMIFS(${sumRange}, ${baseCriteria.join(", ")})`;
+}
+
+// ============================================================================
+// 4. UI GENERATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Sets up the header row in the overview sheet and adds the sub-category toggle checkbox
+ * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
+ * @param {Boolean} showSubCategories - Whether subcategories are currently shown
+ */
+function setupHeaderRow(sheet, showSubCategories) {
+  // Set header values
+  for (let i = 0; i < CONFIG.HEADERS.length; i++) {
+    sheet.getRange(1, i + 1).setValue(CONFIG.HEADERS[i]);
+  }
+  
+  // Format header row with bold red background and white text
+  const headerRange = sheet.getRange(1, 1, 1, CONFIG.HEADERS.length);
+  headerRange.setBackground(COLORS.UI.HEADER_BG)
+             .setFontWeight("bold")
+             .setFontColor(COLORS.UI.HEADER_FONT)
+             .setHorizontalAlignment("center")
+             .setVerticalAlignment("middle");
+  
+  // Add the sub-category toggle checkbox in a more visible location
+  const label = sheet.getRange("S1"); // Moved one column to the right due to Shared? column
+  label.setValue("Show Sub-Categories");
+  label.setFontWeight("bold");
+  
+  // Add the checkbox in cell T1 (after the label)
+  const checkbox = sheet.getRange("T1"); // Moved one column to the right
+  checkbox.insertCheckboxes();
+  checkbox.setValue(showSubCategories);
+  
+  // Add a note to explain what the checkbox does
+  checkbox.setNote("Toggle to show or hide sub-categories in the overview sheet");
+  
+  // Freeze the header row so it remains visible when scrolling
+  sheet.setFrozenRows(1);
+  
+  // Set column width for the Shared? column
+  sheet.setColumnWidth(4, 80); // Shared? column
+}
+
+/**
+ * Adds a type header row to the overview sheet
+ * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
+ * @param {String} type - The transaction type
+ * @param {Number} rowIndex - The current row index
+ * @return {Number} The next row index
+ */
+function addTypeHeaderRow(sheet, type, rowIndex) {
+  // Get colors for this type
+  const typeColors = getTypeColors(type);
+  
+  // Add Type header row with appropriate color
+  sheet.getRange(rowIndex, 1).setValue(type);
+  sheet.getRange(rowIndex, 1, 1, 17) // Adjusted for new column count
+    .setBackground(typeColors.bg)
+    .setFontWeight("bold")
+    .setFontColor(typeColors.font);
+  
+  return rowIndex + 1;
+}
+
+/**
+ * Adds category and subcategory rows to the overview sheet
+ * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
+ * @param {Array} combinations - Array of category combinations for this type
+ * @param {Number} rowIndex - The current row index
+ * @param {String} type - The transaction type
+ * @param {Object} columnIndices - Column indices for transaction data
+ * @param {Array} transactionData - Transaction data
+ * @return {Number} The next row index
+ */
+function addCategoryRows(sheet, combinations, rowIndex, type, columnIndices, transactionData) {
+  // Get category colors for this type
+  const categoryColors = getCategoryColors(type);
+  
+  // Add rows for each category/subcategory in this type
+  combinations.forEach(combo => {
+    // Set values for Type, Category, Sub-Category
+    sheet.getRange(rowIndex, 1).setValue(combo.type);
+    sheet.getRange(rowIndex, 2).setValue(combo.category);
+    sheet.getRange(rowIndex, 3).setValue(combo.subcategory);
+    
+    // Set Shared? column value (checkbox) for expense types
+    if (CONFIG.EXPENSE_TYPES.includes(combo.type)) {
+      // Only show checkbox for expense types
+      sheet.getRange(rowIndex, 4).insertCheckboxes();
+    }
+    
+    // Apply styling to the row
+    if (combo.subcategory) {
+      // This is a subcategory row - indent for visual hierarchy
+      sheet.getRange(rowIndex, 3).setIndent(5);
+    } else {
+      // This is a main category row - bold category name
+      sheet.getRange(rowIndex, 2).setFontWeight("bold");
+    }
+    
+    // Add formula for each month column (columns 5-16 for Jan-Dec, adjusted for Shared? column)
+    for (let monthCol = 5; monthCol <= 16; monthCol++) {
+      const monthDate = getMonthDateFromColIndex(monthCol);
+      const monthFormula = buildMonthlySumFormula(
+        combo.type, 
+        combo.category, 
+        combo.subcategory, 
+        monthDate, 
+        CONFIG.SHEETS.TRANSACTIONS, 
+        columnIndices.type + 1, 
+        columnIndices.category + 1, 
+        columnIndices.subcategory + 1, 
+        columnIndices.date + 1, 
+        columnIndices.amount + 1,
+        columnIndices.shared + 1
+      );
+      sheet.getRange(rowIndex, monthCol).setFormula(monthFormula);
+      
+      // Apply conditional formatting for positive/negative values
+      if (combo.type === "Income") {
+        // Income should be displayed in green
+        sheet.getRange(rowIndex, monthCol).setFontColor(COLORS.UI.INCOME_FONT);
+      } else if (CONFIG.EXPENSE_TYPES.includes(combo.type)) {
+        // Expenses should be displayed in red
+        sheet.getRange(rowIndex, monthCol).setFontColor(COLORS.UI.EXPENSE_FONT);
+      }
+    }
+    
+    // Add average formula in column 17 that properly accounts for empty months
+    sheet.getRange(rowIndex, 17).setFormula(`=AVERAGE(E${rowIndex}:P${rowIndex})`);
+    
+    rowIndex++;
+  });
+  
+  return rowIndex;
+}
+
+/**
+ * Adds a subtotal row for a transaction type
+ * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
+ * @param {String} type - The transaction type
+ * @param {Number} rowIndex - The current row index
+ * @param {Number} rowCount - The number of rows for this type
+ * @return {Number} The next row index
+ */
+function addTypeSubtotalRow(sheet, type, rowIndex, rowCount) {
+  // Get colors for this type
+  const typeColors = getTypeColors(type);
+  
+  // Add subtotal for this type
+  sheet.getRange(rowIndex, 1).setValue(`Total ${type}`);
+  sheet.getRange(rowIndex, 1, 1, 17)
+    .setBackground(typeColors.bg)
+    .setFontWeight("bold")
+    .setFontColor(typeColors.font);
+  
+  // Add subtotal formulas for each month column
+  for (let monthCol = 5; monthCol <= 17; monthCol++) {
+    const startRow = rowIndex - rowCount;
+    const endRow = rowIndex - 1;
+    sheet.getRange(rowIndex, monthCol).setFormula(`=SUM(${columnToLetter(monthCol)}${startRow}:${columnToLetter(monthCol)}${endRow})`);
+  }
+  
+  return rowIndex + 1;
 }
 
 /**
  * Adds net calculation rows to the overview sheet
+ * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
+ * @param {Number} startRow - The row to start adding net calculations
+ * @return {Number} The next row index
  */
 function addNetCalculations(sheet, startRow) {
-  // Define color constants for better consistency
-  const NET_BG_COLOR = "#424242"; // Dark gray for net calculations
-  const NET_TEXT_COLOR = "#FFFFFF"; // White text for better contrast
-  const BORDER_COLOR = "#FF8F00"; // Amber for borders
-  
-  // Find rows containing total Income and total Expenses
+  // Find rows containing total Income, Expenses, and Savings
   const data = sheet.getDataRange().getValues();
   let incomeRow = -1;
   let expensesRow = -1;
@@ -476,15 +606,15 @@ function addNetCalculations(sheet, startRow) {
   
   if (incomeRow < 0 || expensesRow < 0) {
     // Couldn't find required rows
-    return;
+    return startRow;
   }
   
   // Add a section header for Net Calculations
   sheet.getRange(startRow, 1).setValue("Net Calculations");
   sheet.getRange(startRow, 1, 1, 17)
-    .setBackground(NET_BG_COLOR)
+    .setBackground(COLORS.UI.NET_BG)
     .setFontWeight("bold")
-    .setFontColor(NET_TEXT_COLOR);
+    .setFontColor(COLORS.UI.NET_FONT);
   
   startRow++;
   
@@ -530,31 +660,25 @@ function addNetCalculations(sheet, startRow) {
     // Add a bottom border to the last net calculation row
     sheet.getRange(startRow, 1, 1, 17).setBorder(
       null, null, true, null, null, null, 
-      BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+      COLORS.UI.BORDER, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
     );
   } else {
     // If no savings row, add a bottom border to the Net (Income - Expenses) row
     sheet.getRange(startRow - 1, 1, 1, 17).setBorder(
       null, null, true, null, null, null, 
-      BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+      COLORS.UI.BORDER, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
     );
   }
+  
+  return startRow + 2; // Add space after net calculations
 }
 
 /**
  * Adds key metrics section to the overview sheet
+ * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
+ * @param {Number} startRow - The row to start adding key metrics
  */
-function addKeyMetricsSection(sheet) {
-  // Define color constants for better consistency
-  const HEADER_BG_COLOR = "#C62828"; // Deep red for headers
-  const HEADER_TEXT_COLOR = "#FFFFFF"; // White text for better contrast
-  const METRICS_BG_COLOR = "#FFEBEE"; // Very light red for metrics section
-  const BORDER_COLOR = "#FF8F00"; // Amber for borders
-  
-  // Find the last row with content
-  const lastRow = sheet.getLastRow();
-  const metricsStartRow = lastRow + 3;
-  
+function addKeyMetricsSection(sheet, startRow) {
   // Find rows containing total Income, Expenses, Savings
   const data = sheet.getDataRange().getValues();
   let incomeRow = -1;
@@ -568,22 +692,17 @@ function addKeyMetricsSection(sheet) {
   }
   
   // Add Key Metrics header
-  sheet.getRange(metricsStartRow, 10).setValue("Key Metrics");
-  sheet.getRange(metricsStartRow, 10, 1, 3)
-    .setBackground(HEADER_BG_COLOR)
+  sheet.getRange(startRow, 10).setValue("Key Metrics");
+  sheet.getRange(startRow, 10, 1, 3)
+    .setBackground(COLORS.UI.HEADER_BG)
     .setFontWeight("bold")
-    .setFontColor(HEADER_TEXT_COLOR)
+    .setFontColor(COLORS.UI.HEADER_FONT)
     .setHorizontalAlignment("center");
   
   // Add metrics rows
-  let currentRow = metricsStartRow + 1;
+  let currentRow = startRow + 1;
   
   // Create a metrics table with better formatting
-  const metricsTable = [
-    ["Metric", "Value", "Target"],
-  ];
-  
-  // Add table headers
   sheet.getRange(currentRow, 10, 1, 3)
     .setValues([["Metric", "Value", "Target"]])
     .setBackground("#F5F5F5")
@@ -597,7 +716,7 @@ function addKeyMetricsSection(sheet) {
     sheet.getRange(currentRow, 10).setValue("Savings Rate");
     sheet.getRange(currentRow, 11).setFormula(`=Q${savingsRow}/Q${incomeRow}`); // Using Average column (Q)
     sheet.getRange(currentRow, 12).setValue(0.2); // 20% target
-    sheet.getRange(currentRow, 10, 1, 3).setBackground(METRICS_BG_COLOR);
+    sheet.getRange(currentRow, 10, 1, 3).setBackground(COLORS.UI.METRICS_BG);
     
     // Format as percentage
     sheet.getRange(currentRow, 11, 1, 2).setNumberFormat("0.0%");
@@ -621,7 +740,7 @@ function addKeyMetricsSection(sheet) {
     sheet.getRange(currentRow, 10).setValue("Expenses/Income Ratio");
     sheet.getRange(currentRow, 11).setFormula(`=Q${expensesRow}/Q${incomeRow}`); // Using Average column (Q)
     sheet.getRange(currentRow, 12).setValue(0.8); // 80% target
-    sheet.getRange(currentRow, 10, 1, 3).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : METRICS_BG_COLOR);
+    sheet.getRange(currentRow, 10, 1, 3).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : COLORS.UI.METRICS_BG);
     
     // Format as percentage
     sheet.getRange(currentRow, 11, 1, 2).setNumberFormat("0.0%");
@@ -641,7 +760,7 @@ function addKeyMetricsSection(sheet) {
   }
   
   // Add a border below the metrics table
-  sheet.getRange(metricsStartRow + 1, 10, currentRow - metricsStartRow - 1, 3).setBorder(
+  sheet.getRange(startRow + 1, 10, currentRow - startRow - 1, 3).setBorder(
     true, true, true, true, true, true, 
     "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
   );
@@ -652,9 +771,9 @@ function addKeyMetricsSection(sheet) {
   // Add Expense Categories header
   sheet.getRange(expenseStartRow, 10).setValue("Expense Categories");
   sheet.getRange(expenseStartRow, 10, 1, 6)
-    .setBackground(HEADER_BG_COLOR)
+    .setBackground(COLORS.UI.HEADER_BG)
     .setFontWeight("bold")
-    .setFontColor(HEADER_TEXT_COLOR)
+    .setFontColor(COLORS.UI.HEADER_FONT)
     .setHorizontalAlignment("center");
   
   expenseStartRow++;
@@ -672,15 +791,13 @@ function addKeyMetricsSection(sheet) {
     .setFontWeight("bold")
     .setHorizontalAlignment("center");
   
-  // Find expense categories (these should be subcategories under "Expenses")
+  // Find expense categories (these should be subcategories under expense types)
   const expenseCategories = [];
   
   // Look for expense categories based on the user's specific expense types
-  const expenseTypes = ["Essentials", "Wants/Pleasure", "Extra"];
-  
   for (let i = 1; i < data.length; i++) {
     // Check if this row has a type that's considered an expense
-    if (expenseTypes.includes(data[i][0]) && data[i][1]) {
+    if (CONFIG.EXPENSE_TYPES.includes(data[i][0]) && data[i][1]) {
       expenseCategories.push({
         category: data[i][1],
         type: data[i][0],
@@ -699,13 +816,13 @@ function addKeyMetricsSection(sheet) {
     sheet.getRange(currentRow, 12).setFormula(`=IFERROR(K${currentRow}/Q${incomeRow}, 0)`);
     
     // Set target rate based on expense type
-    let targetRate = 0.2; // Default
+    let targetRate = CONFIG.TARGET_RATES.DEFAULT; // Default
     if (category.type === "Essentials") {
-      targetRate = 0.5; // 50% for essentials
+      targetRate = CONFIG.TARGET_RATES.ESSENTIALS;
     } else if (category.type === "Wants/Pleasure") {
-      targetRate = 0.3; // 30% for wants
+      targetRate = CONFIG.TARGET_RATES.WANTS_PLEASURE;
     } else if (category.type === "Extra") {
-      targetRate = 0.2; // 20% for extras
+      targetRate = CONFIG.TARGET_RATES.EXTRA;
     }
     
     sheet.getRange(currentRow, 13).setValue(targetRate);
@@ -713,7 +830,7 @@ function addKeyMetricsSection(sheet) {
     sheet.getRange(currentRow, 15).setFormula(`=IFERROR(K${currentRow}-(Q${incomeRow}*M${currentRow}), 0)`);
     
     // Apply alternating row colors
-    sheet.getRange(currentRow, 10, 1, 6).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : METRICS_BG_COLOR);
+    sheet.getRange(currentRow, 10, 1, 6).setBackground(currentRow % 2 === 0 ? "#F5F5F5" : COLORS.UI.METRICS_BG);
     
     // Format cells
     formatAsCurrency(sheet.getRange(currentRow, 11)); // Amount column as currency
@@ -746,9 +863,9 @@ function addKeyMetricsSection(sheet) {
   
   // Format the total row
   sheet.getRange(currentRow, 10, 1, 6)
-    .setBackground("#C62828")
+    .setBackground(COLORS.UI.HEADER_BG)
     .setFontWeight("bold")
-    .setFontColor("#FFFFFF");
+    .setFontColor(COLORS.UI.HEADER_FONT);
   
   // Format cells
   formatAsCurrency(sheet.getRange(currentRow, 11));
@@ -770,20 +887,12 @@ function addKeyMetricsSection(sheet) {
 
 /**
  * Creates an enhanced chart for expenditure breakdown
+ * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
+ * @param {Number} startRow - The start row for chart data
+ * @param {Number} endRow - The end row for chart data
+ * @param {Number} categoryCol - The column containing category names
  */
 function createExpenditureChart(sheet, startRow, endRow, categoryCol) {
-  // Define color constants for better consistency
-  const CHART_COLORS = [
-    "#C62828", // Red (for Essentials)
-    "#FF8F00", // Amber (for Wants/Pleasure)
-    "#1565C0", // Blue (for Extra)
-    "#2E7D32", // Green
-    "#6A1B9A", // Purple
-    "#E64A19", // Deep Orange
-    "#00695C", // Teal
-    "#5D4037"  // Brown
-  ];
-  
   // Define chart data range (category name and amount)
   const dataRange = sheet.getRange(startRow, categoryCol, endRow - startRow + 1, 2);
   
@@ -795,7 +904,7 @@ function createExpenditureChart(sheet, startRow, endRow, categoryCol) {
     .setPosition(startRow, categoryCol + 6, 0, 0)
     .setOption('title', 'Expenditure Breakdown')
     .setOption('titleTextStyle', {
-      color: '#424242',
+      color: COLORS.CHART.TITLE,
       fontSize: 16,
       bold: true
     })
@@ -804,11 +913,11 @@ function createExpenditureChart(sheet, startRow, endRow, categoryCol) {
     .setOption('legend', { 
       position: 'right',
       textStyle: {
-        color: '#424242',
+        color: COLORS.CHART.TEXT,
         fontSize: 12
       }
     })
-    .setOption('colors', CHART_COLORS)
+    .setOption('colors', COLORS.CHART.SERIES)
     .setOption('width', 450)
     .setOption('height', 300)
     .setOption('is3D', false)
@@ -841,29 +950,29 @@ function createExpenditureChart(sheet, startRow, endRow, categoryCol) {
     .setPosition(startRow + 15, categoryCol + 6, 0, 0)
     .setOption('title', 'Expense Rates vs Targets')
     .setOption('titleTextStyle', {
-      color: '#424242',
+      color: COLORS.CHART.TITLE,
       fontSize: 16,
       bold: true
     })
     .setOption('legend', { 
       position: 'top',
       textStyle: {
-        color: '#424242',
+        color: COLORS.CHART.TEXT,
         fontSize: 12
       }
     })
-    .setOption('colors', ['#C62828', '#2E7D32']) // Red for actual, green for target
+    .setOption('colors', [COLORS.UI.EXPENSE_FONT, COLORS.UI.INCOME_FONT]) // Red for actual, green for target
     .setOption('width', 450)
     .setOption('height', 300)
     .setOption('hAxis', {
       title: 'Category',
-      titleTextStyle: {color: '#424242'},
-      textStyle: {color: '#424242', fontSize: 10}
+      titleTextStyle: {color: COLORS.CHART.TEXT},
+      textStyle: {color: COLORS.CHART.TEXT, fontSize: 10}
     })
     .setOption('vAxis', {
       title: 'Rate (% of Income)',
-      titleTextStyle: {color: '#424242'},
-      textStyle: {color: '#424242'},
+      titleTextStyle: {color: COLORS.CHART.TEXT},
+      textStyle: {color: COLORS.CHART.TEXT},
       format: 'percent'
     })
     .setOption('bar', {groupWidth: '75%'})
@@ -875,24 +984,16 @@ function createExpenditureChart(sheet, startRow, endRow, categoryCol) {
 
 /**
  * Formats the overview sheet for better readability
+ * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
  */
 function formatOverviewSheet(sheet) {
-  // Define color constants for better consistency
-  const INCOME_COLOR = "#388E3C"; // Green for income values
-  const EXPENSE_COLOR = "#D32F2F"; // Red for expense values
-  const SAVINGS_COLOR = "#1565C0"; // Blue for savings values
-  const NEUTRAL_COLOR = "#424242"; // Dark gray for neutral values
-  const BORDER_COLOR = "#FF8F00"; // Amber for borders
-  
   // Format currency columns (adjusted for Shared? column)
   const lastRow = sheet.getLastRow();
-  const currencyColumns = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]; // All month columns and Average (E to R)
+  const currencyColumns = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]; // All month columns and Average (E to Q)
   
   currencyColumns.forEach(col => {
     formatAsCurrency(sheet.getRange(2, col, lastRow - 1, 1));
   });
-  
-  // We'll format percentage columns only in their specific sections, not globally
   
   // Adjust column widths for better readability
   sheet.setColumnWidth(1, 150); // Type
@@ -924,7 +1025,7 @@ function formatOverviewSheet(sheet) {
       // Add a bottom border to total rows
       sheet.getRange(i + 1, 1, 1, 17).setBorder(
         null, null, true, null, null, null, 
-        BORDER_COLOR, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+        COLORS.UI.BORDER, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
       );
     }
   }
@@ -934,23 +1035,12 @@ function formatOverviewSheet(sheet) {
     if (data[i][0] && data[i][0].startsWith("Total ")) {
       const row = i + 1;
       const totalType = data[i][0].replace("Total ", "");
-      let bgColor;
-      let fontColor = "#FFFFFF"; // White text for all total rows
-      
-      if (totalType === "Income") {
-        bgColor = "#2E7D32"; // Green for Income
-      } else if (totalType === "Expenses") {
-        bgColor = "#C62828"; // Red for Expenses
-      } else if (totalType === "Savings") {
-        bgColor = "#1565C0"; // Blue for Savings
-      } else {
-        bgColor = "#424242"; // Dark gray for other types
-      }
+      const typeColors = getTypeColors(totalType);
       
       sheet.getRange(row, 1, 1, 17)
-        .setBackground(bgColor)
+        .setBackground(typeColors.bg)
         .setFontWeight("bold")
-        .setFontColor(fontColor);
+        .setFontColor(typeColors.font);
     }
   }
   
@@ -959,9 +1049,9 @@ function formatOverviewSheet(sheet) {
     if (data[i][0] && data[i][0].startsWith("Net (")) {
       const row = i + 1;
       sheet.getRange(row, 1, 1, 17)
-        .setBackground("#424242")
+        .setBackground(COLORS.UI.NET_BG)
         .setFontWeight("bold")
-        .setFontColor("#FFFFFF");
+        .setFontColor(COLORS.UI.NET_FONT);
       
       // Format the values in the Net row
       for (let col = 5; col <= 17; col++) {
@@ -987,17 +1077,98 @@ function formatOverviewSheet(sheet) {
       const rowType = data[row - 1][0] || "";
       if (rowType === "Income") {
         formatAsCurrency(cell);
-        cell.setFontColor(INCOME_COLOR);
-      } else if (rowType === "Expenses") {
+        cell.setFontColor(COLORS.UI.INCOME_FONT);
+      } else if (CONFIG.EXPENSE_TYPES.includes(rowType)) {
         formatAsCurrency(cell);
-        cell.setFontColor(EXPENSE_COLOR);
+        cell.setFontColor(COLORS.UI.EXPENSE_FONT);
       } else if (rowType === "Savings") {
         formatAsCurrency(cell);
-        cell.setFontColor(SAVINGS_COLOR);
+        cell.setFontColor(COLORS.UI.SAVINGS_FONT);
       }
     }
   }
+}
+
+// ============================================================================
+// 5. CHART AND VISUALIZATION FUNCTIONS
+// ============================================================================
+
+// Chart functions are included in the UI generation section above
+
+// ============================================================================
+// 6. HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Gets the colors for a specific transaction type
+ * @param {String} type - The transaction type
+ * @return {Object} Object containing background and font colors
+ */
+function getTypeColors(type) {
+  let colors = COLORS.TYPE_HEADERS.DEFAULT;
   
-  // No alternating row colors as per new requirements
-  // We're keeping rows with no background color except for headers and totals
+  if (type === "Income") {
+    colors = COLORS.TYPE_HEADERS.INCOME;
+  } else if (type === "Essentials") {
+    colors = COLORS.TYPE_HEADERS.ESSENTIALS;
+  } else if (type === "Wants/Pleasure") {
+    colors = COLORS.TYPE_HEADERS.WANTS_PLEASURE;
+  } else if (type === "Extra") {
+    colors = COLORS.TYPE_HEADERS.EXTRA;
+  } else if (type === "Savings") {
+    colors = COLORS.TYPE_HEADERS.SAVINGS;
+  }
+  
+  return colors;
+}
+
+/**
+ * Gets the category colors for a specific transaction type
+ * @param {String} type - The transaction type
+ * @return {Object} Object containing main and sub-category colors
+ */
+function getCategoryColors(type) {
+  let colors = COLORS.CATEGORY_BG.DEFAULT;
+  
+  if (type === "Income") {
+    colors = COLORS.CATEGORY_BG.INCOME;
+  } else if (type === "Essentials") {
+    colors = COLORS.CATEGORY_BG.ESSENTIALS;
+  } else if (type === "Wants/Pleasure") {
+    colors = COLORS.CATEGORY_BG.WANTS_PLEASURE;
+  } else if (type === "Extra") {
+    colors = COLORS.CATEGORY_BG.EXTRA;
+  } else if (type === "Savings") {
+    colors = COLORS.CATEGORY_BG.SAVINGS;
+  }
+  
+  return colors;
+}
+
+/**
+ * Handles edits to the overview sheet, specifically for the sub-category toggle checkbox
+ * Must be triggered from the onEdit(e) function
+ * @param {Object} e - The edit event object
+ */
+function handleOverviewSheetEdits(e) {
+  // Check if the edit was in the Overview sheet
+  if (e.range.getSheet().getName() !== CONFIG.SHEETS.OVERVIEW) return;
+  
+  // Check if the edit was to the checkbox cell (T1)
+  if (e.range.getA1Notation() === "T1") {
+    const newValue = e.range.getValue();
+    
+    // Update the user preference
+    setUserPreference("ShowSubCategories", newValue);
+    
+    // Regenerate the overview with the new setting
+    SpreadsheetApp.getActiveSpreadsheet().toast("Updating overview...", "Please wait");
+    
+    // Use setTimeout to allow the toast to display before regenerating
+    // Note: In Google Apps Script, this is implemented differently
+    createFinancialOverview();
+    
+    const status = newValue ? "showing" : "hiding";
+    SpreadsheetApp.getActiveSpreadsheet().toast(`Overview updated, ${status} sub-categories`, "Complete");
+  }
 }
