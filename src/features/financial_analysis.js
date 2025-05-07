@@ -853,5 +853,89 @@ class FinancialAnalysisService {
   }
 }
 
+/**
+ * Shows the key metrics section in the Analysis sheet
+ * This function is called when the user clicks on the Key Metrics menu item
+ * @public
+ */
+function showKeyMetrics() {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const overviewSheet = spreadsheet.getSheetByName(FINANCE_OVERVIEW_CONFIG.SHEETS.OVERVIEW);
+    
+    if (!overviewSheet) {
+      SpreadsheetApp.getUi().alert(
+        "Error", 
+        "Overview sheet not found. Please generate the financial overview first.", 
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+    
+    // Create a combined config object for the FinancialAnalysisService
+    const analysisConfig = {
+      ...FINANCE_OVERVIEW_CONFIG,
+      // Add any additional config needed by FinancialAnalysisService
+      TARGET_RATES: {
+        ...FINANCE_OVERVIEW_CONFIG.TARGET_RATES,
+        WANTS_PLEASURE: FINANCE_OVERVIEW_CONFIG.TARGET_RATES.WANTS, // Map WANTS to WANTS_PLEASURE for compatibility
+        DEFAULT: 0.2
+      },
+      SHEETS: {
+        ...FINANCE_OVERVIEW_CONFIG.SHEETS
+      },
+      COLORS: {
+        ...FINANCE_OVERVIEW_CONFIG.COLORS
+      }
+    };
+    
+    // Create and use the FinancialAnalysisService
+    const analysisService = new FinancialAnalysisService(
+      spreadsheet, 
+      overviewSheet, 
+      analysisConfig
+    );
+    
+    // Initialize the service
+    analysisService.initialize();
+    
+    // Get the Analysis sheet
+    const analysisSheet = spreadsheet.getSheetByName(analysisConfig.SHEETS.ANALYSIS);
+    
+    // Clear existing content
+    analysisSheet.clear();
+    analysisSheet.clearFormats();
+    
+    // Set up header
+    analysisSheet.getRange("A1").setValue("Financial Analysis");
+    analysisSheet.getRange("A1:J1")
+      .setBackground(analysisConfig.COLORS.UI.HEADER_BG)
+      .setFontWeight("bold")
+      .setFontColor(analysisConfig.COLORS.UI.HEADER_FONT);
+    
+    // Add only the key metrics section
+    analysisService.addKeyMetricsSection(2);
+    
+    // Activate the Analysis sheet to show it to the user
+    analysisSheet.activate();
+    
+    // Show success message
+    SpreadsheetApp.getUi().alert(
+      "Success", 
+      "Key metrics have been generated in the Analysis sheet.", 
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    
+  } catch (error) {
+    // Show error message
+    SpreadsheetApp.getUi().alert(
+      "Error", 
+      "Failed to generate key metrics: " + error.message, 
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    console.error("Error in showKeyMetrics:", error);
+  }
+}
+
 // Export the class for use in other modules
 // Note: In Google Apps Script, functions are automatically global

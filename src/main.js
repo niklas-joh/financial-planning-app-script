@@ -33,6 +33,7 @@ function onOpen() {
       .addItem('🍩 Category Pie Chart (Coming Soon)', 'createCategoryPieChart'))
     .addSeparator()
     .addSubMenu(ui.createMenu('🧮 Financial Analysis')
+      .addItem('📊 Key Metrics', 'showKeyMetrics')
       .addItem('💡 Suggest Savings Opportunities (Coming Soon)', 'suggestSavingsOpportunities')
       .addItem('⚠️ Spending Anomaly Detection (Coming Soon)', 'detectSpendingAnomalies')
       .addItem('📌 Fixed vs Variable Expenses (Coming Soon)', 'analyzeFixedVsVariableExpenses')
