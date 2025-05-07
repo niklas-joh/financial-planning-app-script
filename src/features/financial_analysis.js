@@ -210,7 +210,7 @@ class FinancialAnalysisService {
   addKeyMetricsSection(startRow) {
     // Add Key Metrics header
     this.analysisSheet.getRange(startRow, 1).setValue("Key Metrics");
-    this.analysisSheet.getRange(startRow, 1, 1, 3)
+    this.analysisSheet.getRange(startRow, 1, 1, 4) // Expanded to include description column
       .setBackground(this.config.COLORS.UI.HEADER_BG)
       .setFontWeight("bold")
       .setFontColor(this.config.COLORS.UI.HEADER_FONT)
@@ -219,11 +219,14 @@ class FinancialAnalysisService {
     startRow++;
     
     // Create a metrics table
-    this.analysisSheet.getRange(startRow, 1, 1, 3)
-      .setValues([["Metric", "Value", "Target"]])
+    this.analysisSheet.getRange(startRow, 1, 1, 4) // Expanded to include description column
+      .setValues([["Metric", "Value", "Target", "Description"]])
       .setBackground("#F5F5F5")
       .setFontWeight("bold")
       .setHorizontalAlignment("center");
+    
+    // Set width for description column
+    this.analysisSheet.setColumnWidth(4, 300);
     
     startRow++;
     
@@ -232,10 +235,13 @@ class FinancialAnalysisService {
     if (this.totals.income.row > 0 && this.totals.savings.row > 0) {
       this.analysisSheet.getRange(startRow, 1).setValue("Savings Rate");
       this.analysisSheet.getRange(startRow, 2).setFormula(
-        `=${this.totals.savings.value}/${this.totals.income.value}`
+        `=-${this.totals.savings.value}/${this.totals.income.value}`
       );
-      this.analysisSheet.getRange(startRow, 3).setValue(0.2); // 20% target
-      this.analysisSheet.getRange(startRow, 1, 1, 3).setBackground(this.config.COLORS.UI.METRICS_BG);
+      this.analysisSheet.getRange(startRow, 3).setValue(this.config.TARGET_RATES.DEFAULT); // Use config target rate
+      this.analysisSheet.getRange(startRow, 4).setValue(
+        "Positive % indicates saving money, negative % indicates withdrawing from savings"
+      );
+      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(this.config.COLORS.UI.METRICS_BG);
       
       // Format as percentage
       formatAsPercentage(this.analysisSheet.getRange(startRow, 2, 1, 2));
@@ -258,18 +264,22 @@ class FinancialAnalysisService {
     if (this.totals.income.row > 0 && this.totals.expenses.row > 0) {
       this.analysisSheet.getRange(startRow, 1).setValue("Expenses/Income Ratio");
       this.analysisSheet.getRange(startRow, 2).setFormula(
-        `=${this.totals.expenses.value}/${this.totals.income.value}`
+        `=-${this.totals.expenses.value}/${this.totals.income.value}`
       );
-      this.analysisSheet.getRange(startRow, 3).setValue(0.8); // 80% target
-      this.analysisSheet.getRange(startRow, 1, 1, 3).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
+      this.analysisSheet.getRange(startRow, 3).setValue(this.config.TARGET_RATES.DEFAULT * -1); // Use config target rate with negative sign
+      this.analysisSheet.getRange(startRow, 4).setValue(
+        "Negative % indicates spending, lower absolute value is better"
+      );
+      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
       
       // Format as percentage
       formatAsPercentage(this.analysisSheet.getRange(startRow, 2, 1, 2));
       
       // Add conditional formatting (green if meeting target, red if not)
+      // Since we reversed the sign, we need to adjust the conditional formatting
       const rule = SpreadsheetApp.newConditionalFormatRule()
-        .whenNumberGreaterThan(this.analysisSheet.getRange(startRow, 3).getValue())
-        .setBackground("#FFCDD2") // Light red if above target
+        .whenNumberLessThan(this.analysisSheet.getRange(startRow, 3).getValue())
+        .setBackground("#FFCDD2") // Light red if below target (more negative)
         .setRanges([this.analysisSheet.getRange(startRow, 2)])
         .build();
       
@@ -287,7 +297,10 @@ class FinancialAnalysisService {
         `=${this.totals.income.value}-${this.totals.expenses.value}`
       );
       this.analysisSheet.getRange(startRow, 3).setValue(0); // Target is positive cash flow
-      this.analysisSheet.getRange(startRow, 1, 1, 3).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
+      this.analysisSheet.getRange(startRow, 4).setValue(
+        "Positive value means you're earning more than spending, negative means you're spending more than earning"
+      );
+      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
       
       // Format as currency
       formatAsCurrency(this.analysisSheet.getRange(startRow, 2, 1, 2));
@@ -307,7 +320,7 @@ class FinancialAnalysisService {
     }
     
     // Add a border around the metrics table
-    this.analysisSheet.getRange(startRow - 3, 1, 3, 3).setBorder(
+    this.analysisSheet.getRange(startRow - 3, 1, 3, 4).setBorder(
       true, true, true, true, true, true, 
       "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
     );

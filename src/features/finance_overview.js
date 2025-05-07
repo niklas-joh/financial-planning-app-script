@@ -48,7 +48,7 @@ const FINANCE_OVERVIEW_CONFIG = {
     "Type", "Category", "Sub-Category", "Shared?", 
     "Jan-24", "Feb-24", "Mar-24", "Apr-24", 
     "May-24", "Jun-24", "Jul-24", "Aug-24", 
-    "Sep-24", "Oct-24", "Nov-24", "Dec-24", "Average"
+    "Sep-24", "Oct-24", "Nov-24", "Dec-24", "Total", "Average"
   ],
   // UI element positions and names
   UI: {
@@ -956,8 +956,12 @@ function addCategoryRows(sheet, combinations, rowIndex, type, columnIndices) {
       }
     }
     
-    // Add average formula in column 17
+    // Add total formula in column 17
     sheet.getRange(currentRow, 17)
+      .setFormula(`=SUM(E${currentRow}:P${currentRow})`);
+    
+    // Add average formula in column 18
+    sheet.getRange(currentRow, 18)
       .setFormula(`=AVERAGE(E${currentRow}:P${currentRow})`);
     
     // Add styling for subcategories and main categories
@@ -1173,7 +1177,7 @@ function addKeyMetricsSection(sheet, startRow) {
   if (savingsRow) {
     metricsData.push({
       name: "Savings Rate",
-      valueFormula: `=Q${savingsRow}/Q${incomeRow}`,
+      valueFormula: `=Q${savingsRow}/Q${incomeRow}`, // Use Total column (Q)
       target: 0.2,
       compareFunction: (value, target) => value < target,
       severity: "medium"
@@ -1184,7 +1188,7 @@ function addKeyMetricsSection(sheet, startRow) {
   if (expensesRow) {
     metricsData.push({
       name: "Expenses/Income Ratio",
-      valueFormula: `=Q${expensesRow}/Q${incomeRow}`,
+      valueFormula: `=Q${expensesRow}/Q${incomeRow}`, // Use Total column (Q)
       target: 0.8,
       compareFunction: (value, target) => value > target,
       severity: "medium"
@@ -1305,7 +1309,7 @@ function addExpenseCategoriesSection(sheet, startRow, data, incomeRow, expensesR
       categoryNames.push([category.category]);
       
       // Set formulas
-      amountFormulas.push([`=Q${category.row}`]); // Amount (using avg column)
+      amountFormulas.push([`=Q${category.row}`]); // Amount (using Total column)
       rateFormulas.push([`=IFERROR(K${currentRow}/Q${incomeRow}, 0)`]); // Rate
       
       // Set target rate based on expense type
@@ -1352,7 +1356,7 @@ function addExpenseCategoriesSection(sheet, startRow, data, incomeRow, expensesR
   // Add Total Expenses row with distinct formatting
   const totalRow = startRow + expenseCategories.length;
   sheet.getRange(totalRow, 10).setValue("Total Expenses");
-  sheet.getRange(totalRow, 11).setFormula(`=Q${expensesRow}`);
+  sheet.getRange(totalRow, 11).setFormula(`=Q${expensesRow}`); // Use Total column (Q)
   sheet.getRange(totalRow, 12).setFormula(`=IFERROR(K${totalRow}/Q${incomeRow}, 0)`);
   sheet.getRange(totalRow, 13).setValue(1); // Target 100%
   sheet.getRange(totalRow, 14).setFormula(`=IFERROR((L${totalRow}-M${totalRow})/M${totalRow}, 0)`);
@@ -1503,7 +1507,9 @@ function formatOverviewSheet(sheet) {
     sheet.setColumnWidth(i, FINANCE_OVERVIEW_CONFIG.UI.COLUMN_WIDTHS.MONTH);
   }
   
-  sheet.setColumnWidth(17, FINANCE_OVERVIEW_CONFIG.UI.COLUMN_WIDTHS.AVERAGE);
+  // Set Total and Average column widths
+  sheet.setColumnWidth(17, FINANCE_OVERVIEW_CONFIG.UI.COLUMN_WIDTHS.AVERAGE); // Total column
+  sheet.setColumnWidth(18, FINANCE_OVERVIEW_CONFIG.UI.COLUMN_WIDTHS.AVERAGE); // Average column
   
   // Set metrics section column widths
   sheet.setColumnWidth(10, FINANCE_OVERVIEW_CONFIG.UI.COLUMN_WIDTHS.EXPENSE_CATEGORY);
