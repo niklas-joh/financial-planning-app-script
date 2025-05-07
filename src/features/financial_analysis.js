@@ -118,7 +118,11 @@ class FinancialAnalysisService {
     this.totals = {
       income: { row: -1, value: 0 },
       expenses: { row: -1, value: 0 },
-      savings: { row: -1, value: 0 }
+      savings: { row: -1, value: 0 },
+      // Add expense type totals
+      essentials: { row: -1, value: 0 },
+      wantsPleasure: { row: -1, value: 0 },
+      extra: { row: -1, value: 0 }
     };
     
     // Extract month names from headers (columns 5-16 in overview sheet)
@@ -134,13 +138,39 @@ class FinancialAnalysisService {
       if (rowData[0] === "Total Income") {
         this.totals.income.row = i + 1;
         this.totals.income.value = rowData[16]; // Average column
-      } else if (rowData[0] === "Total Essentials" || rowData[0] === "Total Wants/Pleasure" || rowData[0] === "Total Extra") {
-        // Accumulate all expense types
+      } else if (rowData[0] === "Total Essentials") {
+        // Track Essentials separately
+        this.totals.essentials.row = i + 1;
+        this.totals.essentials.value = rowData[16]; // Average column
+        
+        // Also add to total expenses
         if (this.totals.expenses.row === -1) {
           this.totals.expenses.row = i + 1;
           this.totals.expenses.value = 0;
         }
-        this.totals.expenses.value += rowData[16]; // Average column
+        this.totals.expenses.value += rowData[16];
+      } else if (rowData[0] === "Total Wants/Pleasure") {
+        // Track Wants/Pleasure separately
+        this.totals.wantsPleasure.row = i + 1;
+        this.totals.wantsPleasure.value = rowData[16]; // Average column
+        
+        // Also add to total expenses
+        if (this.totals.expenses.row === -1) {
+          this.totals.expenses.row = i + 1;
+          this.totals.expenses.value = 0;
+        }
+        this.totals.expenses.value += rowData[16];
+      } else if (rowData[0] === "Total Extra") {
+        // Track Extra separately
+        this.totals.extra.row = i + 1;
+        this.totals.extra.value = rowData[16]; // Average column
+        
+        // Also add to total expenses
+        if (this.totals.expenses.row === -1) {
+          this.totals.expenses.row = i + 1;
+          this.totals.expenses.value = 0;
+        }
+        this.totals.expenses.value += rowData[16];
       } else if (rowData[0] === "Total Savings") {
         this.totals.savings.row = i + 1;
         this.totals.savings.value = rowData[16]; // Average column
@@ -230,102 +260,271 @@ class FinancialAnalysisService {
     
     startRow++;
     
-    // Add metrics rows
-    // 1. Savings Rate
+    // Initialize arrays for batch processing
+    const metricsStartRow = startRow;
+    let currentMetricRow = 0;
+    
+    // Arrays for batch processing
+    const metricValues = [];
+    const metricFormulas = [];
+    const metricTargets = [];
+    const metricDescriptions = [];
+    const metricBackgrounds = [];
+    const conditionalFormatRules = [];
+    
+    // Consistent background color for all metrics
+    const metricBgColor = this.config.COLORS.UI.METRICS_BG;
+    
+    // 1. Expenses/Income Ratio
+    if (this.totals.income.row > 0 && this.totals.expenses.row > 0) {
+      metricValues.push(["Expenses/Income Ratio"]);
+      metricFormulas.push([`=-${this.totals.expenses.value}/${this.totals.income.value}`]);
+      metricTargets.push([this.config.TARGET_RATES.DEFAULT * -1]); // Use config target rate with negative sign
+      metricDescriptions.push(["Negative % indicates spending, lower absolute value is better"]);
+      metricBackgrounds.push([metricBgColor]);
+      
+      // Add conditional formatting (green if meeting target, red if not)
+      // Use direct cell reference instead of string formula
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
+      conditionalFormatRules.push({
+        row: startRow + currentMetricRow,
+        rule: SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
+          .setBackground("#FFCDD2") // Light red if below target (more negative)
+          .setRanges([valueCell])
+      });
+      
+      currentMetricRow++;
+    }
+    
+    // 2. Essentials Rate
+    if (this.totals.income.row > 0 && this.totals.essentials.row > 0) {
+      metricValues.push(["Essentials Rate"]);
+      metricFormulas.push([`=${this.totals.essentials.value}/${this.totals.income.value}`]);
+      metricTargets.push([this.config.TARGET_RATES.ESSENTIALS]);
+      metricDescriptions.push(["Percentage of income spent on essential expenses (lower is better)"]);
+      metricBackgrounds.push([metricBgColor]);
+      
+      // Add conditional formatting (red if exceeding target)
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
+      conditionalFormatRules.push({
+        row: startRow + currentMetricRow,
+        rule: SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
+          .setBackground("#FFCDD2") // Light red if above target
+          .setRanges([valueCell])
+      });
+      
+      currentMetricRow++;
+    }
+    
+    // 3. Wants/Pleasure Rate
+    if (this.totals.income.row > 0 && this.totals.wantsPleasure.row > 0) {
+      metricValues.push(["Wants/Pleasure Rate"]);
+      metricFormulas.push([`=${this.totals.wantsPleasure.value}/${this.totals.income.value}`]);
+      metricTargets.push([this.config.TARGET_RATES.WANTS_PLEASURE]);
+      metricDescriptions.push(["Percentage of income spent on wants and pleasure (discretionary spending)"]);
+      metricBackgrounds.push([metricBgColor]);
+      
+      // Add conditional formatting (red if exceeding target)
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
+      conditionalFormatRules.push({
+        row: startRow + currentMetricRow,
+        rule: SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
+          .setBackground("#FFCDD2") // Light red if above target
+          .setRanges([valueCell])
+      });
+      
+      currentMetricRow++;
+    }
+    
+    // 4. Extra Expenses Rate
+    if (this.totals.income.row > 0 && this.totals.extra.row > 0) {
+      metricValues.push(["Extra Expenses Rate"]);
+      metricFormulas.push([`=${this.totals.extra.value}/${this.totals.income.value}`]);
+      metricTargets.push([this.config.TARGET_RATES.EXTRA]);
+      metricDescriptions.push(["Percentage of income spent on extra/miscellaneous expenses"]);
+      metricBackgrounds.push([metricBgColor]);
+      
+      // Add conditional formatting (red if exceeding target)
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
+      conditionalFormatRules.push({
+        row: startRow + currentMetricRow,
+        rule: SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
+          .setBackground("#FFCDD2") // Light red if above target
+          .setRanges([valueCell])
+      });
+      
+      currentMetricRow++;
+    }
+    
+    // Add separator (empty row with light gray background)
+    if (currentMetricRow > 0) {
+      metricValues.push([""]);
+      metricFormulas.push([""]);
+      metricTargets.push([""]);
+      metricDescriptions.push([""]);
+      metricBackgrounds.push(["#E0E0E0"]); // Light gray separator
+      
+      // Add a horizontal line for visual separation
+      this.analysisSheet.getRange(startRow + currentMetricRow, 1, 1, 4)
+        .setBorder(false, false, true, false, false, false, "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID);
+      
+      currentMetricRow++;
+    }
+    
+    // 5. Savings Rate
     if (this.totals.income.row > 0 && this.totals.savings.row > 0) {
-      this.analysisSheet.getRange(startRow, 1).setValue("Savings Rate");
-      this.analysisSheet.getRange(startRow, 2).setFormula(
-        `=-${this.totals.savings.value}/${this.totals.income.value}`
-      );
-      this.analysisSheet.getRange(startRow, 3).setValue(this.config.TARGET_RATES.DEFAULT); // Use config target rate
-      this.analysisSheet.getRange(startRow, 4).setValue(
-        "Positive % indicates saving money, negative % indicates withdrawing from savings"
-      );
-      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(this.config.COLORS.UI.METRICS_BG);
-      
-      // Format as percentage
-      formatAsPercentage(this.analysisSheet.getRange(startRow, 2, 1, 2));
+      metricValues.push(["Savings Rate"]);
+      metricFormulas.push([`=-${this.totals.savings.value}/${this.totals.income.value}`]);
+      metricTargets.push([this.config.TARGET_RATES.DEFAULT]); // Use config target rate
+      metricDescriptions.push(["Positive % indicates saving money, negative % indicates withdrawing from savings"]);
+      metricBackgrounds.push([metricBgColor]);
       
       // Add conditional formatting (green if meeting target, red if not)
-      const rule = SpreadsheetApp.newConditionalFormatRule()
-        .whenNumberLessThan(this.analysisSheet.getRange(startRow, 3).getValue())
-        .setBackground("#FFCDD2") // Light red if below target
-        .setRanges([this.analysisSheet.getRange(startRow, 2)])
-        .build();
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
       
-      const rules = this.analysisSheet.getConditionalFormatRules();
-      rules.push(rule);
-      this.analysisSheet.setConditionalFormatRules(rules);
+      conditionalFormatRules.push({
+        row: startRow + currentMetricRow,
+        rule: SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
+          .setBackground("#FFCDD2") // Light red if below target
+          .setRanges([valueCell])
+      });
       
-      startRow++;
+      currentMetricRow++;
     }
     
-    // 2. Expenses/Income Ratio
-    if (this.totals.income.row > 0 && this.totals.expenses.row > 0) {
-      this.analysisSheet.getRange(startRow, 1).setValue("Expenses/Income Ratio");
-      this.analysisSheet.getRange(startRow, 2).setFormula(
-        `=-${this.totals.expenses.value}/${this.totals.income.value}`
-      );
-      this.analysisSheet.getRange(startRow, 3).setValue(this.config.TARGET_RATES.DEFAULT * -1); // Use config target rate with negative sign
-      this.analysisSheet.getRange(startRow, 4).setValue(
-        "Negative % indicates spending, lower absolute value is better"
-      );
-      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
+    // Add another separator
+    if (currentMetricRow > 0) {
+      metricValues.push([""]);
+      metricFormulas.push([""]);
+      metricTargets.push([""]);
+      metricDescriptions.push([""]);
+      metricBackgrounds.push(["#E0E0E0"]); // Light gray separator
       
-      // Format as percentage
-      formatAsPercentage(this.analysisSheet.getRange(startRow, 2, 1, 2));
+      // Add a horizontal line for visual separation
+      this.analysisSheet.getRange(startRow + currentMetricRow, 1, 1, 4)
+        .setBorder(false, false, true, false, false, false, "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID);
       
-      // Add conditional formatting (green if meeting target, red if not)
-      // Since we reversed the sign, we need to adjust the conditional formatting
-      const rule = SpreadsheetApp.newConditionalFormatRule()
-        .whenNumberLessThan(this.analysisSheet.getRange(startRow, 3).getValue())
-        .setBackground("#FFCDD2") // Light red if below target (more negative)
-        .setRanges([this.analysisSheet.getRange(startRow, 2)])
-        .build();
-      
-      const rules = this.analysisSheet.getConditionalFormatRules();
-      rules.push(rule);
-      this.analysisSheet.setConditionalFormatRules(rules);
-      
-      startRow++;
+      currentMetricRow++;
     }
     
-    // 3. Monthly Net Cash Flow
+    // 6. Monthly Net Cash Flow
     if (this.totals.income.row > 0 && this.totals.expenses.row > 0) {
-      this.analysisSheet.getRange(startRow, 1).setValue("Monthly Net Cash Flow");
-      this.analysisSheet.getRange(startRow, 2).setFormula(
-        `=${this.totals.income.value}-${this.totals.expenses.value}`
-      );
-      this.analysisSheet.getRange(startRow, 3).setValue(0); // Target is positive cash flow
-      this.analysisSheet.getRange(startRow, 4).setValue(
-        "Positive value means you're earning more than spending, negative means you're spending more than earning"
-      );
-      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
-      
-      // Format as currency
-      formatAsCurrency(this.analysisSheet.getRange(startRow, 2, 1, 2));
+      metricValues.push(["Monthly Net Cash Flow"]);
+      metricFormulas.push([`=${this.totals.income.value}-${this.totals.expenses.value}`]);
+      metricTargets.push([0]); // Target is positive cash flow
+      metricDescriptions.push(["Positive value means you're earning more than spending, negative means you're spending more than earning"]);
+      metricBackgrounds.push([metricBgColor]);
       
       // Add conditional formatting (green if positive, red if negative)
-      const rule = SpreadsheetApp.newConditionalFormatRule()
-        .whenNumberLessThan(0)
-        .setBackground("#FFCDD2") // Light red if negative
-        .setRanges([this.analysisSheet.getRange(startRow, 2)])
-        .build();
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
       
-      const rules = this.analysisSheet.getConditionalFormatRules();
-      rules.push(rule);
-      this.analysisSheet.setConditionalFormatRules(rules);
+      conditionalFormatRules.push({
+        row: startRow + currentMetricRow,
+        rule: SpreadsheetApp.newConditionalFormatRule()
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}<0`)
+          .setBackground("#FFCDD2") // Light red if negative
+          .setRanges([valueCell])
+      });
       
-      startRow++;
+      currentMetricRow++;
     }
     
-    // Add a border around the metrics table
-    this.analysisSheet.getRange(startRow - 3, 1, 3, 4).setBorder(
-      true, true, true, true, true, true, 
-      "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
-    );
+    // Write all data to the sheet in batches if we have metrics
+    if (currentMetricRow > 0) {
+      // Set metric names
+      if (metricValues.length > 0) {
+        this.analysisSheet.getRange(startRow, 1, metricValues.length, 1).setValues(metricValues);
+      }
+      
+      // Set formulas
+      if (metricFormulas.length > 0) {
+        this.analysisSheet.getRange(startRow, 2, metricFormulas.length, 1).setFormulas(metricFormulas);
+      }
+      
+      // Set targets
+      if (metricTargets.length > 0) {
+        this.analysisSheet.getRange(startRow, 3, metricTargets.length, 1).setValues(metricTargets);
+      }
+      
+      // Set descriptions
+      if (metricDescriptions.length > 0) {
+        this.analysisSheet.getRange(startRow, 4, metricDescriptions.length, 1).setValues(metricDescriptions);
+      }
+      
+      // Set backgrounds
+      if (metricBackgrounds.length > 0) {
+        this.analysisSheet.getRange(startRow, 1, metricBackgrounds.length, 4).setBackgrounds(
+          metricBackgrounds.map(bg => [bg[0], bg[0], bg[0], bg[0]])
+        );
+      }
+      
+      // Format percentage cells
+      const percentageRows = metricValues.map((_, i) => startRow + i).filter(row => 
+        this.analysisSheet.getRange(row, 1).getValue() !== "Monthly Net Cash Flow" && 
+        this.analysisSheet.getRange(row, 1).getValue() !== ""
+      );
+      
+      if (percentageRows.length > 0) {
+        percentageRows.forEach(row => {
+          formatAsPercentage(this.analysisSheet.getRange(row, 2, 1, 2));
+        });
+      }
+      
+      // Format currency cells
+      const currencyRows = metricValues.map((_, i) => startRow + i).filter(row => 
+        this.analysisSheet.getRange(row, 1).getValue() === "Monthly Net Cash Flow"
+      );
+      
+      if (currencyRows.length > 0) {
+        currencyRows.forEach(row => {
+          formatAsCurrency(this.analysisSheet.getRange(row, 2, 1, 2));
+        });
+      }
+      
+      // Apply conditional formatting rules
+      if (conditionalFormatRules.length > 0) {
+        const rules = this.analysisSheet.getConditionalFormatRules();
+        conditionalFormatRules.forEach(item => {
+          rules.push(item.rule);
+        });
+        this.analysisSheet.setConditionalFormatRules(rules);
+      }
+      
+      // Add a border around the metrics table
+      this.analysisSheet.getRange(metricsStartRow, 1, currentMetricRow, 4).setBorder(
+        true, true, true, true, true, true, 
+        "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
+      );
+      
+      // Add subtle shading to every other non-separator row for better readability
+      const nonSeparatorRows = metricValues.map((val, i) => ({
+        row: startRow + i,
+        isEmpty: val[0] === ""
+      })).filter(item => !item.isEmpty);
+      
+      nonSeparatorRows.forEach((item, index) => {
+        if (index % 2 === 1) {
+          this.analysisSheet.getRange(item.row, 1, 1, 4)
+            .setBackground("#F8F8F8"); // Very light gray for alternate rows
+        }
+      });
+    }
     
-    return startRow;
+    return startRow + currentMetricRow;
   }
 
   /**
@@ -346,39 +545,49 @@ class FinancialAnalysisService {
     startRow++;
     
     // Add headers
-    this.analysisSheet.getRange(startRow, 1).setValue("Category");
-    this.analysisSheet.getRange(startRow, 2).setValue("Type");
-    this.analysisSheet.getRange(startRow, 3).setValue("Amount");
-    this.analysisSheet.getRange(startRow, 4).setValue("% of Income");
-    this.analysisSheet.getRange(startRow, 5).setValue("Target %");
-    this.analysisSheet.getRange(startRow, 6).setValue("Variance");
-    
     this.analysisSheet.getRange(startRow, 1, 1, 6)
+      .setValues([["Category", "Type", "Amount", "% of Income", "Target %", "Variance"]])
       .setBackground("#F5F5F5")
       .setFontWeight("bold")
       .setHorizontalAlignment("center");
     
     startRow++;
     
+    // Initialize arrays for batch processing
+    const categoryStartRow = startRow;
+    let currentCategoryRow = 0;
+    
+    // Arrays for batch processing
+    const categoryValues = [];
+    const typeValues = [];
+    const amountValues = [];
+    const percentFormulas = [];
+    const targetValues = [];
+    const varianceFormulas = [];
+    const backgroundColors = [];
+    const conditionalFormatRules = [];
+    
+    // Consistent background color
+    const categoryBgColor = this.config.COLORS.UI.METRICS_BG;
+    
     // Add rows for each expense category
     if (this.data.expenseCategories.length > 0) {
       // Sort categories by amount (descending)
-      const sortedCategories = [...this.data.expenseCategories].sort((a, b) => b.amount - a.amount);
+      const sortedCategories = [...this.data.expenseCategories]
+        .filter(category => !category.subcategory) // Skip subcategories
+        .sort((a, b) => b.amount - a.amount);
       
-      // Add a row for each category
-      sortedCategories.forEach((category, index) => {
-        // Skip subcategories for simplicity
-        if (category.subcategory) return;
-        
-        this.analysisSheet.getRange(startRow, 1).setValue(category.category);
-        this.analysisSheet.getRange(startRow, 2).setValue(category.type);
-        this.analysisSheet.getRange(startRow, 3).setValue(category.amount);
+      // Prepare data for batch processing
+      sortedCategories.forEach((category) => {
+        categoryValues.push([category.category]);
+        typeValues.push([category.type]);
+        amountValues.push([category.amount]);
         
         // Calculate percentage of income
         if (this.totals.income.value > 0) {
-          this.analysisSheet.getRange(startRow, 4).setFormula(`=C${startRow}/${this.totals.income.value}`);
+          percentFormulas.push([`=C${startRow + currentCategoryRow}/${this.totals.income.value}`]);
         } else {
-          this.analysisSheet.getRange(startRow, 4).setValue(0);
+          percentFormulas.push([0]);
         }
         
         // Set target rate based on expense type
@@ -391,68 +600,127 @@ class FinancialAnalysisService {
           targetRate = this.config.TARGET_RATES.EXTRA;
         }
         
-        this.analysisSheet.getRange(startRow, 5).setValue(targetRate);
+        targetValues.push([targetRate]);
         
         // Calculate variance (actual % - target %)
-        this.analysisSheet.getRange(startRow, 6).setFormula(`=D${startRow}-E${startRow}`);
+        varianceFormulas.push([`=D${startRow + currentCategoryRow}-E${startRow + currentCategoryRow}`]);
         
-        // Apply alternating row colors
-        this.analysisSheet.getRange(startRow, 1, 1, 6).setBackground(index % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
-        
-        // Format cells
-        formatAsCurrency(this.analysisSheet.getRange(startRow, 3)); // Amount column as currency
-        formatAsPercentage(this.analysisSheet.getRange(startRow, 4, 1, 3)); // Percentage columns
+        // Set background color
+        backgroundColors.push([categoryBgColor, categoryBgColor, categoryBgColor, categoryBgColor, categoryBgColor, categoryBgColor]);
         
         // Add conditional formatting for the variance column
-        const rule = SpreadsheetApp.newConditionalFormatRule()
-          .whenNumberGreaterThan(0)
-          .setBackground("#FFCDD2") // Light red if over budget
-          .setRanges([this.analysisSheet.getRange(startRow, 6)])
-          .build();
+        conditionalFormatRules.push({
+          row: startRow + currentCategoryRow,
+          rule: SpreadsheetApp.newConditionalFormatRule()
+            .whenFormulaSatisfied(`F${startRow + currentCategoryRow}>0`)
+            .setBackground("#FFCDD2") // Light red if over budget
+            .setRanges([this.analysisSheet.getRange(startRow + currentCategoryRow, 6)])
+        });
         
-        const rules = this.analysisSheet.getConditionalFormatRules();
-        rules.push(rule);
-        this.analysisSheet.setConditionalFormatRules(rules);
-        
-        startRow++;
+        currentCategoryRow++;
       });
       
-      // Add Total Expenses row with distinct formatting
-      this.analysisSheet.getRange(startRow, 1).setValue("Total Expenses");
-      this.analysisSheet.getRange(startRow, 2).setValue("All");
-      this.analysisSheet.getRange(startRow, 3).setValue(this.totals.expenses.value);
+      // Add Total Expenses row
+      categoryValues.push(["Total Expenses"]);
+      typeValues.push(["All"]);
+      amountValues.push([this.totals.expenses.value]);
       
-      // Calculate percentage of income
+      // Calculate percentage of income for total
       if (this.totals.income.value > 0) {
-        this.analysisSheet.getRange(startRow, 4).setFormula(`=C${startRow}/${this.totals.income.value}`);
+        percentFormulas.push([`=C${startRow + currentCategoryRow}/${this.totals.income.value}`]);
       } else {
-        this.analysisSheet.getRange(startRow, 4).setValue(0);
+        percentFormulas.push([0]);
       }
       
-      this.analysisSheet.getRange(startRow, 5).setValue(0.8); // Target 80%
-      this.analysisSheet.getRange(startRow, 6).setFormula(`=D${startRow}-E${startRow}`);
+      targetValues.push([0.8]); // Target 80%
+      varianceFormulas.push([`=D${startRow + currentCategoryRow}-E${startRow + currentCategoryRow}`]);
       
-      // Format the total row
-      this.analysisSheet.getRange(startRow, 1, 1, 6)
-        .setBackground(this.config.COLORS.UI.HEADER_BG)
-        .setFontWeight("bold")
-        .setFontColor(this.config.COLORS.UI.HEADER_FONT);
+      // Set total row background
+      backgroundColors.push([
+        this.config.COLORS.UI.HEADER_BG, 
+        this.config.COLORS.UI.HEADER_BG, 
+        this.config.COLORS.UI.HEADER_BG, 
+        this.config.COLORS.UI.HEADER_BG, 
+        this.config.COLORS.UI.HEADER_BG, 
+        this.config.COLORS.UI.HEADER_BG
+      ]);
       
-      // Format cells
-      formatAsCurrency(this.analysisSheet.getRange(startRow, 3));
-      formatAsPercentage(this.analysisSheet.getRange(startRow, 4, 1, 3));
+      currentCategoryRow++;
       
-      startRow++;
+      // Write all data to the sheet in batches
+      if (currentCategoryRow > 0) {
+        // Set category names
+        if (categoryValues.length > 0) {
+          this.analysisSheet.getRange(startRow, 1, categoryValues.length, 1).setValues(categoryValues);
+        }
+        
+        // Set types
+        if (typeValues.length > 0) {
+          this.analysisSheet.getRange(startRow, 2, typeValues.length, 1).setValues(typeValues);
+        }
+        
+        // Set amounts
+        if (amountValues.length > 0) {
+          this.analysisSheet.getRange(startRow, 3, amountValues.length, 1).setValues(amountValues);
+        }
+        
+        // Set percentage formulas
+        if (percentFormulas.length > 0) {
+          this.analysisSheet.getRange(startRow, 4, percentFormulas.length, 1).setFormulas(percentFormulas);
+        }
+        
+        // Set target values
+        if (targetValues.length > 0) {
+          this.analysisSheet.getRange(startRow, 5, targetValues.length, 1).setValues(targetValues);
+        }
+        
+        // Set variance formulas
+        if (varianceFormulas.length > 0) {
+          this.analysisSheet.getRange(startRow, 6, varianceFormulas.length, 1).setFormulas(varianceFormulas);
+        }
+        
+        // Set backgrounds
+        if (backgroundColors.length > 0) {
+          this.analysisSheet.getRange(startRow, 1, backgroundColors.length, 6).setBackgrounds(backgroundColors);
+        }
+        
+        // Format currency cells (amount column)
+        formatAsCurrency(this.analysisSheet.getRange(startRow, 3, currentCategoryRow, 1));
+        
+        // Format percentage cells (percentage columns)
+        formatAsPercentage(this.analysisSheet.getRange(startRow, 4, currentCategoryRow, 3));
+        
+        // Apply conditional formatting rules
+        if (conditionalFormatRules.length > 0) {
+          const rules = this.analysisSheet.getConditionalFormatRules();
+          conditionalFormatRules.forEach(item => {
+            rules.push(item.rule);
+          });
+          this.analysisSheet.setConditionalFormatRules(rules);
+        }
+        
+        // Set font color for total row
+        this.analysisSheet.getRange(startRow + currentCategoryRow - 1, 1, 1, 6)
+          .setFontWeight("bold")
+          .setFontColor(this.config.COLORS.UI.HEADER_FONT);
+        
+        // Add borders to the expense table
+        this.analysisSheet.getRange(categoryStartRow, 1, currentCategoryRow, 6).setBorder(
+          true, true, true, true, true, true, 
+          "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
+        );
+        
+        // Add subtle shading to every other row for better readability
+        for (let i = 0; i < currentCategoryRow - 1; i++) { // Skip total row
+          if (i % 2 === 1) {
+            this.analysisSheet.getRange(startRow + i, 1, 1, 6)
+              .setBackground("#F8F8F8"); // Very light gray for alternate rows
+          }
+        }
+      }
     }
     
-    // Add borders to the expense table
-    const tableStartRow = startRow - this.data.expenseCategories.length - 1;
-    this.analysisSheet.getRange(tableStartRow, 1, startRow - tableStartRow, 6).setBorder(
-      true, true, true, true, true, true, 
-      "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
-    );
-    
-    return startRow;
+    return startRow + currentCategoryRow;
   }
 
   /**
@@ -600,6 +868,90 @@ class FinancialAnalysisService {
   generateCashFlowForecast() {
     // TODO: Implement cash flow forecast
     SpreadsheetApp.getUi().alert('Cash Flow Forecast - Coming Soon!');
+  }
+}
+
+/**
+ * Shows the key metrics section in the Analysis sheet
+ * This function is called when the user clicks on the Key Metrics menu item
+ * @public
+ */
+function showKeyMetrics() {
+  try {
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const overviewSheet = spreadsheet.getSheetByName(FINANCE_OVERVIEW_CONFIG.SHEETS.OVERVIEW);
+    
+    if (!overviewSheet) {
+      SpreadsheetApp.getUi().alert(
+        "Error", 
+        "Overview sheet not found. Please generate the financial overview first.", 
+        SpreadsheetApp.getUi().ButtonSet.OK
+      );
+      return;
+    }
+    
+    // Create a combined config object for the FinancialAnalysisService
+    const analysisConfig = {
+      ...FINANCE_OVERVIEW_CONFIG,
+      // Add any additional config needed by FinancialAnalysisService
+      TARGET_RATES: {
+        ...FINANCE_OVERVIEW_CONFIG.TARGET_RATES,
+        WANTS_PLEASURE: FINANCE_OVERVIEW_CONFIG.TARGET_RATES.WANTS, // Map WANTS to WANTS_PLEASURE for compatibility
+        DEFAULT: 0.2
+      },
+      SHEETS: {
+        ...FINANCE_OVERVIEW_CONFIG.SHEETS
+      },
+      COLORS: {
+        ...FINANCE_OVERVIEW_CONFIG.COLORS
+      }
+    };
+    
+    // Create and use the FinancialAnalysisService
+    const analysisService = new FinancialAnalysisService(
+      spreadsheet, 
+      overviewSheet, 
+      analysisConfig
+    );
+    
+    // Initialize the service
+    analysisService.initialize();
+    
+    // Get the Analysis sheet
+    const analysisSheet = spreadsheet.getSheetByName(analysisConfig.SHEETS.ANALYSIS);
+    
+    // Clear existing content
+    analysisSheet.clear();
+    analysisSheet.clearFormats();
+    
+    // Set up header
+    analysisSheet.getRange("A1").setValue("Financial Analysis");
+    analysisSheet.getRange("A1:J1")
+      .setBackground(analysisConfig.COLORS.UI.HEADER_BG)
+      .setFontWeight("bold")
+      .setFontColor(analysisConfig.COLORS.UI.HEADER_FONT);
+    
+    // Add only the key metrics section
+    analysisService.addKeyMetricsSection(2);
+    
+    // Activate the Analysis sheet to show it to the user
+    analysisSheet.activate();
+    
+    // Show success message
+    SpreadsheetApp.getUi().alert(
+      "Success", 
+      "Key metrics have been generated in the Analysis sheet.", 
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    
+  } catch (error) {
+    // Show error message
+    SpreadsheetApp.getUi().alert(
+      "Error", 
+      "Failed to generate key metrics: " + error.message, 
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    console.error("Error in showKeyMetrics:", error);
   }
 }
 

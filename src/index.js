@@ -60,6 +60,7 @@ function importFeatures() {
   
   // Financial analysis functions
   const financialAnalysisFunctions = [
+    'showKeyMetrics',
     'suggestSavingsOpportunities',
     'detectSpendingAnomalies',
     'analyzeFixedVsVariableExpenses',

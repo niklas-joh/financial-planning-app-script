@@ -1228,13 +1228,15 @@ function addKeyMetricsSection(sheet, startRow) {
       let rule;
       if (metric.compareFunction(0.5, 0.3)) { // Test if this is a "less than" comparison
         rule = SpreadsheetApp.newConditionalFormatRule()
-          .whenNumberLessThan(targetCell.getValue())
+          .whenCellNotEmpty()
+          .setFormula(`K${currentRow}<M${currentRow}`)
           .setBackground("#FFCDD2") // Light red when below target
           .setRanges([valueCell])
           .build();
       } else {
         rule = SpreadsheetApp.newConditionalFormatRule()
-          .whenNumberGreaterThan(targetCell.getValue())
+          .whenCellNotEmpty()
+          .setFormula(`K${currentRow}>M${currentRow}`)
           .setBackground("#FFCDD2") // Light red when above target
           .setRanges([valueCell])
           .build();
