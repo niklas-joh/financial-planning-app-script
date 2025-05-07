@@ -22,7 +22,8 @@ const FINANCE_OVERVIEW_CONFIG = {
     OVERVIEW: "Overview",
     TRANSACTIONS: "Transactions",
     DROPDOWNS: "Dropdowns",
-    ERROR_LOG: "Error Log"
+    ERROR_LOG: "Error Log",
+    ANALYSIS: "Analysis"  // New sheet for dedicated analysis
   },
   TRANSACTION_TYPES: {
     INCOME: "Income",
@@ -587,7 +588,25 @@ class FinancialOverviewBuilder {
    * @return {FinancialOverviewBuilder} This builder instance for chaining
    */
   addMetrics() {
-    addKeyMetricsSection(this.overviewSheet, this.lastContentRowIndex);
+    // Create a combined config object for the FinancialAnalysisService
+    const analysisConfig = {
+      ...FINANCE_OVERVIEW_CONFIG,
+      // Add any additional config needed by FinancialAnalysisService
+      TARGET_RATES: {
+        ...FINANCE_OVERVIEW_CONFIG.TARGET_RATES,
+        WANTS_PLEASURE: FINANCE_OVERVIEW_CONFIG.TARGET_RATES.WANTS // Map WANTS to WANTS_PLEASURE for compatibility
+      }
+    };
+    
+    // Create and use the FinancialAnalysisService
+    const analysisService = new FinancialAnalysisService(
+      this.spreadsheet, 
+      this.overviewSheet, 
+      analysisConfig
+    );
+    analysisService.initialize();
+    analysisService.analyze();
+    
     return this;
   }
   
