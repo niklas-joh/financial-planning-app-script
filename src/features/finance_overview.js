@@ -220,8 +220,14 @@ function createFinancialOverview() {
   // Add net calculations
   rowIndex = addNetCalculations(overviewSheet, rowIndex);
   
+  // Create a combined config object for the FinancialAnalysisService
+  const CONFIG = {
+    ...OVERVIEW_CONFIG,
+    COLORS: COLORS
+  };
+  
   // Create and use the FinancialAnalysisService
-  const analysisService = new FinancialAnalysisService(ss, overviewSheet, OVERVIEW_CONFIG);
+  const analysisService = new FinancialAnalysisService(ss, overviewSheet, CONFIG);
   analysisService.initialize();
   analysisService.analyze();
   
