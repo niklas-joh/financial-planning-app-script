@@ -295,7 +295,6 @@ class FinancialAnalysisService {
           .setFormula(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if below target (more negative)
           .setRanges([valueCell])
-          .build()
       });
       
       currentMetricRow++;
@@ -320,7 +319,6 @@ class FinancialAnalysisService {
           .setFormula(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if above target
           .setRanges([valueCell])
-          .build()
       });
       
       currentMetricRow++;
@@ -345,7 +343,6 @@ class FinancialAnalysisService {
           .setFormula(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if above target
           .setRanges([valueCell])
-          .build()
       });
       
       currentMetricRow++;
@@ -370,7 +367,6 @@ class FinancialAnalysisService {
           .setFormula(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if above target
           .setRanges([valueCell])
-          .build()
       });
       
       currentMetricRow++;
@@ -410,7 +406,6 @@ class FinancialAnalysisService {
           .setFormula(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if below target
           .setRanges([valueCell])
-          .build()
       });
       
       currentMetricRow++;
@@ -449,7 +444,6 @@ class FinancialAnalysisService {
           .setFormula(`B${startRow + currentMetricRow}<0`)
           .setBackground("#FFCDD2") // Light red if negative
           .setRanges([valueCell])
-          .build()
       });
       
       currentMetricRow++;
@@ -511,7 +505,7 @@ class FinancialAnalysisService {
       if (conditionalFormatRules.length > 0) {
         const rules = this.analysisSheet.getConditionalFormatRules();
         conditionalFormatRules.forEach(item => {
-          rules.push(item.rule.build());
+          rules.push(item.rule);
         });
         this.analysisSheet.setConditionalFormatRules(rules);
       }
@@ -628,7 +622,6 @@ class FinancialAnalysisService {
             .setFormula(`F${startRow + currentCategoryRow}>0`)
             .setBackground("#FFCDD2") // Light red if over budget
             .setRanges([this.analysisSheet.getRange(startRow + currentCategoryRow, 6)])
-            .build()
         });
         
         currentCategoryRow++;
@@ -708,7 +701,7 @@ class FinancialAnalysisService {
         if (conditionalFormatRules.length > 0) {
           const rules = this.analysisSheet.getConditionalFormatRules();
           conditionalFormatRules.forEach(item => {
-            rules.push(item.rule.build());
+            rules.push(item.rule);
           });
           this.analysisSheet.setConditionalFormatRules(rules);
         }
