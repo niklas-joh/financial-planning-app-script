@@ -291,8 +291,7 @@ class FinancialAnalysisService {
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenCellNotEmpty()
-          .setFormula(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if below target (more negative)
           .setRanges([valueCell])
       });
@@ -315,8 +314,7 @@ class FinancialAnalysisService {
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenCellNotEmpty()
-          .setFormula(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if above target
           .setRanges([valueCell])
       });
@@ -339,8 +337,7 @@ class FinancialAnalysisService {
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenCellNotEmpty()
-          .setFormula(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if above target
           .setRanges([valueCell])
       });
@@ -363,8 +360,7 @@ class FinancialAnalysisService {
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenCellNotEmpty()
-          .setFormula(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if above target
           .setRanges([valueCell])
       });
@@ -402,8 +398,7 @@ class FinancialAnalysisService {
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenCellNotEmpty()
-          .setFormula(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
           .setBackground("#FFCDD2") // Light red if below target
           .setRanges([valueCell])
       });
@@ -440,8 +435,7 @@ class FinancialAnalysisService {
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenCellNotEmpty()
-          .setFormula(`B${startRow + currentMetricRow}<0`)
+          .whenFormulaSatisfied(`B${startRow + currentMetricRow}<0`)
           .setBackground("#FFCDD2") // Light red if negative
           .setRanges([valueCell])
       });
@@ -618,8 +612,7 @@ class FinancialAnalysisService {
         conditionalFormatRules.push({
           row: startRow + currentCategoryRow,
           rule: SpreadsheetApp.newConditionalFormatRule()
-            .whenCellNotEmpty()
-            .setFormula(`F${startRow + currentCategoryRow}>0`)
+            .whenFormulaSatisfied(`F${startRow + currentCategoryRow}>0`)
             .setBackground("#FFCDD2") // Light red if over budget
             .setRanges([this.analysisSheet.getRange(startRow + currentCategoryRow, 6)])
         });
