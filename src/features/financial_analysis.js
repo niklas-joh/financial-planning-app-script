@@ -118,7 +118,11 @@ class FinancialAnalysisService {
     this.totals = {
       income: { row: -1, value: 0 },
       expenses: { row: -1, value: 0 },
-      savings: { row: -1, value: 0 }
+      savings: { row: -1, value: 0 },
+      // Add expense type totals
+      essentials: { row: -1, value: 0 },
+      wantsPleasure: { row: -1, value: 0 },
+      extra: { row: -1, value: 0 }
     };
     
     // Extract month names from headers (columns 5-16 in overview sheet)
@@ -134,13 +138,39 @@ class FinancialAnalysisService {
       if (rowData[0] === "Total Income") {
         this.totals.income.row = i + 1;
         this.totals.income.value = rowData[16]; // Average column
-      } else if (rowData[0] === "Total Essentials" || rowData[0] === "Total Wants/Pleasure" || rowData[0] === "Total Extra") {
-        // Accumulate all expense types
+      } else if (rowData[0] === "Total Essentials") {
+        // Track Essentials separately
+        this.totals.essentials.row = i + 1;
+        this.totals.essentials.value = rowData[16]; // Average column
+        
+        // Also add to total expenses
         if (this.totals.expenses.row === -1) {
           this.totals.expenses.row = i + 1;
           this.totals.expenses.value = 0;
         }
-        this.totals.expenses.value += rowData[16]; // Average column
+        this.totals.expenses.value += rowData[16];
+      } else if (rowData[0] === "Total Wants/Pleasure") {
+        // Track Wants/Pleasure separately
+        this.totals.wantsPleasure.row = i + 1;
+        this.totals.wantsPleasure.value = rowData[16]; // Average column
+        
+        // Also add to total expenses
+        if (this.totals.expenses.row === -1) {
+          this.totals.expenses.row = i + 1;
+          this.totals.expenses.value = 0;
+        }
+        this.totals.expenses.value += rowData[16];
+      } else if (rowData[0] === "Total Extra") {
+        // Track Extra separately
+        this.totals.extra.row = i + 1;
+        this.totals.extra.value = rowData[16]; // Average column
+        
+        // Also add to total expenses
+        if (this.totals.expenses.row === -1) {
+          this.totals.expenses.row = i + 1;
+          this.totals.expenses.value = 0;
+        }
+        this.totals.expenses.value += rowData[16];
       } else if (rowData[0] === "Total Savings") {
         this.totals.savings.row = i + 1;
         this.totals.savings.value = rowData[16]; // Average column
@@ -319,8 +349,96 @@ class FinancialAnalysisService {
       startRow++;
     }
     
+    // 4. Essentials Rate (new)
+    if (this.totals.income.row > 0 && this.totals.essentials.row > 0) {
+      this.analysisSheet.getRange(startRow, 1).setValue("Essentials Rate");
+      this.analysisSheet.getRange(startRow, 2).setFormula(
+        `=${this.totals.essentials.value}/${this.totals.income.value}`
+      );
+      this.analysisSheet.getRange(startRow, 3).setValue(this.config.TARGET_RATES.ESSENTIALS);
+      this.analysisSheet.getRange(startRow, 4).setValue(
+        "Percentage of income spent on essential expenses (lower is better)"
+      );
+      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
+      
+      // Format as percentage
+      formatAsPercentage(this.analysisSheet.getRange(startRow, 2, 1, 2));
+      
+      // Add conditional formatting (red if exceeding target)
+      const rule = SpreadsheetApp.newConditionalFormatRule()
+        .whenNumberGreaterThan(this.analysisSheet.getRange(startRow, 3).getValue())
+        .setBackground("#FFCDD2") // Light red if above target
+        .setRanges([this.analysisSheet.getRange(startRow, 2)])
+        .build();
+      
+      const rules = this.analysisSheet.getConditionalFormatRules();
+      rules.push(rule);
+      this.analysisSheet.setConditionalFormatRules(rules);
+      
+      startRow++;
+    }
+    
+    // 5. Wants/Pleasure Rate (new)
+    if (this.totals.income.row > 0 && this.totals.wantsPleasure.row > 0) {
+      this.analysisSheet.getRange(startRow, 1).setValue("Wants/Pleasure Rate");
+      this.analysisSheet.getRange(startRow, 2).setFormula(
+        `=${this.totals.wantsPleasure.value}/${this.totals.income.value}`
+      );
+      this.analysisSheet.getRange(startRow, 3).setValue(this.config.TARGET_RATES.WANTS_PLEASURE);
+      this.analysisSheet.getRange(startRow, 4).setValue(
+        "Percentage of income spent on wants and pleasure (discretionary spending)"
+      );
+      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
+      
+      // Format as percentage
+      formatAsPercentage(this.analysisSheet.getRange(startRow, 2, 1, 2));
+      
+      // Add conditional formatting (red if exceeding target)
+      const rule = SpreadsheetApp.newConditionalFormatRule()
+        .whenNumberGreaterThan(this.analysisSheet.getRange(startRow, 3).getValue())
+        .setBackground("#FFCDD2") // Light red if above target
+        .setRanges([this.analysisSheet.getRange(startRow, 2)])
+        .build();
+      
+      const rules = this.analysisSheet.getConditionalFormatRules();
+      rules.push(rule);
+      this.analysisSheet.setConditionalFormatRules(rules);
+      
+      startRow++;
+    }
+    
+    // 6. Extra Expenses Rate (new)
+    if (this.totals.income.row > 0 && this.totals.extra.row > 0) {
+      this.analysisSheet.getRange(startRow, 1).setValue("Extra Expenses Rate");
+      this.analysisSheet.getRange(startRow, 2).setFormula(
+        `=${this.totals.extra.value}/${this.totals.income.value}`
+      );
+      this.analysisSheet.getRange(startRow, 3).setValue(this.config.TARGET_RATES.EXTRA);
+      this.analysisSheet.getRange(startRow, 4).setValue(
+        "Percentage of income spent on extra/miscellaneous expenses"
+      );
+      this.analysisSheet.getRange(startRow, 1, 1, 4).setBackground(startRow % 2 === 0 ? "#F5F5F5" : this.config.COLORS.UI.METRICS_BG);
+      
+      // Format as percentage
+      formatAsPercentage(this.analysisSheet.getRange(startRow, 2, 1, 2));
+      
+      // Add conditional formatting (red if exceeding target)
+      const rule = SpreadsheetApp.newConditionalFormatRule()
+        .whenNumberGreaterThan(this.analysisSheet.getRange(startRow, 3).getValue())
+        .setBackground("#FFCDD2") // Light red if above target
+        .setRanges([this.analysisSheet.getRange(startRow, 2)])
+        .build();
+      
+      const rules = this.analysisSheet.getConditionalFormatRules();
+      rules.push(rule);
+      this.analysisSheet.setConditionalFormatRules(rules);
+      
+      startRow++;
+    }
+    
     // Add a border around the metrics table
-    this.analysisSheet.getRange(startRow - 3, 1, 3, 4).setBorder(
+    const metricsRowCount = startRow - 3; // Calculate the number of metrics rows
+    this.analysisSheet.getRange(startRow - metricsRowCount, 1, metricsRowCount, 4).setBorder(
       true, true, true, true, true, true, 
       "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
     );
