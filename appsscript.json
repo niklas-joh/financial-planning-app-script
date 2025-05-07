@@ -3,5 +3,106 @@
   "dependencies": {
   },
   "exceptionLogging": "STACKDRIVER",
-  "runtimeVersion": "V8"
+  "runtimeVersion": "V8",
+  "webapp": {
+    "access": "MYSELF",
+    "executeAs": "USER_DEPLOYING"
+  },
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/script.container.ui"
+  ],
+  "executionApi": {
+    "access": "MYSELF"
+  },
+  "sheets": {
+    "macros": []
+  },
+  "files": [
+    {
+      "name": "src/core/namespace",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/config",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/ui-service",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/error-service",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/cache-service",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/controllers",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/settings-service",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/utils/common",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/index",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/main",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/finance_overview",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/financial_analysis",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/monthly_spending_report",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/reports",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/settings",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/visualizations",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/dropdowns",
+      "type": "server_js",
+      "source": "javascript"
+    }
+  ]
 }

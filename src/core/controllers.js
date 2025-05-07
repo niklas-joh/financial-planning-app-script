@@ -1,0 +1,242 @@
+/**
+ * Financial Planning Tools - Controllers
+ * 
+ * This file provides a centralized set of controller functions that serve as
+ * entry points for UI-triggered actions. These functions coordinate between
+ * the UI and the underlying services.
+ */
+
+// Create the Controllers module within the FinancialPlanner namespace
+FinancialPlanner.Controllers = (function(config, uiService, errorService) {
+  // Private variables and functions
+  
+  /**
+   * Wraps a controller function with standard error handling and UI feedback
+   * @param {Function} fn - The function to wrap
+   * @param {String} startMessage - Message to show when the operation starts
+   * @param {String} successMessage - Message to show when the operation succeeds
+   * @param {String} errorMessage - Message to show when the operation fails
+   * @return {Function} The wrapped function
+   * @private
+   */
+  function wrapWithFeedback(fn, startMessage, successMessage, errorMessage) {
+    return function() {
+      try {
+        // Show loading message if provided
+        if (startMessage) {
+          uiService.showLoadingSpinner(startMessage);
+        }
+        
+        // Call the original function
+        const result = fn.apply(this, arguments);
+        
+        // Hide loading spinner
+        uiService.hideLoadingSpinner();
+        
+        // Show success message if provided
+        if (successMessage) {
+          uiService.showSuccessNotification(successMessage);
+        }
+        
+        return result;
+      } catch (error) {
+        // Hide loading spinner
+        uiService.hideLoadingSpinner();
+        
+        // Handle the error
+        errorService.handle(
+          error,
+          errorMessage || "An error occurred while performing the operation."
+        );
+        
+        throw error; // Re-throw to allow caller to handle if needed
+      }
+    };
+  }
+  
+  // Public API
+  return {
+    /**
+     * Creates the financial overview
+     * This is a placeholder that will be implemented when the FinancialOverview module is refactored
+     */
+    createFinancialOverview: wrapWithFeedback(
+      function() {
+        // This will be implemented when the FinancialOverview module is refactored
+        // For now, just call the global function if it exists
+        if (typeof createFinancialOverview === 'function') {
+          return createFinancialOverview();
+        } else {
+          throw new Error("Financial overview functionality not yet implemented in the namespace pattern");
+        }
+      },
+      "Generating financial overview...",
+      "Financial overview generated successfully!",
+      "Failed to generate financial overview"
+    ),
+    
+    /**
+     * Generates a monthly spending report
+     * This is a placeholder that will be implemented when the Reports module is refactored
+     */
+    generateMonthlySpendingReport: wrapWithFeedback(
+      function() {
+        // This will be implemented when the Reports module is refactored
+        // For now, just call the global function if it exists
+        if (typeof generateMonthlySpendingReport === 'function') {
+          return generateMonthlySpendingReport();
+        } else {
+          throw new Error("Monthly spending report functionality not yet implemented in the namespace pattern");
+        }
+      },
+      "Generating monthly spending report...",
+      "Monthly spending report generated successfully!",
+      "Failed to generate monthly spending report"
+    ),
+    
+    /**
+     * Shows key financial metrics
+     * This is a placeholder that will be implemented when the FinancialAnalysis module is refactored
+     */
+    showKeyMetrics: wrapWithFeedback(
+      function() {
+        // This will be implemented when the FinancialAnalysis module is refactored
+        // For now, just call the global function if it exists
+        if (typeof showKeyMetrics === 'function') {
+          return showKeyMetrics();
+        } else {
+          throw new Error("Key metrics functionality not yet implemented in the namespace pattern");
+        }
+      },
+      "Analyzing financial data...",
+      "Key metrics displayed successfully!",
+      "Failed to display key metrics"
+    ),
+    
+    /**
+     * Toggles the display of sub-categories in the overview
+     */
+    toggleShowSubCategories: wrapWithFeedback(
+      function() {
+        // Use the SettingsService to toggle the sub-categories preference
+        const newValue = FinancialPlanner.SettingsService.toggleShowSubCategories();
+        
+        // Get the active spreadsheet and overview sheet
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const overviewSheet = ss.getSheetByName(FinancialPlanner.Config.getSheetNames().OVERVIEW);
+        
+        // If the overview sheet exists, update it based on the new preference
+        if (overviewSheet) {
+          if (newValue) {
+            overviewSheet.showColumns(3, 1); // Show sub-categories column
+          } else {
+            overviewSheet.hideColumns(3, 1); // Hide sub-categories column
+          }
+        }
+        
+        return newValue;
+      },
+      "Updating display preferences...",
+      "Display preferences updated successfully!",
+      "Failed to update display preferences"
+    ),
+    
+    /**
+     * Refreshes the cache
+     */
+    refreshCache: wrapWithFeedback(
+      function() {
+        // Use the CacheService to invalidate all cache entries
+        FinancialPlanner.CacheService.invalidateAll();
+        return true;
+      },
+      "Refreshing cache...",
+      "Cache refreshed successfully!",
+      "Failed to refresh cache"
+    ),
+    
+    /**
+     * Handles the onOpen event
+     * This function is called when the spreadsheet is opened
+     */
+    onOpen: function() {
+      try {
+        // Create the menu
+        const ui = SpreadsheetApp.getUi();
+        
+        // Create enhanced Financial Tools menu with submenus and icons
+        ui.createMenu('📊 Financial Tools')
+          .addItem('📈 Generate Overview', 'FinancialPlanner.Controllers.createFinancialOverview')
+          .addSeparator()
+          .addSubMenu(ui.createMenu('📋 Reports')
+            .addItem('📝 Monthly Spending Report', 'FinancialPlanner.Controllers.generateMonthlySpendingReport')
+            .addItem('📅 Yearly Summary (Coming Soon)', 'FinancialPlanner.Controllers.generateYearlySummary')
+            .addItem('🔍 Category Breakdown (Coming Soon)', 'FinancialPlanner.Controllers.generateCategoryBreakdown')
+            .addItem('💰 Savings Analysis (Coming Soon)', 'FinancialPlanner.Controllers.generateSavingsAnalysis'))
+          .addSeparator()
+          .addSubMenu(ui.createMenu('📊 Visualizations (Coming Soon)')
+            .addItem('📉 Spending Trends Chart (Coming Soon)', 'FinancialPlanner.Controllers.createSpendingTrendsChart')
+            .addItem('⚖️ Budget vs Actual (Coming Soon)', 'FinancialPlanner.Controllers.createBudgetVsActualChart')
+            .addItem('💹 Income vs Expenses (Coming Soon)', 'FinancialPlanner.Controllers.createIncomeVsExpensesChart')
+            .addItem('🍩 Category Pie Chart (Coming Soon)', 'FinancialPlanner.Controllers.createCategoryPieChart'))
+          .addSeparator()
+          .addSubMenu(ui.createMenu('🧮 Financial Analysis')
+            .addItem('📊 Key Metrics', 'FinancialPlanner.Controllers.showKeyMetrics')
+            .addItem('💡 Suggest Savings Opportunities (Coming Soon)', 'FinancialPlanner.Controllers.suggestSavingsOpportunities')
+            .addItem('⚠️ Spending Anomaly Detection (Coming Soon)', 'FinancialPlanner.Controllers.detectSpendingAnomalies')
+            .addItem('📌 Fixed vs Variable Expenses (Coming Soon)', 'FinancialPlanner.Controllers.analyzeFixedVsVariableExpenses')
+            .addItem('🔮 Cash Flow Forecast (Coming Soon)', 'FinancialPlanner.Controllers.generateCashFlowForecast'))
+          .addSeparator()
+          .addSubMenu(ui.createMenu('⚙️ Settings')
+            .addItem('🔄 Toggle Sub-Categories in Overview', 'FinancialPlanner.Controllers.toggleShowSubCategories')
+            .addItem('🎯 Set Budget Targets (Coming Soon)', 'FinancialPlanner.Controllers.setBudgetTargets')
+            .addItem('📧 Setup Email Reports (Coming Soon)', 'FinancialPlanner.Controllers.setupEmailReports')
+            .addItem('🔄 Refresh Cache', 'FinancialPlanner.Controllers.refreshCache'))
+          .addToUi();
+      } catch (error) {
+        // Log the error but don't show a UI notification
+        // (this would be disruptive when opening the spreadsheet)
+        errorService.log(error);
+        console.error("Failed to create menu:", error);
+      }
+    },
+    
+    /**
+     * Handles the onEdit event
+     * This function is called when the user edits the spreadsheet
+     * @param {Object} e - The edit event object
+     */
+    onEdit: function(e) {
+      try {
+        // Pass the edit event to various handlers
+        // This will be updated as modules are refactored
+        
+        // For now, just call the global handlers if they exist
+        if (typeof handleOverviewSheetEdits === 'function') {
+          handleOverviewSheetEdits(e);
+        }
+        
+        // More handlers can be added here in the future
+      } catch (error) {
+        // Log the error but don't show a UI notification
+        // (this would be disruptive during editing)
+        errorService.log(error);
+        console.error("Error handling edit event:", error);
+      }
+    }
+  };
+})(FinancialPlanner.Config, FinancialPlanner.UIService, FinancialPlanner.ErrorService);
+
+// For backward compatibility, create global references to the controller functions
+// These can be removed once all code has been updated to use the namespace
+function onOpen() {
+  return FinancialPlanner.Controllers.onOpen();
+}
+
+function onEdit(e) {
+  return FinancialPlanner.Controllers.onEdit(e);
+}
+
+function refreshCache() {
+  return FinancialPlanner.Controllers.refreshCache();
+}

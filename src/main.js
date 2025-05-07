@@ -2,58 +2,81 @@
  * Financial Planning Tools - Main Entry Point
  * 
  * This file serves as the main entry point for the Financial Planning Tools
- * Google Apps Script project. It contains the onOpen function that sets up
- * all menu items for the various features.
+ * Google Apps Script project. It contains global function references that
+ * delegate to the appropriate modules in the FinancialPlanner namespace.
+ * 
+ * The actual implementation of these functions is in the Controllers module.
  */
 
 /**
  * Creates custom menus when the spreadsheet is opened
- * This combined function adds menu items for all features:
- * - Dropdown Tools
- * - Financial Overview
- * - Monthly Spending Report
+ * This function is automatically called by Google Apps Script when the spreadsheet is opened.
+ * It delegates to the Controllers module in the FinancialPlanner namespace.
  */
 function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  
-  // Create enhanced Financial Tools menu with submenus and icons
-  ui.createMenu('📊 Financial Tools')
-    .addItem('📈 Generate Overview', 'createFinancialOverview')
-    .addSeparator()
-    .addSubMenu(ui.createMenu('📋 Reports')
-      .addItem('📝 Monthly Spending Report', 'generateMonthlySpendingReport')
-      .addItem('📅 Yearly Summary (Coming Soon)', 'generateYearlySummary')
-      .addItem('🔍 Category Breakdown (Coming Soon)', 'generateCategoryBreakdown')
-      .addItem('💰 Savings Analysis (Coming Soon)', 'generateSavingsAnalysis'))
-    .addSeparator()
-    .addSubMenu(ui.createMenu('📊 Visualizations (Coming Soon)')
-      .addItem('📉 Spending Trends Chart (Coming Soon)', 'createSpendingTrendsChart')
-      .addItem('⚖️ Budget vs Actual (Coming Soon)', 'createBudgetVsActualChart')
-      .addItem('💹 Income vs Expenses (Coming Soon)', 'createIncomeVsExpensesChart')
-      .addItem('🍩 Category Pie Chart (Coming Soon)', 'createCategoryPieChart'))
-    .addSeparator()
-    .addSubMenu(ui.createMenu('🧮 Financial Analysis')
-      .addItem('📊 Key Metrics', 'showKeyMetrics')
-      .addItem('💡 Suggest Savings Opportunities (Coming Soon)', 'suggestSavingsOpportunities')
-      .addItem('⚠️ Spending Anomaly Detection (Coming Soon)', 'detectSpendingAnomalies')
-      .addItem('📌 Fixed vs Variable Expenses (Coming Soon)', 'analyzeFixedVsVariableExpenses')
-      .addItem('🔮 Cash Flow Forecast (Coming Soon)', 'generateCashFlowForecast'))
-    .addSeparator()
-    .addSubMenu(ui.createMenu('⚙️ Settings')
-      .addItem('🔄 Toggle Sub-Categories in Overview', 'toggleShowSubCategories')
-      .addItem('🎯 Set Budget Targets (Coming Soon)', 'setBudgetTargets')
-      .addItem('📧 Setup Email Reports (Coming Soon)', 'setupEmailReports'))
-    .addToUi();
+  // Delegate to the Controllers module
+  return FinancialPlanner.Controllers.onOpen();
 }
 
 /**
  * Event handler that runs when a user edits the spreadsheet.
  * Used to detect changes to settings checkboxes and other interactive elements.
+ * This function is automatically called by Google Apps Script when the spreadsheet is edited.
+ * It delegates to the Controllers module in the FinancialPlanner namespace.
+ * 
  * @param {Object} e - The edit event object
  */
 function onEdit(e) {
-  // Pass the edit event to various handlers
-  handleOverviewSheetEdits(e);
-  
-  // More handlers can be added here in the future
+  // Delegate to the Controllers module
+  return FinancialPlanner.Controllers.onEdit(e);
+}
+
+/**
+ * Creates a financial overview sheet based on transaction data
+ * This function delegates to the appropriate module in the FinancialPlanner namespace.
+ * It is exposed globally for backward compatibility and for use in the UI.
+ */
+function createFinancialOverview() {
+  // Delegate to the Controllers module
+  return FinancialPlanner.Controllers.createFinancialOverview();
+}
+
+/**
+ * Generates a monthly spending report
+ * This function delegates to the appropriate module in the FinancialPlanner namespace.
+ * It is exposed globally for backward compatibility and for use in the UI.
+ */
+function generateMonthlySpendingReport() {
+  // Delegate to the Controllers module
+  return FinancialPlanner.Controllers.generateMonthlySpendingReport();
+}
+
+/**
+ * Shows key financial metrics
+ * This function delegates to the appropriate module in the FinancialPlanner namespace.
+ * It is exposed globally for backward compatibility and for use in the UI.
+ */
+function showKeyMetrics() {
+  // Delegate to the Controllers module
+  return FinancialPlanner.Controllers.showKeyMetrics();
+}
+
+/**
+ * Toggles the display of sub-categories in the overview
+ * This function delegates to the appropriate module in the FinancialPlanner namespace.
+ * It is exposed globally for backward compatibility and for use in the UI.
+ */
+function toggleShowSubCategories() {
+  // Delegate to the Controllers module
+  return FinancialPlanner.Controllers.toggleShowSubCategories();
+}
+
+/**
+ * Refreshes the cache
+ * This function delegates to the appropriate module in the FinancialPlanner namespace.
+ * It is exposed globally for backward compatibility and for use in the UI.
+ */
+function refreshCache() {
+  // Delegate to the Controllers module
+  return FinancialPlanner.Controllers.refreshCache();
 }
