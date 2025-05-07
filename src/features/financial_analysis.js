@@ -284,12 +284,16 @@ class FinancialAnalysisService {
       metricBackgrounds.push([metricBgColor]);
       
       // Add conditional formatting (green if meeting target, red if not)
+      // Use direct cell reference instead of string formula
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenNumberLessThan('=D' + (startRow + currentMetricRow))
+          .whenNumberLessThan(targetCell)
           .setBackground("#FFCDD2") // Light red if below target (more negative)
-          .setRanges([this.analysisSheet.getRange(startRow + currentMetricRow, 2)])
+          .setRanges([valueCell])
       });
       
       currentMetricRow++;
@@ -304,12 +308,15 @@ class FinancialAnalysisService {
       metricBackgrounds.push([metricBgColor]);
       
       // Add conditional formatting (red if exceeding target)
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenNumberGreaterThan('=D' + (startRow + currentMetricRow))
+          .whenNumberGreaterThan(targetCell)
           .setBackground("#FFCDD2") // Light red if above target
-          .setRanges([this.analysisSheet.getRange(startRow + currentMetricRow, 2)])
+          .setRanges([valueCell])
       });
       
       currentMetricRow++;
@@ -324,12 +331,15 @@ class FinancialAnalysisService {
       metricBackgrounds.push([metricBgColor]);
       
       // Add conditional formatting (red if exceeding target)
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenNumberGreaterThan('=D' + (startRow + currentMetricRow))
+          .whenNumberGreaterThan(targetCell)
           .setBackground("#FFCDD2") // Light red if above target
-          .setRanges([this.analysisSheet.getRange(startRow + currentMetricRow, 2)])
+          .setRanges([valueCell])
       });
       
       currentMetricRow++;
@@ -344,12 +354,15 @@ class FinancialAnalysisService {
       metricBackgrounds.push([metricBgColor]);
       
       // Add conditional formatting (red if exceeding target)
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenNumberGreaterThan('=D' + (startRow + currentMetricRow))
+          .whenNumberGreaterThan(targetCell)
           .setBackground("#FFCDD2") // Light red if above target
-          .setRanges([this.analysisSheet.getRange(startRow + currentMetricRow, 2)])
+          .setRanges([valueCell])
       });
       
       currentMetricRow++;
@@ -379,12 +392,15 @@ class FinancialAnalysisService {
       metricBackgrounds.push([metricBgColor]);
       
       // Add conditional formatting (green if meeting target, red if not)
+      const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
-          .whenNumberLessThan('=D' + (startRow + currentMetricRow))
+          .whenNumberLessThan(targetCell)
           .setBackground("#FFCDD2") // Light red if below target
-          .setRanges([this.analysisSheet.getRange(startRow + currentMetricRow, 2)])
+          .setRanges([valueCell])
       });
       
       currentMetricRow++;
@@ -414,12 +430,14 @@ class FinancialAnalysisService {
       metricBackgrounds.push([metricBgColor]);
       
       // Add conditional formatting (green if positive, red if negative)
+      const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+      
       conditionalFormatRules.push({
         row: startRow + currentMetricRow,
         rule: SpreadsheetApp.newConditionalFormatRule()
           .whenNumberLessThan(0)
           .setBackground("#FFCDD2") // Light red if negative
-          .setRanges([this.analysisSheet.getRange(startRow + currentMetricRow, 2)])
+          .setRanges([valueCell])
       });
       
       currentMetricRow++;
