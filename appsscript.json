@@ -70,37 +70,47 @@
       "source": "javascript"
     },
     {
-      "name": "src/features/finance_overview",
+      "name": "src/services/finance_overview",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/features/financial_analysis",
+      "name": "src/services/financial_analysis",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/features/monthly_spending_report",
+      "name": "src/services/monthly_spending_report",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/features/reports",
+      "name": "src/services/reports",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/features/settings",
+      "name": "src/services/settings",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/features/visualizations",
+      "name": "src/services/visualizations",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/features/dropdowns",
+      "name": "src/services/dropdowns",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/tests/testing-framework",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/tests/utils.test",
       "type": "server_js",
       "source": "javascript"
     }
