@@ -10,7 +10,7 @@
  */
 
 // Create the FinanceOverview module within the FinancialPlanner namespace
-FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, errorService, config) {
+FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, errorService, config, settingsService, analysisServiceInstance) { // Added settingsService and analysisServiceInstance
   // ============================================================================
   // PRIVATE IMPLEMENTATION
   // ============================================================================
@@ -634,24 +634,14 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
    */
   function getUserPreference(key, defaultValue) {
     try {
-      // This will be replaced by SettingsService in future
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      const settingsSheet = ss.getSheetByName(config.getSection('SHEETS').SETTINGS);
-      
-      if (!settingsSheet) return defaultValue;
-      
-      const data = settingsSheet.getDataRange().getValues();
-      
-      // Skip header row
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === key) {
-          return data[i][1];
-        }
-      }
-      
-      return defaultValue;
+      return settingsService.getPreference(key, defaultValue);
     } catch (error) {
-      console.warn(`Failed to get user preference ${key}:`, error);
+      // Log with errorService if available, otherwise console.warn
+      if (errorService && errorService.log) {
+        errorService.log(errorService.create(`Failed to get user preference ${key}`, { originalError: error, severity: "medium" }));
+      } else {
+        console.warn(`Failed to get user preference ${key}:`, error);
+      }
       return defaultValue;
     }
   }
@@ -664,31 +654,14 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
    */
   function setUserPreference(key, value) {
     try {
-      // This will be replaced by SettingsService in future
-      const ss = SpreadsheetApp.getActiveSpreadsheet();
-      let settingsSheet = ss.getSheetByName(config.getSection('SHEETS').SETTINGS);
-      
-      if (!settingsSheet) {
-        settingsSheet = ss.insertSheet(config.getSection('SHEETS').SETTINGS);
-        settingsSheet.getRange("A1:B1").setValues([["Preference", "Value"]]);
-        settingsSheet.getRange("A1:B1").setFontWeight("bold");
-        settingsSheet.hideSheet();
-      }
-      
-      const data = settingsSheet.getDataRange().getValues();
-      
-      // Check if key exists
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][0] === key) {
-          settingsSheet.getRange(i + 1, 2).setValue(value);
-          return;
-        }
-      }
-      
-      // Key doesn't exist, append it
-      settingsSheet.appendRow([key, value]);
+      settingsService.setPreference(key, value);
     } catch (error) {
-      console.warn(`Failed to set user preference ${key}:`, error);
+      // Log with errorService if available, otherwise console.warn
+      if (errorService && errorService.log) {
+        errorService.log(errorService.create(`Failed to set user preference ${key}`, { originalError: error, severity: "medium" }));
+      } else {
+        console.warn(`Failed to set user preference ${key}:`, error);
+      }
     }
   }
   
@@ -845,21 +818,20 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       // Create a combined config object for the FinancialAnalysisService
       const analysisConfig = {
         ...config.get(),
-        // Add any additional config needed by FinancialAnalysisService
-        TARGET_RATES: {
-          ...config.getSection('TARGET_RATES'),
-          WANTS_PLEASURE: config.getSection('TARGET_RATES').WANTS // Map WANTS to WANTS_PLEASURE for compatibility
-        }
+        // Add any additional config needed by FinancialAnalysisService (already handled by FinancialAnalysisService itself using main config)
       };
       
-      // This will be replaced with FinancialPlanner.FinancialAnalysis.analyze() in future
-      const analysisService = new FinancialAnalysisService(
-        this.spreadsheet, 
-        this.overviewSheet, 
-        analysisConfig
-      );
-      analysisService.initialize();
-      analysisService.analyze();
+      // Use the injected FinancialAnalysisService
+      // The analyze method of FinancialAnalysisService handles its own instantiation and config
+      if (analysisServiceInstance && analysisServiceInstance.analyze) {
+         analysisServiceInstance.analyze(this.spreadsheet, this.overviewSheet);
+      } else {
+        // Fallback or error if the service is not available, though it should be injected
+        console.error("FinancialAnalysisService not available for addMetrics");
+        if (errorService) {
+            errorService.log(errorService.create("FinancialAnalysisService not available in FinanceOverview", { severity: "high"}));
+        }
+      }
       
       return this;
     }
@@ -987,7 +959,15 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       }
     }
   };
-})(FinancialPlanner.Utils, FinancialPlanner.UIService, FinancialPlanner.CacheService, FinancialPlanner.ErrorService, FinancialPlanner.Config);
+})(
+  FinancialPlanner.Utils, 
+  FinancialPlanner.UIService, 
+  FinancialPlanner.CacheService, 
+  FinancialPlanner.ErrorService, 
+  FinancialPlanner.Config,
+  FinancialPlanner.SettingsService, // Injected SettingsService
+  FinancialPlanner.FinancialAnalysisService // Injected FinancialAnalysisService
+);
 
 // ============================================================================
 // BACKWARD COMPATIBILITY LAYER

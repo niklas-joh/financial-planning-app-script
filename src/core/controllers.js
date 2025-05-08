@@ -85,7 +85,7 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
      */
     showKeyMetrics: wrapWithFeedback(
       function() {
-        return FinancialPlanner.FinancialAnalysis.showKeyMetrics();
+        return FinancialPlanner.FinancialAnalysisService.showKeyMetrics();
       },
       "Analyzing financial data...",
       "Key metrics displayed successfully!",

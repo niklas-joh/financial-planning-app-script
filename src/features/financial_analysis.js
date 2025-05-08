@@ -9,8 +9,8 @@
  * Last Updated: 2025-05-08
  */
 
-// Create the FinancialAnalysis module within the FinancialPlanner namespace
-FinancialPlanner.FinancialAnalysis = (function(utils, uiService, errorService, config) {
+// Create the FinancialAnalysisService module within the FinancialPlanner namespace
+FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorService, config) {
   // ============================================================================
   // PRIVATE IMPLEMENTATION
   // ============================================================================
@@ -940,8 +940,9 @@ FinancialPlanner.FinancialAnalysis = (function(utils, uiService, errorService, c
           return;
         }
         
-        // Analyze the data
-        this.analyze(spreadsheet, overviewSheet);
+        // Analyze the data by calling the module's analyze function
+        // which correctly instantiates the service
+        FinancialPlanner.FinancialAnalysisService.analyze(spreadsheet, overviewSheet);
         
         // Activate the Analysis sheet to show it to the user
         const analysisSheet = spreadsheet.getSheetByName(config.getSection('SHEETS').ANALYSIS);
@@ -1011,5 +1012,5 @@ FinancialPlanner.FinancialAnalysis = (function(utils, uiService, errorService, c
  * @public
  */
 function showKeyMetrics() {
-  return FinancialPlanner.FinancialAnalysis.showKeyMetrics();
+  return FinancialPlanner.FinancialAnalysisService.showKeyMetrics();
 }
