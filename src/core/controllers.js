@@ -58,17 +58,10 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
   return {
     /**
      * Creates the financial overview
-     * This is a placeholder that will be implemented when the FinancialOverview module is refactored
      */
     createFinancialOverview: wrapWithFeedback(
       function() {
-        // This will be implemented when the FinancialOverview module is refactored
-        // For now, just call the global function if it exists
-        if (typeof createFinancialOverview === 'function') {
-          return createFinancialOverview();
-        } else {
-          throw new Error("Financial overview functionality not yet implemented in the namespace pattern");
-        }
+        return FinancialPlanner.FinanceOverview.create();
       },
       "Generating financial overview...",
       "Financial overview generated successfully!",
@@ -77,17 +70,10 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     
     /**
      * Generates a monthly spending report
-     * This is a placeholder that will be implemented when the Reports module is refactored
      */
     generateMonthlySpendingReport: wrapWithFeedback(
       function() {
-        // This will be implemented when the Reports module is refactored
-        // For now, just call the global function if it exists
-        if (typeof generateMonthlySpendingReport === 'function') {
-          return generateMonthlySpendingReport();
-        } else {
-          throw new Error("Monthly spending report functionality not yet implemented in the namespace pattern");
-        }
+        return FinancialPlanner.MonthlySpendingReport.generate();
       },
       "Generating monthly spending report...",
       "Monthly spending report generated successfully!",
@@ -96,21 +82,50 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     
     /**
      * Shows key financial metrics
-     * This is a placeholder that will be implemented when the FinancialAnalysis module is refactored
      */
     showKeyMetrics: wrapWithFeedback(
       function() {
-        // This will be implemented when the FinancialAnalysis module is refactored
-        // For now, just call the global function if it exists
-        if (typeof showKeyMetrics === 'function') {
-          return showKeyMetrics();
-        } else {
-          throw new Error("Key metrics functionality not yet implemented in the namespace pattern");
-        }
+        return FinancialPlanner.FinancialAnalysis.showKeyMetrics();
       },
       "Analyzing financial data...",
       "Key metrics displayed successfully!",
       "Failed to display key metrics"
+    ),
+    
+    /**
+     * Generates a yearly summary report
+     */
+    generateYearlySummary: wrapWithFeedback(
+      function() {
+        return FinancialPlanner.ReportService.generateYearlySummary();
+      },
+      "Generating yearly summary report...",
+      "Yearly summary report generated successfully!",
+      "Failed to generate yearly summary report"
+    ),
+    
+    /**
+     * Generates a category breakdown report
+     */
+    generateCategoryBreakdown: wrapWithFeedback(
+      function() {
+        return FinancialPlanner.ReportService.generateCategoryBreakdown();
+      },
+      "Generating category breakdown report...",
+      "Category breakdown report generated successfully!",
+      "Failed to generate category breakdown report"
+    ),
+    
+    /**
+     * Generates a savings analysis report
+     */
+    generateSavingsAnalysis: wrapWithFeedback(
+      function() {
+        return FinancialPlanner.ReportService.generateSavingsAnalysis();
+      },
+      "Generating savings analysis report...",
+      "Savings analysis report generated successfully!",
+      "Failed to generate savings analysis report"
     ),
     
     /**
@@ -208,15 +223,17 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
      */
     onEdit: function(e) {
       try {
-        // Pass the edit event to various handlers
-        // This will be updated as modules are refactored
+        // Get the sheet that was edited
+        const sheet = e.range.getSheet();
+        const sheetName = sheet.getName();
         
-        // For now, just call the global handlers if they exist
-        if (typeof handleOverviewSheetEdits === 'function') {
-          handleOverviewSheetEdits(e);
+        // Dispatch to the appropriate handler based on the sheet name
+        if (sheetName === config.getSheetNames().OVERVIEW) {
+          // Use the FinanceOverview module's handleEdit method
+          FinancialPlanner.FinanceOverview.handleEdit(e);
         }
+        // Add more handlers for other sheets as they are refactored
         
-        // More handlers can be added here in the future
       } catch (error) {
         // Log the error but don't show a UI notification
         // (this would be disruptive during editing)
