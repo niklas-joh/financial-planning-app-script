@@ -1,348 +1,381 @@
 /**
- * Google Apps Script to create dynamic dependent dropdowns (Type -> Category -> Sub-Category)
- * Based on sheets:
- *   - 'Transactions' (where dropdowns are applied)
- *   - 'Dropdowns' (mapping table with Type, Category, Sub-Category)
- * Enhanced with:
- *   - Caching for improved performance
- *   - Adding "Please select" as default option
- *   - Allowing users to enter values outside the dropdown list
- *   - Auto-clear 'Please select' if accidentally saved
- *   - Proper handling of Ctrl+D and multi-cell edits
- *   - Grey out columns while awaiting user action
- *   - Load mapping into memory for faster performance
+ * Financial Planning Tools - Dropdown Service
+ *
+ * This file provides dynamic dependent dropdown functionality for the Transactions sheet.
+ * It follows the namespace pattern and uses dependency injection for better maintainability.
  */
 
-// ===== CONSTANTS =====
-const CONFIG = {
-  CACHE_EXPIRY_SECONDS: 300, // Cache expires in 5 minutes
-  CACHE_KEY: 'dropdownsData',
-  SHEETS: {
-    TRANSACTIONS: 'Transactions',
-    DROPDOWNS: 'Dropdowns'
-  },
-  COLUMNS: {
-    TYPE: 3,        // Column C
-    CATEGORY: 4,    // Column D
-    SUB_CATEGORY: 5 // Column E
-  },
-  UI: {
-    PLACEHOLDER_TEXT: 'Please select',
-    PENDING_BACKGROUND: '#eeeeee'
-  },
-  KEY_SEPARATOR: '___' // Separator for composite keys
-};
+// Create the DropdownService module within the FinancialPlanner namespace
+FinancialPlanner.DropdownService = (function(utils, uiService, errorService, config) {
+  // Private constants
+  const DROPDOWN_CONFIG = {
+    CACHE_EXPIRY_SECONDS: 300, // Cache expires in 5 minutes
+    CACHE_KEY: 'dropdownsData',
+    SHEETS: {
+      TRANSACTIONS: 'Transactions', // Ensure this aligns with global config or is passed if different
+      DROPDOWNS: 'Dropdowns'       // Ensure this aligns with global config or is passed if different
+    },
+    COLUMNS: {
+      TYPE: 3,        // Column C
+      CATEGORY: 4,    // Column D
+      SUB_CATEGORY: 5 // Column E
+    },
+    UI: {
+      PLACEHOLDER_TEXT: 'Please select',
+      PENDING_BACKGROUND: '#eeeeee'
+    },
+    KEY_SEPARATOR: '___' // Separator for composite keys
+  };
 
-// ===== CACHE MANAGEMENT =====
-let GLOBAL_DROPDOWN_CACHE = null;
+  // Private cache (in-memory for the current session, script cache for longer persistence)
+  let dropdownCache = null;
 
-/**
- * Converts Set values in an object to Arrays
- * @param {Object} obj - Object with Set values
- * @return {Object} Object with Array values
- */
-function mapSetsToArrays(obj) {
-  const out = {};
-  for (let key in obj) {
-    if (obj.hasOwnProperty(key)) {
-      out[key] = Array.from(obj[key]);
+  /**
+   * Converts Set values in an object to Arrays.
+   * @param {Object} obj - Object with Set values.
+   * @return {Object} Object with Array values.
+   * @private
+   */
+  function mapSetsToArrays(obj) {
+    const out = {};
+    for (let key in obj) {
+      if (obj.hasOwnProperty(key)) {
+        out[key] = Array.from(obj[key]);
+      }
     }
+    return out;
   }
-  return out;
-}
 
-/**
- * Builds or retrieves the dropdown cache
- * @param {SpreadsheetApp.Spreadsheet} spreadsheet - The active spreadsheet
- * @return {Object} Cache object with dropdown mappings
- */
-function buildDropdownCache(spreadsheet) {
-  try {
-    // Try to get from script cache first
-    const cache = CacheService.getScriptCache();
-    let cachedData = cache.get(CONFIG.CACHE_KEY);
+  /**
+   * Builds or retrieves the dropdown cache.
+   * @param {SpreadsheetApp.Spreadsheet} spreadsheet - The active spreadsheet.
+   * @return {Object} Cache object with dropdown mappings.
+   * @private
+   */
+  function buildDropdownCache(spreadsheet) {
+    try {
+      // Try to get from script cache first
+      const cache = CacheService.getScriptCache(); // Google Apps Script Cache Service
+      let cachedData = cache.get(DROPDOWN_CONFIG.CACHE_KEY);
 
-    if (cachedData) {
-      Logger.log('Using cached dropdown data');
-      const parsed = JSON.parse(cachedData);
+      if (cachedData) {
+        Logger.log('Using cached dropdown data');
+        const parsed = JSON.parse(cachedData);
+        // Ensure the structure matches what's expected
+        return {
+          typeToCategories: parsed.typeToCategories || {},
+          typeCategoryToSubCategories: parsed.typeCategoryToSubCategories || {},
+        };
+      }
+
+      Logger.log('Building dropdown cache from sheet');
+      const dropdownsSheetName = DROPDOWN_CONFIG.SHEETS.DROPDOWNS; // Use local config
+      const dropdownsSheet = spreadsheet.getSheetByName(dropdownsSheetName);
+
+      if (!dropdownsSheet) {
+        throw new Error(`Sheet "${dropdownsSheetName}" not found`);
+      }
+
+      const dropdownsData = dropdownsSheet.getDataRange().getValues();
+      const startRow = (dropdownsData.length > 0 &&
+                       typeof dropdownsData[0][0] === 'string' &&
+                       dropdownsData[0][0].toLowerCase() === 'type') ? 1 : 0;
+
+      const typeToCategories = {};
+      const typeCategoryToSubCategories = {};
+
+      for (let i = startRow; i < dropdownsData.length; i++) {
+        const [type, category, subCategory] = dropdownsData[i];
+        if (!type || !category) continue;
+
+        if (!typeToCategories[type]) {
+          typeToCategories[type] = new Set();
+        }
+        typeToCategories[type].add(category);
+
+        if (subCategory) {
+          const key = `${type}${DROPDOWN_CONFIG.KEY_SEPARATOR}${category}`;
+          if (!typeCategoryToSubCategories[key]) {
+            typeCategoryToSubCategories[key] = new Set();
+          }
+          typeCategoryToSubCategories[key].add(subCategory);
+        }
+      }
+
+      const cacheToStore = {
+        typeToCategories: mapSetsToArrays(typeToCategories),
+        typeCategoryToSubCategories: mapSetsToArrays(typeCategoryToSubCategories),
+      };
+
+      try {
+        cache.put(DROPDOWN_CONFIG.CACHE_KEY, JSON.stringify(cacheToStore), DROPDOWN_CONFIG.CACHE_EXPIRY_SECONDS);
+      } catch (e) {
+        Logger.log('Failed to cache dropdown data: ' + e.toString());
+      }
+
+      return cacheToStore;
+    } catch (error) {
+      Logger.log('Error building dropdown cache: ' + error.toString());
+      errorService.log(errorService.create('Error building dropdown cache', { originalError: error.toString() }));
       return {
-        typeToCategories: parsed.typeToCategories,
-        typeCategoryToSubCategories: parsed.typeCategoryToSubCategories,
+        typeToCategories: {},
+        typeCategoryToSubCategories: {}
       };
     }
+  }
 
-    // If not in cache, build from sheet
-    Logger.log('Building dropdown cache from sheet');
-    const dropdownsSheet = spreadsheet.getSheetByName(CONFIG.SHEETS.DROPDOWNS);
-    
-    if (!dropdownsSheet) {
-      throw new Error(`Sheet "${CONFIG.SHEETS.DROPDOWNS}" not found`);
+  /**
+   * Sets up a dropdown validation in a cell.
+   * @param {SpreadsheetApp.Range} range - The cell range to set the dropdown in.
+   * @param {Array} options - The dropdown options.
+   * @private
+   */
+  function setDropdownValidation(range, options) {
+    range.clearDataValidations();
+    if (!options || options.length === 0) {
+      return;
     }
-    
-    const dropdownsData = dropdownsSheet.getDataRange().getValues();
-    
-    // Skip header row if it exists (check if first row contains headers)
-    const startRow = (dropdownsData.length > 0 && 
-                     typeof dropdownsData[0][0] === 'string' && 
-                     dropdownsData[0][0].toLowerCase() === 'type') ? 1 : 0;
-    
-    const typeToCategories = {};
-    const typeCategoryToSubCategories = {};
+    const rule = SpreadsheetApp.newDataValidation()
+      .requireValueInList([DROPDOWN_CONFIG.UI.PLACEHOLDER_TEXT, ...options], true)
+      .setAllowInvalid(true) // Allow users to enter values not in the list
+      .build();
+    range.setDataValidation(rule);
+  }
 
-    // Process each row in the dropdowns data
-    for (let i = startRow; i < dropdownsData.length; i++) {
-      const [type, category, subCategory] = dropdownsData[i];
-      
-      // Skip empty rows or rows with missing data
-      if (!type || !category) continue;
-      
-      // Add to type -> categories mapping
-      if (!typeToCategories[type]) {
-        typeToCategories[type] = new Set();
+  /**
+   * Clears the placeholder text if it's present in a cell.
+   * @param {SpreadsheetApp.Range} range - The cell range to check.
+   * @private
+   */
+  function clearPlaceholderIfNeeded(range) {
+    if (range.getValue() === DROPDOWN_CONFIG.UI.PLACEHOLDER_TEXT) {
+      range.clearContent();
+    }
+  }
+
+  /**
+   * Highlights a cell to indicate pending selection.
+   * @param {SpreadsheetApp.Range} range - The cell range to highlight.
+   * @private
+   */
+  function highlightPending(range) {
+    range.setBackground(DROPDOWN_CONFIG.UI.PENDING_BACKGROUND);
+  }
+
+  /**
+   * Clears highlighting from a cell.
+   * @param {SpreadsheetApp.Range} range - The cell range to clear highlighting from.
+   * @private
+   */
+  function clearHighlight(range) {
+    range.setBackground(null);
+  }
+
+  /**
+   * Handles edits to the Type column.
+   * @param {SpreadsheetApp.Sheet} sheet - The active sheet.
+   * @param {number} row - The edited row.
+   * @param {Object} typeToCategories - Mapping of types to categories.
+   * @private
+   */
+  function handleTypeEdit(sheet, row, typeToCategories) {
+    const typeCell = sheet.getRange(row, DROPDOWN_CONFIG.COLUMNS.TYPE);
+    const categoryCell = sheet.getRange(row, DROPDOWN_CONFIG.COLUMNS.CATEGORY);
+    const subCategoryCell = sheet.getRange(row, DROPDOWN_CONFIG.COLUMNS.SUB_CATEGORY);
+
+    const type = typeCell.getValue();
+    const oldCategoryValue = categoryCell.getValue();
+    const categories = typeToCategories[type] || [];
+
+    setDropdownValidation(categoryCell, categories);
+
+    if (oldCategoryValue && (categories.length === 0 || !categories.includes(oldCategoryValue))) {
+      categoryCell.clearContent();
+      subCategoryCell.clearContent().clearDataValidations();
+      highlightPending(categoryCell);
+    } else if (categories.length > 0 && !oldCategoryValue) {
+        highlightPending(categoryCell); // Highlight if new options available and cell is empty
+    }
+
+
+    clearPlaceholderIfNeeded(typeCell);
+    if (categoryCell.getValue() !== DROPDOWN_CONFIG.UI.PLACEHOLDER_TEXT && categoryCell.getValue() !== "") {
+        clearHighlight(categoryCell);
+    }
+  }
+
+  /**
+   * Handles edits to the Category column.
+   * @param {SpreadsheetApp.Sheet} sheet - The active sheet.
+   * @param {number} row - The edited row.
+   * @param {Object} typeCategoryToSubCategories - Mapping of type+category to subcategories.
+   * @private
+   */
+  function handleCategoryEdit(sheet, row, typeCategoryToSubCategories) {
+    const typeCell = sheet.getRange(row, DROPDOWN_CONFIG.COLUMNS.TYPE);
+    const categoryCell = sheet.getRange(row, DROPDOWN_CONFIG.COLUMNS.CATEGORY);
+    const subCategoryCell = sheet.getRange(row, DROPDOWN_CONFIG.COLUMNS.SUB_CATEGORY);
+
+    const type = typeCell.getValue();
+    const category = categoryCell.getValue();
+    const oldSubCategoryValue = subCategoryCell.getValue();
+
+    if (type && category && category !== DROPDOWN_CONFIG.UI.PLACEHOLDER_TEXT) {
+      const key = `${type}${DROPDOWN_CONFIG.KEY_SEPARATOR}${category}`;
+      const subCategories = typeCategoryToSubCategories[key] || [];
+      setDropdownValidation(subCategoryCell, subCategories);
+
+      if (oldSubCategoryValue && (subCategories.length === 0 || !subCategories.includes(oldSubCategoryValue))) {
+        subCategoryCell.clearContent();
+        highlightPending(subCategoryCell);
+      } else if (subCategories.length > 0 && !oldSubCategoryValue) {
+        highlightPending(subCategoryCell); // Highlight if new options available and cell is empty
       }
-      typeToCategories[type].add(category);
 
-      // Add to type+category -> subcategories mapping
-      if (subCategory) {
-        const key = `${type}${CONFIG.KEY_SEPARATOR}${category}`;
-        if (!typeCategoryToSubCategories[key]) {
-          typeCategoryToSubCategories[key] = new Set();
+    } else {
+      // If type or category is placeholder or empty, clear sub-category
+      subCategoryCell.clearContent().clearDataValidations();
+    }
+
+    clearPlaceholderIfNeeded(categoryCell);
+    if (subCategoryCell.getValue() !== DROPDOWN_CONFIG.UI.PLACEHOLDER_TEXT && subCategoryCell.getValue() !== "") {
+        clearHighlight(subCategoryCell);
+    }
+  }
+
+  /**
+   * Handles edits to the Sub-Category column.
+   * @param {SpreadsheetApp.Sheet} sheet - The active sheet.
+   * @param {number} row - The edited row.
+   * @private
+   */
+  function handleSubCategoryEdit(sheet, row) {
+    const subCategoryCell = sheet.getRange(row, DROPDOWN_CONFIG.COLUMNS.SUB_CATEGORY);
+    clearPlaceholderIfNeeded(subCategoryCell);
+    clearHighlight(subCategoryCell); // Clear highlight once a sub-category is selected or cleared
+  }
+
+
+  // Public API
+  return {
+    /**
+     * Handles edit events in the spreadsheet, specifically for the Transactions sheet.
+     * @param {Object} e - The edit event object.
+     */
+    handleEdit: function(e) {
+      try {
+        const sheet = e.range.getSheet();
+        // Use global config for sheet names if available, otherwise fallback to local
+        const transactionsSheetName = (config && config.get && config.get().SHEETS && config.get().SHEETS.TRANSACTIONS)
+                                      ? config.get().SHEETS.TRANSACTIONS
+                                      : DROPDOWN_CONFIG.SHEETS.TRANSACTIONS;
+
+        if (sheet.getName() !== transactionsSheetName) return;
+        if (e.range.getRow() === 1 && sheet.getFrozenRows() >= 1) return; // Skip header row if frozen
+
+        if (!dropdownCache) {
+          dropdownCache = buildDropdownCache(e.source);
         }
-        typeCategoryToSubCategories[key].add(subCategory);
+        const { typeToCategories, typeCategoryToSubCategories } = dropdownCache;
+
+        const startRow = e.range.getRow();
+        const startCol = e.range.getColumn();
+        const numRows = e.range.getNumRows();
+        const numCols = e.range.getNumColumns();
+
+        for (let r = 0; r < numRows; r++) {
+          const currentRow = startRow + r;
+          if (currentRow === 1 && sheet.getFrozenRows() >= 1) continue; // Skip header again if iterating
+
+          for (let c = 0; c < numCols; c++) {
+            const currentCol = startCol + c;
+
+            if (currentCol === DROPDOWN_CONFIG.COLUMNS.TYPE) {
+              handleTypeEdit(sheet, currentRow, typeToCategories);
+            } else if (currentCol === DROPDOWN_CONFIG.COLUMNS.CATEGORY) {
+              handleCategoryEdit(sheet, currentRow, typeCategoryToSubCategories);
+            } else if (currentCol === DROPDOWN_CONFIG.COLUMNS.SUB_CATEGORY) {
+              handleSubCategoryEdit(sheet, currentRow);
+            }
+          }
+        }
+      } catch (error) {
+        Logger.log('Error in DropdownService.handleEdit: ' + error.toString());
+        errorService.handle(errorService.create('Error in dropdown edit handler', { originalError: error.toString() }), "An error occurred while updating dropdowns.");
       }
+    },
+
+    /**
+     * Forces a refresh of the dropdown cache.
+     */
+    refreshCache: function() {
+      try {
+        uiService.showLoadingSpinner("Refreshing dropdown cache...");
+        const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+        const scriptCache = CacheService.getScriptCache();
+        scriptCache.remove(DROPDOWN_CONFIG.CACHE_KEY);
+        dropdownCache = buildDropdownCache(spreadsheet); // Rebuild in-memory cache as well
+        uiService.hideLoadingSpinner();
+        uiService.showSuccessNotification('Dropdown cache has been refreshed.');
+      } catch (error) {
+        uiService.hideLoadingSpinner();
+        Logger.log('Error refreshing dropdown cache: ' + error.toString());
+        errorService.handle(errorService.create('Error refreshing dropdown cache', { originalError: error.toString() }), "Failed to refresh dropdown cache.");
+      }
+    },
+
+    /**
+     * Initializes the dropdown cache if it's not already loaded.
+     * Useful for scenarios where onEdit might not be the first trigger.
+     */
+    initializeCache: function() {
+        if (!dropdownCache) {
+            Logger.log("Initializing dropdown cache proactively.");
+            dropdownCache = buildDropdownCache(SpreadsheetApp.getActiveSpreadsheet());
+        }
     }
+  };
+})(FinancialPlanner.Utils, FinancialPlanner.UIService, FinancialPlanner.ErrorService, FinancialPlanner.Config);
 
-    // Convert Sets to Arrays for caching
-    const cacheData = {
-      typeToCategories: mapSetsToArrays(typeToCategories),
-      typeCategoryToSubCategories: mapSetsToArrays(typeCategoryToSubCategories),
-    };
-
-    // Store in cache
-    try {
-      cache.put(CONFIG.CACHE_KEY, JSON.stringify(cacheData), CONFIG.CACHE_EXPIRY_SECONDS);
-    } catch (e) {
-      Logger.log('Failed to cache dropdown data: ' + e.toString());
-      // Continue even if caching fails
-    }
-
-    return cacheData;
-  } catch (error) {
-    Logger.log('Error building dropdown cache: ' + error.toString());
-    // Return empty cache structure on error
-    return {
-      typeToCategories: {},
-      typeCategoryToSubCategories: {}
-    };
-  }
-}
+// Backward compatibility layer for existing global functions
 
 /**
- * Forces a refresh of the dropdown cache
- * @param {SpreadsheetApp.Spreadsheet} spreadsheet - The active spreadsheet
- */
-function refreshDropdownCache(spreadsheet) {
-  const cache = CacheService.getScriptCache();
-  cache.remove(CONFIG.CACHE_KEY);
-  GLOBAL_DROPDOWN_CACHE = buildDropdownCache(spreadsheet);
-}
-
-// ===== UI HELPERS =====
-
-/**
- * Sets up a dropdown validation in a cell
- * @param {Range} range - The cell range to set the dropdown in
- * @param {Array} options - The dropdown options
- */
-function setDropdown(range, options) {
-  range.clearDataValidations();
-  
-  if (!options || options.length === 0) {
-    return;
-  }
-  
-  const rule = SpreadsheetApp.newDataValidation()
-    .requireValueInList([CONFIG.UI.PLACEHOLDER_TEXT, ...options], true)
-    .setAllowInvalid(true)
-    .build();
-    
-  range.setDataValidation(rule);
-}
-
-/**
- * Clears the placeholder text if it's present in a cell
- * @param {Range} range - The cell range to check
- */
-function clearPlaceholderIfNeeded(range) {
-  if (range.getValue() === CONFIG.UI.PLACEHOLDER_TEXT) {
-    range.clearContent();
-  }
-}
-
-/**
- * Highlights a cell to indicate pending selection
- * @param {Range} range - The cell range to highlight
- */
-function highlightPending(range) {
-  range.setBackground(CONFIG.UI.PENDING_BACKGROUND);
-}
-
-/**
- * Clears highlighting from a cell
- * @param {Range} range - The cell range to clear highlighting from
- */
-function clearHighlight(range) {
-  range.setBackground(null);
-}
-
-// ===== MAIN EDIT HANDLER =====
-
-/**
- * Handles edit events in the spreadsheet
- * @param {Object} e - The edit event object
+ * Global onEdit trigger.
+ * It now delegates to the appropriate service if the edit is on the Transactions sheet.
+ * Other onEdit functionalities for different sheets should be handled by FinancialPlanner.EventHandlers.onEdit
+ * @param {Object} e The event object
  */
 function onEdit(e) {
-  try {
-    // Check if edit is in the Transactions sheet
-    const sheet = e.range.getSheet();
-    if (sheet.getName() !== CONFIG.SHEETS.TRANSACTIONS) return;
-    
-    // Skip header row if present (assuming row 1 is header)
-    if (e.range.getRow() === 1) return;
-    
-    // Initialize cache if needed
-    if (!GLOBAL_DROPDOWN_CACHE) {
-      GLOBAL_DROPDOWN_CACHE = buildDropdownCache(e.source);
-    }
-    
-    const { typeToCategories, typeCategoryToSubCategories } = GLOBAL_DROPDOWN_CACHE;
-
-    // Get the range dimensions to handle multi-cell edits (like Ctrl+D)
-    const startRow = e.range.getRow();
-    const startCol = e.range.getColumn();
-    const numRows = e.range.getNumRows();
-    const numCols = e.range.getNumColumns();
-    
-    // Process each cell in the edited range
-    for (let rowOffset = 0; rowOffset < numRows; rowOffset++) {
-      const currentRow = startRow + rowOffset;
-      
-      // Skip header row
-      if (currentRow === 1) continue;
-      
-      for (let colOffset = 0; colOffset < numCols; colOffset++) {
-        const currentCol = startCol + colOffset;
-        
-        // Handle Type column edits
-        if (currentCol === CONFIG.COLUMNS.TYPE) {
-          handleTypeEdit(sheet, currentRow, typeToCategories);
-        }
-        
-        // Handle Category column edits
-        else if (currentCol === CONFIG.COLUMNS.CATEGORY) {
-          handleCategoryEdit(sheet, currentRow, typeCategoryToSubCategories);
-        }
-        
-        // Handle Sub-Category column edits
-        else if (currentCol === CONFIG.COLUMNS.SUB_CATEGORY) {
-          handleSubCategoryEdit(sheet, currentRow);
-        }
-      }
-    }
-  } catch (error) {
-    Logger.log('Error in onEdit: ' + error.toString());
-    // We don't want to throw errors in onEdit as it would disrupt the user
+  // This global onEdit should ideally be managed by a central event dispatcher.
+  // For now, we check if the edit is on the Transactions sheet and delegate.
+  const sheet = e.range.getSheet();
+  // Use FinancialPlanner.Config if available for sheet name
+  let transactionsSheetName = 'Transactions'; // Default
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.Config && FinancialPlanner.Config.get) {
+    transactionsSheetName = FinancialPlanner.Config.get().SHEETS.TRANSACTIONS || 'Transactions';
   }
-}
 
-/**
- * Handles edits to the Type column
- * @param {Sheet} sheet - The active sheet
- * @param {Number} row - The edited row
- * @param {Object} typeToCategories - Mapping of types to categories
- */
-function handleTypeEdit(sheet, row, typeToCategories) {
-  const typeCell = sheet.getRange(row, CONFIG.COLUMNS.TYPE);
-  const categoryCell = sheet.getRange(row, CONFIG.COLUMNS.CATEGORY);
-  const subCategoryCell = sheet.getRange(row, CONFIG.COLUMNS.SUB_CATEGORY);
-  
-  // Get the new type value
-  const type = typeCell.getValue();
-  
-  // Only clear dependent fields if this is a direct edit, not a Ctrl+D operation
-  // We can detect this by checking if the value is new or changed
-  const oldCategoryValue = categoryCell.getValue();
-  const oldSubCategoryValue = subCategoryCell.getValue();
-  
-  // Check if we need to update the category dropdown
-  const categories = typeToCategories[type] || [];
-  
-  // Set up category dropdown based on selected type
-  setDropdown(categoryCell, categories);
-  
-  // Only clear category content if the type has changed and would make the current category invalid
-  if (oldCategoryValue && categories.length > 0 && !categories.includes(oldCategoryValue)) {
-    categoryCell.clearContent();
-    subCategoryCell.clearContent().clearDataValidations();
-    highlightPending(categoryCell);
-  }
-  
-  // Clear placeholder if needed
-  clearPlaceholderIfNeeded(typeCell);
-  clearHighlight(categoryCell);
-}
-
-/**
- * Handles edits to the Category column
- * @param {Sheet} sheet - The active sheet
- * @param {Number} row - The edited row
- * @param {Object} typeCategoryToSubCategories - Mapping of type+category to subcategories
- */
-function handleCategoryEdit(sheet, row, typeCategoryToSubCategories) {
-  const typeCell = sheet.getRange(row, CONFIG.COLUMNS.TYPE);
-  const categoryCell = sheet.getRange(row, CONFIG.COLUMNS.CATEGORY);
-  const subCategoryCell = sheet.getRange(row, CONFIG.COLUMNS.SUB_CATEGORY);
-  
-  // Get the current type and category values
-  const type = typeCell.getValue();
-  const category = categoryCell.getValue();
-  const oldSubCategoryValue = subCategoryCell.getValue();
-  
-  // Only proceed if we have both type and category
-  if (type && category) {
-    const key = `${type}${CONFIG.KEY_SEPARATOR}${category}`;
-    const subCategories = typeCategoryToSubCategories[key] || [];
-    
-    // Set up sub-category dropdown
-    setDropdown(subCategoryCell, subCategories);
-    
-    // Only clear sub-category content if the category has changed and would make the current sub-category invalid
-    if (oldSubCategoryValue && subCategories.length > 0 && !subCategories.includes(oldSubCategoryValue)) {
-      subCategoryCell.clearContent();
-      highlightPending(subCategoryCell);
+  if (sheet.getName() === transactionsSheetName) {
+    if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.DropdownService) {
+      FinancialPlanner.DropdownService.handleEdit(e);
+    } else {
+      Logger.log("FinancialPlanner.DropdownService not available for onEdit delegation.");
     }
   }
-  
-  // Clear placeholder if needed
-  clearPlaceholderIfNeeded(categoryCell);
-  clearHighlight(subCategoryCell);
+  // IMPORTANT: If other modules also need onEdit, a central dispatcher in FinancialPlanner.EventHandlers
+  // should be responsible for calling the respective module handlers.
+  // For example: FinancialPlanner.EventHandlers.onEdit(e); which then calls DropdownService.handleEdit(e) etc.
 }
 
-/**
- * Handles edits to the Sub-Category column
- * @param {Sheet} sheet - The active sheet
- * @param {Number} row - The edited row
- */
-function handleSubCategoryEdit(sheet, row) {
-  const subCategoryCell = sheet.getRange(row, CONFIG.COLUMNS.SUB_CATEGORY);
-  clearPlaceholderIfNeeded(subCategoryCell);
-}
 
 /**
- * Menu function to manually refresh the dropdown cache
+ * Global function to manually refresh the dropdown cache.
+ * Delegates to the DropdownService.
  */
 function refreshCache() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  refreshDropdownCache(spreadsheet);
-  SpreadsheetApp.getUi().alert('Dropdown cache has been refreshed.');
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.DropdownService) {
+    return FinancialPlanner.DropdownService.refreshCache();
+  }
+  Logger.log("FinancialPlanner.DropdownService not available for refreshCache delegation.");
+  SpreadsheetApp.getUi().alert("Could not refresh cache: DropdownService not loaded.");
 }

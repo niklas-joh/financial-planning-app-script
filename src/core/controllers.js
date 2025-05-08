@@ -127,6 +127,54 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
       "Savings analysis report generated successfully!",
       "Failed to generate savings analysis report"
     ),
+
+    /**
+     * Creates a spending trends chart
+     */
+    createSpendingTrendsChart: wrapWithFeedback(
+      function() {
+        return FinancialPlanner.VisualizationService.createSpendingTrendsChart();
+      },
+      "Creating spending trends chart...",
+      "Spending trends chart created successfully!", // Or appropriate message
+      "Failed to create spending trends chart"
+    ),
+
+    /**
+     * Creates a budget vs actual chart
+     */
+    createBudgetVsActualChart: wrapWithFeedback(
+      function() {
+        return FinancialPlanner.VisualizationService.createBudgetVsActualChart();
+      },
+      "Creating budget vs actual chart...",
+      "Budget vs actual chart created successfully!",
+      "Failed to create budget vs actual chart"
+    ),
+
+    /**
+     * Creates an income vs expenses chart
+     */
+    createIncomeVsExpensesChart: wrapWithFeedback(
+      function() {
+        return FinancialPlanner.VisualizationService.createIncomeVsExpensesChart();
+      },
+      "Creating income vs expenses chart...",
+      "Income vs expenses chart created successfully!",
+      "Failed to create income vs expenses chart"
+    ),
+
+    /**
+     * Creates a category pie chart
+     */
+    createCategoryPieChart: wrapWithFeedback(
+      function() {
+        return FinancialPlanner.VisualizationService.createCategoryPieChart();
+      },
+      "Creating category pie chart...",
+      "Category pie chart created successfully!",
+      "Failed to create category pie chart"
+    ),
     
     /**
      * Toggles the display of sub-categories in the overview
@@ -161,13 +209,20 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
      */
     refreshCache: wrapWithFeedback(
       function() {
-        // Use the CacheService to invalidate all cache entries
-        FinancialPlanner.CacheService.invalidateAll();
-        return true;
+        // Invalidate general cache
+        if (FinancialPlanner.CacheService && FinancialPlanner.CacheService.invalidateAll) {
+          FinancialPlanner.CacheService.invalidateAll();
+        }
+        // Refresh dropdown specific cache
+        if (FinancialPlanner.DropdownService && FinancialPlanner.DropdownService.refreshCache) {
+          FinancialPlanner.DropdownService.refreshCache(); // This already has UI feedback
+          return true; // Assuming DropdownService.refreshCache handles its own success/error messages
+        }
+        return true; // Fallback if DropdownService not available or doesn't handle feedback itself
       },
-      "Refreshing cache...",
-      "Cache refreshed successfully!",
-      "Failed to refresh cache"
+      "Refreshing all caches...", // General message
+      "Caches refreshed successfully!", // General success, DropdownService might show specific one
+      "Failed to refresh one or more caches"
     ),
     
     /**
@@ -230,7 +285,14 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
         // Dispatch to the appropriate handler based on the sheet name
         if (sheetName === config.getSheetNames().OVERVIEW) {
           // Use the FinanceOverview module's handleEdit method
-          FinancialPlanner.FinanceOverview.handleEdit(e);
+          if (FinancialPlanner.FinanceOverview && FinancialPlanner.FinanceOverview.handleEdit) {
+            FinancialPlanner.FinanceOverview.handleEdit(e);
+          }
+        } else if (sheetName === config.getSheetNames().TRANSACTIONS) {
+          // Use the DropdownService module's handleEdit method
+          if (FinancialPlanner.DropdownService && FinancialPlanner.DropdownService.handleEdit) {
+            FinancialPlanner.DropdownService.handleEdit(e);
+          }
         }
         // Add more handlers for other sheets as they are refactored
         

@@ -6,7 +6,7 @@
  */
 
 // Create the SettingsService module within the FinancialPlanner namespace
-FinancialPlanner.SettingsService = (function(config, utils) {
+FinancialPlanner.SettingsService = (function(config, utils, uiService, errorService) {
   // Private variables and functions
   
   /**
@@ -67,13 +67,18 @@ FinancialPlanner.SettingsService = (function(config, utils) {
      * @return {any} The preference value, or the default value if not found
      */
     getValue: function(key, defaultValue) {
-      const preference = findPreference(key);
-      
-      if (preference) {
-        return preference.value;
+      try {
+        const preference = findPreference(key);
+        
+        if (preference) {
+          return preference.value;
+        }
+        
+        return defaultValue;
+      } catch (error) {
+        errorService.handle(errorService.create(`Error getting setting value for key: ${key}`, { originalError: error.toString() }), `Failed to get setting: ${key}`);
+        return defaultValue;
       }
-      
-      return defaultValue;
     },
     
     /**
@@ -82,16 +87,20 @@ FinancialPlanner.SettingsService = (function(config, utils) {
      * @param {any} value - The preference value
      */
     setValue: function(key, value) {
-      const sheet = getSettingsSheet();
-      const preference = findPreference(key);
-      
-      if (preference) {
-        // Update existing preference
-        sheet.getRange(preference.row, 2).setValue(value);
-      } else {
-        // Add new preference
-        const lastRow = Math.max(1, sheet.getLastRow());
-        sheet.getRange(lastRow + 1, 1, 1, 2).setValues([[key, value]]);
+      try {
+        const sheet = getSettingsSheet();
+        const preference = findPreference(key);
+        
+        if (preference) {
+          // Update existing preference
+          sheet.getRange(preference.row, 2).setValue(value);
+        } else {
+          // Add new preference
+          const lastRow = Math.max(1, sheet.getLastRow());
+          sheet.getRange(lastRow + 1, 1, 1, 2).setValues([[key, value]]);
+        }
+      } catch (error) {
+        errorService.handle(errorService.create(`Error setting setting value for key: ${key}`, { originalError: error.toString(), valueToSet: value }), `Failed to set setting: ${key}`);
       }
     },
     
@@ -186,28 +195,39 @@ FinancialPlanner.SettingsService = (function(config, utils) {
      * @return {Object} Object containing all preferences
      */
     getAllPreferences: function() {
-      const sheet = getSettingsSheet();
-      const data = sheet.getDataRange().getValues();
-      const preferences = {};
-      
-      // Start from row 1 (index 0) to skip the header
-      for (let i = 1; i < data.length; i++) {
-        preferences[data[i][0]] = data[i][1];
+      try {
+        const sheet = getSettingsSheet();
+        const data = sheet.getDataRange().getValues();
+        const preferences = {};
+        
+        // Start from row 1 (index 0) to skip the header
+        for (let i = 1; i < data.length; i++) {
+          if (data[i] && data[i][0]) { // Ensure row and key exist
+            preferences[data[i][0]] = data[i][1];
+          }
+        }
+        return preferences;
+      } catch (error) {
+        errorService.handle(errorService.create('Error getting all preferences', { originalError: error.toString() }), "Failed to retrieve all settings.");
+        return {};
       }
-      
-      return preferences;
     },
     
     /**
      * Resets all preferences to their default values
      */
     resetAllPreferences: function() {
-      const sheet = getSettingsSheet();
-      
-      // Clear all rows except the header
-      if (sheet.getLastRow() > 1) {
-        sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).clearContent();
+      try {
+        const sheet = getSettingsSheet();
+        
+        // Clear all rows except the header
+        if (sheet.getLastRow() > 1) {
+          sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getMaxColumns()).clearContent();
+        }
+        uiService.showSuccessNotification("All preferences have been reset.");
+      } catch (error) {
+        errorService.handle(errorService.create('Error resetting all preferences', { originalError: error.toString() }), "Failed to reset settings.");
       }
     }
   };
-})(FinancialPlanner.Config, FinancialPlanner.Utils);
+})(FinancialPlanner.Config, FinancialPlanner.Utils, FinancialPlanner.UIService, FinancialPlanner.ErrorService);
