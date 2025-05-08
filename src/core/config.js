@@ -145,6 +145,13 @@ FinancialPlanner.Config = (function() {
   let userConfig = {};
   
   // Private methods
+  /**
+   * Deeply merges properties from the source object into the target object.
+   * @param {object} target The target object to merge into.
+   * @param {object} source The source object to merge from.
+   * @return {object} The modified target object.
+   * @private
+   */
   function mergeConfig(target, source) {
     for (const key in source) {
       if (source.hasOwnProperty(key)) {
@@ -163,8 +170,12 @@ FinancialPlanner.Config = (function() {
   // Public API
   return {
     /**
-     * Gets the complete configuration object
-     * @return {Object} The complete configuration
+     * Gets a deep copy of the complete configuration object, merging default and user-specific settings.
+     * @return {object} The complete configuration object.
+     *
+     * @example
+     * const currentConfig = FinancialPlanner.Config.get();
+     * console.log(currentConfig.SHEETS.OVERVIEW); // Outputs: "Overview"
      */
     get: function() {
       // Return a deep copy of the merged configuration
@@ -172,9 +183,16 @@ FinancialPlanner.Config = (function() {
     },
     
     /**
-     * Gets a specific configuration section
-     * @param {String} section - The section name (e.g., 'SHEETS', 'COLORS')
-     * @return {Object} The requested configuration section
+     * Gets a specific top-level section from the configuration.
+     * @param {string} section The name of the configuration section (e.g., 'SHEETS', 'COLORS').
+     * @return {object} The requested configuration section, or an empty object if the section doesn't exist.
+     *
+     * @example
+     * const sheetSettings = FinancialPlanner.Config.getSection('SHEETS');
+     * console.log(sheetSettings.TRANSACTIONS); // Outputs: "Transactions"
+     *
+     * const nonExistent = FinancialPlanner.Config.getSection('NON_EXISTENT');
+     * console.log(nonExistent); // Outputs: {}
      */
     getSection: function(section) {
       const config = this.get();
@@ -182,63 +200,103 @@ FinancialPlanner.Config = (function() {
     },
     
     /**
-     * Gets sheet names configuration
-     * @return {Object} Sheet names configuration
+     * Gets the sheet names configuration.
+     * @return {object} An object containing sheet name configurations.
+     *
+     * @example
+     * const sheetNames = FinancialPlanner.Config.getSheetNames();
+     * console.log(sheetNames.OVERVIEW); // Outputs: "Overview"
      */
     getSheetNames: function() {
       return this.getSection('SHEETS');
     },
     
     /**
-     * Gets transaction types configuration
-     * @return {Object} Transaction types configuration
+     * Gets the transaction types configuration.
+     * @return {object} An object containing transaction type configurations.
+     *
+     * @example
+     * const transactionTypes = FinancialPlanner.Config.getTransactionTypes();
+     * console.log(transactionTypes.INCOME); // Outputs: "Income"
      */
     getTransactionTypes: function() {
       return this.getSection('TRANSACTION_TYPES');
     },
     
     /**
-     * Gets target rates configuration
-     * @return {Object} Target rates configuration
+     * Gets the target rates configuration for expense categories.
+     * @return {object} An object containing target rate configurations.
+     *
+     * @example
+     * const targetRates = FinancialPlanner.Config.getTargetRates();
+     * console.log(targetRates.ESSENTIALS); // Outputs: 0.5
      */
     getTargetRates: function() {
       return this.getSection('TARGET_RATES');
     },
     
     /**
-     * Gets UI configuration
-     * @return {Object} UI configuration
+     * Gets the UI elements configuration.
+     * @return {object} An object containing UI configurations.
+     *
+     * @example
+     * const uiConfig = FinancialPlanner.Config.getUI();
+     * console.log(uiConfig.SUBCATEGORY_TOGGLE.LABEL_TEXT); // Outputs: "Show Sub-Categories"
      */
     getUI: function() {
       return this.getSection('UI');
     },
     
     /**
-     * Gets colors configuration
-     * @return {Object} Colors configuration
+     * Gets the color configurations for UI elements and charts.
+     * @return {object} An object containing color configurations.
+     *
+     * @example
+     * const colors = FinancialPlanner.Config.getColors();
+     * console.log(colors.TYPE_HEADERS.INCOME.BG); // Outputs: "#2E7D32"
      */
     getColors: function() {
       return this.getSection('COLORS');
     },
     
     /**
-     * Gets locale configuration
-     * @return {Object} Locale configuration
+     * Gets the locale-specific configurations (e.g., currency symbol, date format).
+     * @return {object} An object containing locale configurations.
+     *
+     * @example
+     * const localeSettings = FinancialPlanner.Config.getLocale();
+     * console.log(localeSettings.CURRENCY_SYMBOL); // Outputs: "€"
      */
     getLocale: function() {
       return this.getSection('LOCALE');
     },
     
     /**
-     * Updates the configuration with user-specific settings
-     * @param {Object} config - The user configuration to merge
+     * Updates the in-memory user configuration by merging it with the provided settings.
+     * Note: This updates the configuration for subsequent `get()` calls within the current session.
+     * It does not persist changes.
+     * @param {object} config The user-specific configuration object to merge.
+     *
+     * @example
+     * FinancialPlanner.Config.update({
+     *   SHEETS: { OVERVIEW: "My Custom Overview" },
+     *   LOCALE: { CURRENCY_SYMBOL: "$" }
+     * });
+     * console.log(FinancialPlanner.Config.get().SHEETS.OVERVIEW); // Outputs: "My Custom Overview"
+     * console.log(FinancialPlanner.Config.get().LOCALE.CURRENCY_SYMBOL); // Outputs: "$"
      */
     update: function(config) {
       userConfig = mergeConfig(userConfig, config);
     },
     
     /**
-     * Resets the configuration to default values
+     * Resets any user-specific configuration overrides, reverting to the default configuration.
+     *
+     * @example
+     * FinancialPlanner.Config.update({ SHEETS: { OVERVIEW: "Temporary Name" } });
+     * // ... some operations ...
+     * FinancialPlanner.Config.reset();
+     * console.log(FinancialPlanner.Config.get().SHEETS.OVERVIEW); // Outputs: "Overview" (the default)
      */
     reset: function() {
       userConfig = {};

@@ -5,14 +5,27 @@
  * It follows the namespace pattern and uses dependency injection for better maintainability.
  */
 
-// Create the VisualizationService module within the FinancialPlanner namespace
+/**
+ * @namespace FinancialPlanner.VisualizationService
+ * @description Service responsible for generating various charts and visualizations based on financial data.
+ * Currently contains placeholders for future chart implementations.
+ * @param {FinancialPlanner.Utils} utils - The utility service.
+ * @param {FinancialPlanner.UIService} uiService - The UI service for notifications and alerts.
+ * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
+ * @param {FinancialPlanner.Config} config - The global configuration service.
+ */
 FinancialPlanner.VisualizationService = (function(utils, uiService, errorService, config) {
   // Private variables and functions (if any in the future)
 
   // Public API
   return {
     /**
-     * Creates a spending trends chart
+     * Placeholder function to create a spending trends chart.
+     * @todo Implement spending trends chart generation logic.
+     * @return {void} Currently shows an info alert.
+     * @public
+     * @example
+     * FinancialPlanner.VisualizationService.createSpendingTrendsChart();
      */
     createSpendingTrendsChart: function() {
       try {
@@ -27,7 +40,12 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
     },
 
     /**
-     * Creates a budget vs actual chart
+     * Placeholder function to create a budget vs. actual spending chart.
+     * @todo Implement budget vs. actual chart generation logic.
+     * @return {void} Currently shows an info alert.
+     * @public
+     * @example
+     * FinancialPlanner.VisualizationService.createBudgetVsActualChart();
      */
     createBudgetVsActualChart: function() {
       try {
@@ -42,7 +60,12 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
     },
 
     /**
-     * Creates an income vs expenses chart
+     * Placeholder function to create an income vs. expenses chart.
+     * @todo Implement income vs. expenses chart generation logic.
+     * @return {void} Currently shows an info alert.
+     * @public
+     * @example
+     * FinancialPlanner.VisualizationService.createIncomeVsExpensesChart();
      */
     createIncomeVsExpensesChart: function() {
       try {
@@ -57,7 +80,12 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
     },
 
     /**
-     * Creates a category pie chart
+     * Placeholder function to create a category breakdown pie chart.
+     * @todo Implement category pie chart generation logic.
+     * @return {void} Currently shows an info alert.
+     * @public
+     * @example
+     * FinancialPlanner.VisualizationService.createCategoryPieChart();
      */
     createCategoryPieChart: function() {
       try {
@@ -74,18 +102,55 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
 })(FinancialPlanner.Utils, FinancialPlanner.UIService, FinancialPlanner.ErrorService, FinancialPlanner.Config);
 
 // Backward compatibility layer for existing global functions
+
+/**
+ * Creates a spending trends chart.
+ * Maintained for backward compatibility. Delegates to `FinancialPlanner.VisualizationService.createSpendingTrendsChart()`.
+ * @return {void | undefined} Result from the service call (currently undefined).
+ * @global
+ */
 function createSpendingTrendsChart() {
-  return FinancialPlanner.VisualizationService.createSpendingTrendsChart();
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.VisualizationService && FinancialPlanner.VisualizationService.createSpendingTrendsChart) {
+    return FinancialPlanner.VisualizationService.createSpendingTrendsChart();
+  }
+   Logger.log("Global createSpendingTrendsChart: FinancialPlanner.VisualizationService not available.");
 }
 
+/**
+ * Creates a budget vs actual chart.
+ * Maintained for backward compatibility. Delegates to `FinancialPlanner.VisualizationService.createBudgetVsActualChart()`.
+ * @return {void | undefined} Result from the service call (currently undefined).
+ * @global
+ */
 function createBudgetVsActualChart() {
-  return FinancialPlanner.VisualizationService.createBudgetVsActualChart();
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.VisualizationService && FinancialPlanner.VisualizationService.createBudgetVsActualChart) {
+    return FinancialPlanner.VisualizationService.createBudgetVsActualChart();
+  }
+   Logger.log("Global createBudgetVsActualChart: FinancialPlanner.VisualizationService not available.");
 }
 
+/**
+ * Creates an income vs expenses chart.
+ * Maintained for backward compatibility. Delegates to `FinancialPlanner.VisualizationService.createIncomeVsExpensesChart()`.
+ * @return {void | undefined} Result from the service call (currently undefined).
+ * @global
+ */
 function createIncomeVsExpensesChart() {
-  return FinancialPlanner.VisualizationService.createIncomeVsExpensesChart();
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.VisualizationService && FinancialPlanner.VisualizationService.createIncomeVsExpensesChart) {
+    return FinancialPlanner.VisualizationService.createIncomeVsExpensesChart();
+  }
+   Logger.log("Global createIncomeVsExpensesChart: FinancialPlanner.VisualizationService not available.");
 }
 
+/**
+ * Creates a category pie chart.
+ * Maintained for backward compatibility. Delegates to `FinancialPlanner.VisualizationService.createCategoryPieChart()`.
+ * @return {void | undefined} Result from the service call (currently undefined).
+ * @global
+ */
 function createCategoryPieChart() {
-  return FinancialPlanner.VisualizationService.createCategoryPieChart();
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.VisualizationService && FinancialPlanner.VisualizationService.createCategoryPieChart) {
+    return FinancialPlanner.VisualizationService.createCategoryPieChart();
+  }
+   Logger.log("Global createCategoryPieChart: FinancialPlanner.VisualizationService not available.");
 }

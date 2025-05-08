@@ -15,8 +15,8 @@ FinancialPlanner.CacheService = (function(config) {
   // Private functions
   
   /**
-   * Checks if the cache is enabled in the configuration
-   * @return {Boolean} True if caching is enabled
+   * Checks if the cache is enabled in the configuration.
+   * @return {boolean} True if caching is enabled, false otherwise.
    * @private
    */
   function isCacheEnabled() {
@@ -24,8 +24,8 @@ FinancialPlanner.CacheService = (function(config) {
   }
   
   /**
-   * Gets the default cache expiry time in seconds
-   * @return {Number} Cache expiry time in seconds
+   * Gets the default cache expiry time in seconds from the configuration.
+   * @return {number} Cache expiry time in seconds.
    * @private
    */
   function getDefaultExpirySeconds() {
@@ -33,9 +33,9 @@ FinancialPlanner.CacheService = (function(config) {
   }
   
   /**
-   * Generates a cache key with a namespace prefix
-   * @param {String} key - The base key
-   * @return {String} The namespaced key
+   * Generates a cache key with a namespace prefix to avoid collisions.
+   * @param {string} key The base key.
+   * @return {string} The namespaced key (e.g., "fp_myKey").
    * @private
    */
   function generateNamespacedKey(key) {
@@ -45,11 +45,27 @@ FinancialPlanner.CacheService = (function(config) {
   // Public API
   return {
     /**
-     * Gets a value from cache or computes it if not available
-     * @param {String} key - Cache key
-     * @param {Function} computeFunction - Function to compute value if not in cache
-     * @param {Number} expirySeconds - Cache expiry in seconds (optional)
-     * @return {any} The cached or computed value
+     * Gets a value from the cache. If the value is not found or is expired,
+     * it computes the value using the provided function, caches it, and then returns it.
+     * If caching is disabled via configuration, it directly calls the computeFunction.
+     *
+     * @param {string} key The unique key for the cache entry.
+     * @param {function(): any} computeFunction A function that computes the value if it's not in the cache.
+     *                                        This function should return the value to be cached.
+     * @param {number} [expirySeconds] The number of seconds for which the item should be cached.
+     *                                 Defaults to the value from `config.getSection('CACHE').EXPIRY_SECONDS` or 3600.
+     * @return {any} The cached or computed value.
+     *
+     * @example
+     * const expensiveData = FinancialPlanner.CacheService.get('myDataKey', function() {
+     *   return someExpensiveCalculation();
+     * }, 600); // Cache for 10 minutes
+     *
+     * @example
+     * // Using default expiry
+     * const anotherData = FinancialPlanner.CacheService.get('anotherKey', function() {
+     *   return fetchSomeData();
+     * });
      */
     get: function(key, computeFunction, expirySeconds) {
       // If caching is disabled, just compute the value
@@ -121,8 +137,13 @@ FinancialPlanner.CacheService = (function(config) {
     },
     
     /**
-     * Invalidates a specific cache entry
-     * @param {String} key - Cache key to invalidate
+     * Invalidates (removes) a specific cache entry from both memory and script cache.
+     * Does nothing if caching is disabled.
+     *
+     * @param {string} key The cache key to invalidate.
+     *
+     * @example
+     * FinancialPlanner.CacheService.invalidate('staleDataKey');
      */
     invalidate: function(key) {
       if (!isCacheEnabled()) return;
@@ -142,8 +163,15 @@ FinancialPlanner.CacheService = (function(config) {
     },
     
     /**
-     * Invalidates all cache entries with the given prefix
-     * @param {String} prefix - Prefix of keys to invalidate
+     * Invalidates all cache entries in the memory cache that start with the given prefix.
+     * Note: This currently only affects the in-memory cache due to limitations
+     * with Google Apps Script's CacheService prefix removal.
+     * Does nothing if caching is disabled.
+     *
+     * @param {string} prefix The prefix of keys to invalidate (e.g., "user_settings_").
+     *
+     * @example
+     * FinancialPlanner.CacheService.invalidateByPrefix('user_specific_data_');
      */
     invalidateByPrefix: function(prefix) {
       if (!isCacheEnabled()) return;
@@ -162,7 +190,13 @@ FinancialPlanner.CacheService = (function(config) {
     },
     
     /**
-     * Invalidates all cache entries
+     * Invalidates all known cache entries.
+     * This clears the entire in-memory cache and attempts to remove known keys
+     * (defined in `config.getSection('CACHE').KEYS`) from the script cache.
+     * Does nothing if caching is disabled.
+     *
+     * @example
+     * FinancialPlanner.CacheService.invalidateAll();
      */
     invalidateAll: function() {
       if (!isCacheEnabled()) return;
@@ -187,10 +221,16 @@ FinancialPlanner.CacheService = (function(config) {
     },
     
     /**
-     * Puts a value in the cache
-     * @param {String} key - Cache key
-     * @param {any} value - Value to cache
-     * @param {Number} expirySeconds - Cache expiry in seconds (optional)
+     * Puts a value directly into the cache (both memory and script cache).
+     * If caching is disabled, this operation does nothing.
+     *
+     * @param {string} key The unique key for the cache entry.
+     * @param {any} value The value to cache. Must be serializable to JSON for script cache.
+     * @param {number} [expirySeconds] The number of seconds for which the item should be cached.
+     *                                 Defaults to the value from `config.getSection('CACHE').EXPIRY_SECONDS` or 3600.
+     *
+     * @example
+     * FinancialPlanner.CacheService.put('userPreferences', { theme: 'dark', notifications: true }, 86400); // Cache for 1 day
      */
     put: function(key, value, expirySeconds) {
       if (!isCacheEnabled()) return;

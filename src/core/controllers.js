@@ -7,16 +7,26 @@
  */
 
 // Create the Controllers module within the FinancialPlanner namespace
+/**
+ * @namespace FinancialPlanner.Controllers
+ * @param {FinancialPlanner.Config} config - The configuration service.
+ * @param {FinancialPlanner.UIService} uiService - The UI service.
+ * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
+ */
 FinancialPlanner.Controllers = (function(config, uiService, errorService) {
   // Private variables and functions
   
   /**
-   * Wraps a controller function with standard error handling and UI feedback
-   * @param {Function} fn - The function to wrap
-   * @param {String} startMessage - Message to show when the operation starts
-   * @param {String} successMessage - Message to show when the operation succeeds
-   * @param {String} errorMessage - Message to show when the operation fails
-   * @return {Function} The wrapped function
+   * Wraps a given function with UI feedback (loading, success, error messages)
+   * and standardized error handling using `ErrorService`.
+   *
+   * @param {function(...any): any} fn - The function to wrap. This function will be called with the original arguments.
+   * @param {string} [startMessage] - Optional message to display via `uiService.showLoadingSpinner` before executing `fn`.
+   * @param {string} [successMessage] - Optional message to display via `uiService.showSuccessNotification` after `fn` executes successfully.
+   * @param {string} [errorMessage] - Optional user-friendly message to pass to `errorService.handle` if `fn` throws an error.
+   *                                  Defaults to "An error occurred while performing the operation.".
+   * @return {function(...any): any} The wrapped function. This function will return the result of `fn` or re-throw the error after handling.
+   * @throws {Error} Re-throws the error caught from the execution of `fn` after it has been handled by `ErrorService`.
    * @private
    */
   function wrapWithFeedback(fn, startMessage, successMessage, errorMessage) {
@@ -57,7 +67,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
   // Public API
   return {
     /**
-     * Creates the financial overview
+     * Initiates the creation of the financial overview sheet.
+     * Calls `FinancialPlanner.FinanceOverview.create()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.FinanceOverview.create()`.
+     * @throws {Error} If an error occurs during overview generation.
      */
     createFinancialOverview: wrapWithFeedback(
       function() {
@@ -69,7 +83,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
     
     /**
-     * Generates a monthly spending report
+     * Generates the monthly spending report.
+     * Calls `FinancialPlanner.MonthlySpendingReport.generate()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.MonthlySpendingReport.generate()`.
+     * @throws {Error} If an error occurs during report generation.
      */
     generateMonthlySpendingReport: wrapWithFeedback(
       function() {
@@ -81,7 +99,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
     
     /**
-     * Shows key financial metrics
+     * Displays key financial metrics.
+     * Calls `FinancialPlanner.FinancialAnalysisService.showKeyMetrics()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.FinancialAnalysisService.showKeyMetrics()`.
+     * @throws {Error} If an error occurs while displaying metrics.
      */
     showKeyMetrics: wrapWithFeedback(
       function() {
@@ -93,7 +115,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
     
     /**
-     * Generates a yearly summary report
+     * Generates the yearly summary report.
+     * Calls `FinancialPlanner.ReportService.generateYearlySummary()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.ReportService.generateYearlySummary()`.
+     * @throws {Error} If an error occurs during report generation.
      */
     generateYearlySummary: wrapWithFeedback(
       function() {
@@ -105,7 +131,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
     
     /**
-     * Generates a category breakdown report
+     * Generates the category breakdown report.
+     * Calls `FinancialPlanner.ReportService.generateCategoryBreakdown()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.ReportService.generateCategoryBreakdown()`.
+     * @throws {Error} If an error occurs during report generation.
      */
     generateCategoryBreakdown: wrapWithFeedback(
       function() {
@@ -117,7 +147,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
     
     /**
-     * Generates a savings analysis report
+     * Generates the savings analysis report.
+     * Calls `FinancialPlanner.ReportService.generateSavingsAnalysis()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.ReportService.generateSavingsAnalysis()`.
+     * @throws {Error} If an error occurs during report generation.
      */
     generateSavingsAnalysis: wrapWithFeedback(
       function() {
@@ -129,19 +163,27 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
 
     /**
-     * Creates a spending trends chart
+     * Creates and displays a spending trends chart.
+     * Calls `FinancialPlanner.VisualizationService.createSpendingTrendsChart()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.VisualizationService.createSpendingTrendsChart()`.
+     * @throws {Error} If an error occurs during chart creation.
      */
     createSpendingTrendsChart: wrapWithFeedback(
       function() {
         return FinancialPlanner.VisualizationService.createSpendingTrendsChart();
       },
       "Creating spending trends chart...",
-      "Spending trends chart created successfully!", // Or appropriate message
+      "Spending trends chart created successfully!",
       "Failed to create spending trends chart"
     ),
 
     /**
-     * Creates a budget vs actual chart
+     * Creates and displays a budget vs. actual spending chart.
+     * Calls `FinancialPlanner.VisualizationService.createBudgetVsActualChart()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.VisualizationService.createBudgetVsActualChart()`.
+     * @throws {Error} If an error occurs during chart creation.
      */
     createBudgetVsActualChart: wrapWithFeedback(
       function() {
@@ -153,7 +195,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
 
     /**
-     * Creates an income vs expenses chart
+     * Creates and displays an income vs. expenses chart.
+     * Calls `FinancialPlanner.VisualizationService.createIncomeVsExpensesChart()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.VisualizationService.createIncomeVsExpensesChart()`.
+     * @throws {Error} If an error occurs during chart creation.
      */
     createIncomeVsExpensesChart: wrapWithFeedback(
       function() {
@@ -165,7 +211,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
 
     /**
-     * Creates a category pie chart
+     * Creates and displays a category pie chart.
+     * Calls `FinancialPlanner.VisualizationService.createCategoryPieChart()`.
+     * Provides UI feedback during the process.
+     * @return {any} The result from `FinancialPlanner.VisualizationService.createCategoryPieChart()`.
+     * @throws {Error} If an error occurs during chart creation.
      */
     createCategoryPieChart: wrapWithFeedback(
       function() {
@@ -177,7 +227,12 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
     
     /**
-     * Toggles the display of sub-categories in the overview
+     * Toggles the visibility of sub-categories in the financial overview sheet.
+     * Uses `FinancialPlanner.SettingsService.toggleShowSubCategories()` to update the preference
+     * and then updates the sheet display accordingly.
+     * Provides UI feedback during the process.
+     * @return {boolean} The new state of the 'show sub-categories' preference.
+     * @throws {Error} If an error occurs while updating preferences or sheet display.
      */
     toggleShowSubCategories: wrapWithFeedback(
       function() {
@@ -205,7 +260,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
     
     /**
-     * Refreshes the cache
+     * Refreshes all application caches.
+     * This includes invalidating the general `CacheService` and the `DropdownService` cache.
+     * Provides UI feedback during the process.
+     * @return {boolean} True if the cache refresh process was initiated.
+     * @throws {Error} If an error occurs during cache invalidation.
      */
     refreshCache: wrapWithFeedback(
       function() {
@@ -226,8 +285,11 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     ),
     
     /**
-     * Handles the onOpen event
-     * This function is called when the spreadsheet is opened
+     * Handles the `onOpen` event for the Google Sheet.
+     * This function is automatically triggered by Google Apps Script when the spreadsheet is opened.
+     * It creates the custom 'Financial Tools' menu in the Google Sheets UI.
+     * Errors during menu creation are logged to the console and `ErrorService` but do not show a UI notification
+     * to avoid disruption when the spreadsheet is opened.
      */
     onOpen: function() {
       try {
@@ -272,9 +334,14 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
     },
     
     /**
-     * Handles the onEdit event
-     * This function is called when the user edits the spreadsheet
-     * @param {Object} e - The edit event object
+     * Handles the `onEdit` event for the Google Sheet.
+     * This function is automatically triggered by Google Apps Script when a user edits any cell in the spreadsheet.
+     * It dispatches the edit event to the appropriate handler based on the sheet name
+     * (e.g., `FinancialPlanner.FinanceOverview.handleEdit` or `FinancialPlanner.DropdownService.handleEdit`).
+     * Errors during event handling are logged to the console and `ErrorService` but do not show a UI notification
+     * to avoid disruption during editing.
+     * @param {GoogleAppsScript.Events.SheetsOnEdit} e The edit event object provided by Google Apps Script.
+     *        See {@link https://developers.google.com/apps-script/guides/triggers/events#edit_3}
      */
     onEdit: function(e) {
       try {
@@ -307,15 +374,35 @@ FinancialPlanner.Controllers = (function(config, uiService, errorService) {
 })(FinancialPlanner.Config, FinancialPlanner.UIService, FinancialPlanner.ErrorService);
 
 // For backward compatibility, create global references to the controller functions
-// These can be removed once all code has been updated to use the namespace
+// These can be removed once all code has been updated to use the namespace.
+
+/**
+ * Global `onOpen` trigger function for Google Apps Script.
+ * Calls `FinancialPlanner.Controllers.onOpen()`.
+ * This function is automatically called by Google Apps Script when the spreadsheet is opened.
+ * @global
+ */
 function onOpen() {
   return FinancialPlanner.Controllers.onOpen();
 }
 
+/**
+ * Global `onEdit` trigger function for Google Apps Script.
+ * Calls `FinancialPlanner.Controllers.onEdit(e)`.
+ * This function is automatically called by Google Apps Script when a cell is edited.
+ * @param {GoogleAppsScript.Events.SheetsOnEdit} e The edit event object.
+ * @global
+ */
 function onEdit(e) {
   return FinancialPlanner.Controllers.onEdit(e);
 }
 
+/**
+ * Global `refreshCache` function, primarily for backward compatibility or direct invocation.
+ * Calls `FinancialPlanner.Controllers.refreshCache()`.
+ * @return {boolean | undefined} The result from `FinancialPlanner.Controllers.refreshCache()`.
+ * @global
+ */
 function refreshCache() {
   return FinancialPlanner.Controllers.refreshCache();
 }

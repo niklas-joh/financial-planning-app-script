@@ -9,71 +9,83 @@
  * Last Updated: 2025-05-08
  */
 
-// Create the FinancialAnalysisService module within the FinancialPlanner namespace
+/**
+ * @namespace FinancialPlanner.FinancialAnalysisService
+ * @description Service for performing financial analysis based on the data aggregated in the 'Overview' sheet.
+ * It generates key metrics, analyzes expense categories against targets, and creates visualizations in a dedicated 'Analysis' sheet.
+ * @param {FinancialPlanner.Utils} utils - The utility service.
+ * @param {FinancialPlanner.UIService} uiService - The UI service for notifications.
+ * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
+ * @param {FinancialPlanner.Config} config - The global configuration service.
+ */
 FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorService, config) {
   // ============================================================================
   // PRIVATE IMPLEMENTATION
   // ============================================================================
   
   /**
-   * Financial Analysis Service class for handling all financial analytics functionality
-   * @class
+   * Internal class responsible for performing the financial analysis calculations and sheet manipulations.
+   * @class FinancialAnalysisService
    * @private
    */
   class FinancialAnalysisService {
     /**
-     * Creates a new FinancialAnalysisService instance
-     * @param {SpreadsheetApp.Spreadsheet} spreadsheet - The active spreadsheet
-     * @param {SpreadsheetApp.Sheet} overviewSheet - The overview sheet containing financial data
-     * @param {Object} config - Configuration object with settings and constants
+     * Creates an instance of the internal FinancialAnalysisService class.
+     * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The active spreadsheet object.
+     * @param {GoogleAppsScript.Spreadsheet.Sheet} overviewSheet - The sheet object containing the generated financial overview data.
+     * @param {object} analysisConfig - A configuration object, typically derived from `FinancialPlanner.Config.get()`.
      * @constructor
      */
     constructor(spreadsheet, overviewSheet, analysisConfig) {
       /**
-       * The active spreadsheet
-       * @type {SpreadsheetApp.Spreadsheet}
+       * The active spreadsheet.
+       * @type {GoogleAppsScript.Spreadsheet.Spreadsheet}
        * @private
        */
       this.spreadsheet = spreadsheet;
       
       /**
-       * The overview sheet containing financial data
-       * @type {SpreadsheetApp.Sheet}
+       * The overview sheet containing summarized financial data.
+       * @type {GoogleAppsScript.Spreadsheet.Sheet}
        * @private
        */
       this.overviewSheet = overviewSheet;
       
       /**
-       * Configuration object with settings and constants
-       * @type {Object}
+       * Configuration object used by the analysis service.
+       * @type {object}
        * @private
        */
       this.config = analysisConfig;
       
       /**
-       * The analysis sheet where analytics will be displayed
-       * @type {SpreadsheetApp.Sheet}
+       * The sheet where analysis results are displayed. Created if it doesn't exist.
+       * @type {GoogleAppsScript.Spreadsheet.Sheet}
        * @private
        */
       this.analysisSheet = utils.getOrCreateSheet(spreadsheet, this.config.SHEETS.ANALYSIS);
       
       /**
-       * Extracted financial data for analysis
-       * @type {Object|null}
+       * Holds the data extracted from the overview sheet for analysis.
+       * Populated by `extractDataFromOverview`.
+       * @type {{incomeCategories: Array<object>, expenseCategories: Array<object>, savingsCategories: Array<object>, months: Array<string>} | null}
        * @private
        */
       this.data = null;
       
       /**
-       * Calculated totals for different financial categories
-       * @type {Object|null}
+       * Holds calculated total values (average monthly) for key categories (Income, Expenses, Savings, etc.).
+       * Populated by `extractDataFromOverview`.
+       * @type {{income: {row: number, value: number}, expenses: {row: number, value: number}, savings: {row: number, value: number}, essentials: {row: number, value: number}, wantsPleasure: {row: number, value: number}, extra: {row: number, value: number}} | null}
        * @private
        */
       this.totals = null;
     }
 
     /**
-     * Initializes the analysis service by extracting data and setting up the analysis sheet
+     * Initializes the analysis service instance.
+     * Extracts data from the overview sheet and sets up the analysis sheet structure and formatting.
+     * @return {void}
      * @public
      */
     initialize() {
@@ -85,7 +97,9 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Performs all analysis functions to generate the complete analysis
+     * Executes the core analysis workflow.
+     * Calls methods to add key metrics, expense category analysis, and charts to the analysis sheet.
+     * @return {void}
      * @public
      */
     analyze() {
@@ -109,7 +123,10 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Extracts necessary data from the overview sheet for analysis
+     * Extracts and structures relevant data from the 'Overview' sheet.
+     * Populates `this.data` with categorized amounts and `this.totals` with key summary figures (like total income, expenses).
+     * It specifically looks for rows starting with "Total [Type]" to get summary values.
+     * @return {void}
      * @private
      */
     extractDataFromOverview() {
@@ -214,7 +231,9 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Sets up the analysis sheet with header and formatting
+     * Clears and sets up the basic structure and formatting of the 'Analysis' sheet.
+     * Includes setting the main header, freezing the header row, and setting initial column widths.
+     * @return {void}
      * @private
      */
     setupAnalysisSheet() {
@@ -242,9 +261,11 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Adds key metrics section to the analysis sheet
-     * @param {Number} startRow - The row to start adding key metrics
-     * @returns {Number} The next row index after adding the section
+     * Adds the 'Key Metrics' section to the analysis sheet.
+     * Calculates and displays metrics like Expenses/Income Ratio, Savings Rate, and individual expense category rates against targets.
+     * Applies formatting and conditional formatting for readability.
+     * @param {number} startRow - The 1-based row index where the section should start.
+     * @return {number} The next available row index after adding the section.
      * @private
      */
     addKeyMetricsSection(startRow) {
@@ -538,9 +559,12 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Adds expense categories section to the analysis sheet
-     * @param {Number} startRow - The row to start adding expense categories
-     * @returns {Number} The next row index after adding the section
+     * Adds the 'Expense Categories' section to the analysis sheet.
+     * Lists major expense categories (excluding sub-categories), their average monthly amount,
+     * percentage of income, target percentage, and variance.
+     * Applies formatting and conditional formatting.
+     * @param {number} startRow - The 1-based row index where the section should start.
+     * @return {number} The next available row index after adding the section.
      * @private
      */
     addExpenseCategoriesSection(startRow) {
@@ -734,8 +758,10 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Creates expenditure charts on the analysis sheet
-     * @param {Number} startRow - The row to start adding charts
+     * Creates and inserts expenditure charts (Pie chart for breakdown, Column chart for rates vs. targets)
+     * into the analysis sheet.
+     * @param {number} startRow - The 1-based row index where the charts should be positioned.
+     * @return {void}
      * @private
      */
     createExpenditureCharts(startRow) {
@@ -845,7 +871,8 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Suggests savings opportunities based on spending patterns
+     * Placeholder method for suggesting savings opportunities. Currently shows an alert.
+     * @return {void}
      * @public
      */
     suggestSavingsOpportunities() {
@@ -854,7 +881,8 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Detects spending anomalies in transaction data
+     * Placeholder method for detecting spending anomalies. Currently shows an alert.
+     * @return {void}
      * @public
      */
     detectSpendingAnomalies() {
@@ -863,7 +891,8 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Analyzes fixed vs variable expenses
+     * Placeholder method for analyzing fixed vs. variable expenses. Currently shows an alert.
+     * @return {void}
      * @public
      */
     analyzeFixedVsVariableExpenses() {
@@ -872,7 +901,8 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     }
 
     /**
-     * Generates a cash flow forecast based on historical data
+     * Placeholder method for generating a cash flow forecast. Currently shows an alert.
+     * @return {void}
      * @public
      */
     generateCashFlowForecast() {
@@ -887,11 +917,18 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
   
   return {
     /**
-     * Analyzes financial data and generates a comprehensive analysis
-     * @param {SpreadsheetApp.Spreadsheet} spreadsheet - The active spreadsheet
-     * @param {SpreadsheetApp.Sheet} overviewSheet - The overview sheet containing financial data
-     * @return {FinancialAnalysisService} The analysis service instance
+     * Creates an instance of the internal `FinancialAnalysisService` class, initializes it,
+     * and runs the analysis workflow. This is the primary entry point for generating the analysis.
+     * Provides UI feedback during the process.
+     * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The active spreadsheet object.
+     * @param {GoogleAppsScript.Spreadsheet.Sheet} overviewSheet - The sheet object containing the generated financial overview data.
+     * @return {FinancialAnalysisService} An initialized instance of the internal `FinancialAnalysisService` class,
+     *         which contains the analysis results and methods for further interaction (though currently limited).
+     * @throws {Error} Re-throws any error encountered during analysis after logging and notifying the user.
      * @public
+     * @example
+     * // Typically called internally by other services or controllers
+     * const analysisService = FinancialPlanner.FinancialAnalysisService.analyze(ss, overviewSheet);
      */
     analyze: function(spreadsheet, overviewSheet) {
       try {
@@ -926,8 +963,14 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     },
     
     /**
-     * Shows key metrics in a dedicated analysis sheet
+     * Public method to trigger the generation and display of the key metrics analysis.
+     * It ensures the overview sheet exists, calls the internal `analyze` method,
+     * activates the analysis sheet, and shows a success notification.
+     * @return {void}
      * @public
+     * @example
+     * // Called from a menu item or controller:
+     * FinancialPlanner.FinancialAnalysisService.showKeyMetrics();
      */
     showKeyMetrics: function() {
       try {
@@ -955,8 +998,13 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     },
     
     /**
-     * Suggests savings opportunities based on spending patterns
+     * Public method to trigger the suggestion of savings opportunities.
+     * Ensures the overview sheet exists, runs the analysis, and calls the internal placeholder method.
+     * @return {void}
      * @public
+     * @example
+     * // Called from a menu item or controller:
+     * FinancialPlanner.FinancialAnalysisService.suggestSavingsOpportunities();
      */
     suggestSavingsOpportunities: function() {
       try {
@@ -978,8 +1026,13 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     },
     
     /**
-     * Detects spending anomalies in transaction data
+     * Public method to trigger the detection of spending anomalies.
+     * Ensures the overview sheet exists, runs the analysis, and calls the internal placeholder method.
+     * @return {void}
      * @public
+     * @example
+     * // Called from a menu item or controller:
+     * FinancialPlanner.FinancialAnalysisService.detectSpendingAnomalies();
      */
     detectSpendingAnomalies: function() {
       try {
@@ -1007,10 +1060,18 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
 // ============================================================================
 
 /**
- * Shows the key metrics section in the Analysis sheet
- * This function is maintained for backward compatibility
- * @public
+ * Shows the key metrics section in the Analysis sheet.
+ * Maintained for backward compatibility with older triggers or direct calls.
+ * Delegates to `FinancialPlanner.FinancialAnalysisService.showKeyMetrics()`.
+ * @return {void}
+ * @global
  */
 function showKeyMetrics() {
-  return FinancialPlanner.FinancialAnalysisService.showKeyMetrics();
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.FinancialAnalysisService && FinancialPlanner.FinancialAnalysisService.showKeyMetrics) {
+    FinancialPlanner.FinancialAnalysisService.showKeyMetrics();
+  } else {
+     Logger.log("Global showKeyMetrics: FinancialPlanner.FinancialAnalysisService not available.");
+     // Optionally show an error to the user if appropriate for a direct call scenario
+     // SpreadsheetApp.getUi().alert("Error: Financial Analysis module not loaded.");
+  }
 }

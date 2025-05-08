@@ -9,16 +9,32 @@
  * Last Updated: 2025-05-08
  */
 
-// Create the FinanceOverview module within the FinancialPlanner namespace
+/**
+ * @namespace FinancialPlanner.FinanceOverview
+ * @description Service responsible for generating a comprehensive financial overview sheet.
+ * It processes transaction data, groups it by type and category (optionally sub-category),
+ * calculates monthly totals, and presents a formatted summary.
+ * @param {FinancialPlanner.Utils} utils - The utility service.
+ * @param {FinancialPlanner.UIService} uiService - The UI service for notifications.
+ * @param {FinancialPlanner.CacheService} cacheService - The caching service.
+ * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
+ * @param {FinancialPlanner.Config} config - The global configuration service.
+ * @param {FinancialPlanner.SettingsService} settingsService - The settings management service.
+ * @param {FinancialPlanner.FinancialAnalysisService} analysisServiceInstance - An instance of the financial analysis service.
+ */
 FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, errorService, config, settingsService, analysisServiceInstance) { // Added settingsService and analysisServiceInstance
   // ============================================================================
   // PRIVATE IMPLEMENTATION
   // ============================================================================
   
   /**
-   * Gets and processes transaction data from the sheet
-   * @param {SpreadsheetApp.Sheet} sheet - The transaction sheet
-   * @return {Object} Object containing processed data and column indices
+   * Retrieves and processes raw transaction data from the specified sheet.
+   * It identifies column indices for key data points (type, category, date, amount, etc.)
+   * and validates the presence of required columns.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The transaction sheet object.
+   * @return {{data: Array<Array<any>>, indices: object}} An object containing the raw data as a 2D array
+   *                                                      and an `indices` object mapping column names to their 0-based index.
+   * @throws {FinancialPlannerError} If required columns are missing in the transaction sheet.
    * @private
    */
   function getProcessedTransactionData(sheet) {
@@ -50,13 +66,14 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Gets unique combinations of Type/Category/Subcategory from transaction data
-   * @param {Array} data - Transaction data
-   * @param {Number} typeCol - Column index for transaction type
-   * @param {Number} categoryCol - Column index for category
-   * @param {Number} subcategoryCol - Column index for subcategory
-   * @param {Boolean} showSubCategories - Whether to show subcategories
-   * @return {Array} List of unique category combinations
+   * Extracts unique combinations of Type, Category, and optionally Sub-Category from the transaction data.
+   * @param {Array<Array<any>>} data - The raw transaction data (2D array, rows as arrays).
+   * @param {number} typeCol - The 0-based column index for the transaction type.
+   * @param {number} categoryCol - The 0-based column index for the category.
+   * @param {number} subcategoryCol - The 0-based column index for the sub-category.
+   * @param {boolean} showSubCategories - If true, sub-categories are included in the combination.
+   * @return {Array<{type: string, category: string, subcategory: string}>} An array of objects,
+   *         each representing a unique combination. Sub-category will be an empty string if not shown or not present.
    * @private
    */
   function getUniqueCategoryCombinations(data, typeCol, categoryCol, subcategoryCol, showSubCategories) {
@@ -89,9 +106,11 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Groups category combinations by type and sorts appropriately
-   * @param {Array} combinations - Array of category combinations
-   * @return {Object} Grouped and sorted combinations
+   * Groups an array of category combinations by their 'type' property.
+   * Within each type, combinations are sorted alphabetically by category, then by sub-category.
+   * @param {Array<{type: string, category: string, subcategory: string}>} combinations - An array of category combination objects.
+   * @return {object<string, Array<{type: string, category: string, subcategory: string}>>} An object where keys are transaction types
+   *         and values are arrays of sorted combination objects belonging to that type.
    * @private
    */
   function groupCategoryCombinations(combinations) {
@@ -119,9 +138,21 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Builds a formula to sum transactions for a specific month
-   * @param {Object} params - Parameters for the formula
-   * @return {String} SUMIFS formula for the specified criteria
+   * Constructs a Google Sheets `SUMIFS` formula string to sum transaction amounts for a specific
+   * type, category, sub-category (optional), and month. Handles shared expenses by dividing their sum by 2.
+   * @param {object} params - Parameters for building the formula.
+   * @param {string} params.type - The transaction type.
+   * @param {string} params.category - The transaction category.
+   * @param {string} [params.subcategory] - The transaction sub-category (optional).
+   * @param {Date} params.monthDate - A Date object representing any day in the target month.
+   * @param {string} params.sheetName - The name of the transactions sheet (e.g., "Transactions").
+   * @param {number} params.typeCol - 1-based column number for 'Type' in the transaction sheet.
+   * @param {number} params.categoryCol - 1-based column number for 'Category'.
+   * @param {number} params.subcategoryCol - 1-based column number for 'Sub-Category'.
+   * @param {number} params.dateCol - 1-based column number for 'Date'.
+   * @param {number} params.amountCol - 1-based column number for 'Amount'.
+   * @param {number} params.sharedCol - 1-based column number for 'Shared' status.
+   * @return {string} The `SUMIFS` formula string.
    * @private
    */
   function buildMonthlySumFormula(params) {
@@ -178,9 +209,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Formats a date according to the configured locale
-   * @param {Date} date - The date to format
-   * @return {String} Formatted date string
+   * Formats a JavaScript Date object into a string based on the date format specified in the application configuration.
+   * Uses the script's time zone.
+   * @param {Date} date - The Date object to format.
+   * @return {string} The formatted date string (e.g., "yyyy-MM-dd").
    * @private
    */
   function formatDate(date) {
@@ -192,8 +224,9 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Clears all content and formatting from a sheet
-   * @param {SpreadsheetApp.Sheet} sheet - The sheet to clear
+   * Clears all content, formatting, and data validations from the given sheet.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet object to clear.
+   * @return {void}
    * @private
    */
   function clearSheetContent(sheet) {
@@ -204,9 +237,11 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Sets up the header row in the overview sheet
-   * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
-   * @param {Boolean} showSubCategories - Whether subcategories are shown
+   * Sets up the header row of the financial overview sheet.
+   * This includes setting header titles, styles, a sub-category toggle checkbox, and freezing the row.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @param {boolean} showSubCategories - The current preference for showing sub-categories, used to set the checkbox state.
+   * @return {void}
    * @private
    */
   function setupHeaderRow(sheet, showSubCategories) {
@@ -246,11 +281,11 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Adds a type header row to the overview sheet
-   * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
-   * @param {String} type - The transaction type
-   * @param {Number} rowIndex - The current row index
-   * @return {Number} The next row index
+   * Adds a styled header row for a specific transaction type (e.g., "Income", "Essentials") to the overview sheet.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @param {string} type - The name of the transaction type.
+   * @param {number} rowIndex - The 1-based row index where this type header should be inserted.
+   * @return {number} The next available row index after inserting the type header.
    * @private
    */
   function addTypeHeaderRow(sheet, type, rowIndex) {
@@ -269,13 +304,15 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Adds category and subcategory rows to the overview sheet
-   * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
-   * @param {Array} combinations - Array of category combinations for this type
-   * @param {Number} rowIndex - The current row index
-   * @param {String} type - The transaction type
-   * @param {Object} columnIndices - Column indices for transaction data
-   * @return {Number} The next row index
+   * Adds rows for each category and sub-category combination under a specific transaction type
+   * to the overview sheet. This includes setting their names, shared expense checkboxes (if applicable),
+   * and monthly sum formulas.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @param {Array<{type: string, category: string, subcategory: string}>} combinations - An array of category combination objects for the current type.
+   * @param {number} rowIndex - The 1-based starting row index for inserting these category rows.
+   * @param {string} type - The current transaction type being processed.
+   * @param {object} columnIndices - An object mapping transaction data column names (e.g., 'type', 'amount') to their 0-based indices.
+   * @return {number} The next available row index after inserting all category rows.
    * @private
    */
   function addCategoryRows(sheet, combinations, rowIndex, type, columnIndices) {
@@ -390,12 +427,13 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Adds a subtotal row for a transaction type
-   * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
-   * @param {String} type - The transaction type
-   * @param {Number} rowIndex - The current row index
-   * @param {Number} rowCount - The number of rows for this type
-   * @return {Number} The next row index
+   * Adds a subtotal row for a specific transaction type to the overview sheet.
+   * This row sums up the monthly totals for all categories under that type.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @param {string} type - The name of the transaction type for which the subtotal is being calculated.
+   * @param {number} rowIndex - The 1-based row index where the subtotal row should be inserted.
+   * @param {number} rowCount - The number of category/sub-category rows that belong to this type (used for SUM range).
+   * @return {number} The next available row index after inserting the subtotal row.
    * @private
    */
   function addTypeSubtotalRow(sheet, type, rowIndex, rowCount) {
@@ -426,10 +464,11 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Adds net calculation rows to the overview sheet
-   * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
-   * @param {Number} startRow - The row to start adding net calculations
-   * @return {Number} The next row index
+   * Adds net calculation rows (e.g., "Net (Total Income - Expenses)") to the overview sheet.
+   * It finds the previously calculated total rows for Income, Expenses, and Savings to base these calculations on.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @param {number} startRow - The 1-based row index where the net calculations section should begin.
+   * @return {number} The next available row index after adding all net calculation rows and a separator.
    * @private
    */
   function addNetCalculations(sheet, startRow) {
@@ -517,9 +556,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Finds the row numbers for total values in the data
-   * @param {Array} data - The sheet data
-   * @return {Object} Object containing row indices for totals
+   * Scans the sheet data to find the 1-based row numbers for "Total Income", "Total Expenses", and "Total Savings".
+   * @param {Array<Array<any>>} data - A 2D array representing the data from the overview sheet.
+   * @return {{incomeRow: number|null, expensesRow: number|null, savingsRow: number|null}} An object containing
+   *         the 1-based row indices. Values are null if a corresponding total row is not found.
    * @private
    */
   function findTotalRows(data) {
@@ -539,8 +579,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Formats the overview sheet for better readability
-   * @param {SpreadsheetApp.Sheet} sheet - The overview sheet
+   * Applies various formatting options to the overview sheet for better readability,
+   * including setting column widths and adding borders to total rows.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @return {void}
    * @private
    */
   function formatOverviewSheet(sheet) {
@@ -587,9 +629,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Gets the colors for a specific transaction type
-   * @param {String} type - The transaction type
-   * @return {Object} Object containing background and font colors
+   * Retrieves the configured background and font colors for a given transaction type.
+   * Uses default colors if a specific type is not found in the configuration.
+   * @param {string} type - The name of the transaction type.
+   * @return {{BG: string, FONT: string}} An object containing `BG` (background color hex) and `FONT` (font color hex).
    * @private
    */
   function getTypeColors(type) {
@@ -614,8 +657,9 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Formats a range of cells as currency
-   * @param {SpreadsheetApp.Range} range - The range to format
+   * Formats a given cell range as currency using the locale settings from the application configuration.
+   * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to format.
+   * @return {void}
    * @private
    */
   function formatRangeAsCurrency(range) {
@@ -626,53 +670,59 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   /**
-   * Gets a user preference from the settings sheet
-   * @param {String} key - The preference key
-   * @param {any} defaultValue - The default value if not found
-   * @return {any} The preference value
+   * Retrieves a user preference value using the `SettingsService`.
+   * Logs an error and returns `defaultValue` if retrieval fails.
+   * @param {string} key - The preference key.
+   * @param {any} defaultValue - The default value to return if the preference is not found or an error occurs.
+   * @return {any} The preference value or `defaultValue`.
    * @private
    */
   function getUserPreference(key, defaultValue) {
     try {
-      return settingsService.getPreference(key, defaultValue);
+      // Assuming settingsService.getPreference exists and is the correct method.
+      // Based on previous files, it might be settingsService.getValue
+      return settingsService.getValue(key, defaultValue);
     } catch (error) {
-      // Log with errorService if available, otherwise console.warn
       if (errorService && errorService.log) {
-        errorService.log(errorService.create(`Failed to get user preference ${key}`, { originalError: error, severity: "medium" }));
+        errorService.log(errorService.create(`Failed to get user preference '${key}'`, { originalError: error.toString(), severity: "medium" }));
       } else {
-        console.warn(`Failed to get user preference ${key}:`, error);
+        console.warn(`Failed to get user preference '${key}':`, error.toString());
       }
       return defaultValue;
     }
   }
   
   /**
-   * Sets a user preference in the settings sheet
-   * @param {String} key - The preference key
-   * @param {any} value - The preference value
+   * Sets a user preference value using the `SettingsService`.
+   * Logs an error if setting the preference fails.
+   * @param {string} key - The preference key.
+   * @param {any} value - The value to set for the preference.
+   * @return {void}
    * @private
    */
   function setUserPreference(key, value) {
     try {
-      settingsService.setPreference(key, value);
+      // Assuming settingsService.setPreference exists and is the correct method.
+      // Based on previous files, it might be settingsService.setValue
+      settingsService.setValue(key, value);
     } catch (error) {
-      // Log with errorService if available, otherwise console.warn
       if (errorService && errorService.log) {
-        errorService.log(errorService.create(`Failed to set user preference ${key}`, { originalError: error, severity: "medium" }));
+        errorService.log(errorService.create(`Failed to set user preference '${key}'`, { originalError: error.toString(), valueToSet: value, severity: "medium" }));
       } else {
-        console.warn(`Failed to set user preference ${key}:`, error);
+        console.warn(`Failed to set user preference '${key}':`, error.toString());
       }
     }
   }
   
   /**
-   * Builder class for generating the financial overview
-   * @class
+   * Implements the Builder pattern for constructing the financial overview sheet step-by-step.
+   * Encapsulates the state and logic required for overview generation.
+   * @class FinancialOverviewBuilder
    * @private
    */
   class FinancialOverviewBuilder {
     /**
-     * Initializes a new FinancialOverviewBuilder
+     * Initializes the builder's state variables.
      */
     constructor() {
       this.spreadsheet = null;
@@ -687,8 +737,11 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Initializes the builder with required sheets and data
-     * @return {FinancialOverviewBuilder} This builder instance for chaining
+     * Initializes the builder by getting references to the active spreadsheet,
+     * the overview sheet (creating and clearing it if necessary), and the transaction sheet.
+     * Also retrieves the user preference for showing sub-categories.
+     * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
+     * @throws {FinancialPlannerError} If the required 'Transactions' sheet is not found.
      */
     initialize() {
       this.spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -720,8 +773,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Processes transaction data
-     * @return {FinancialOverviewBuilder} This builder instance for chaining
+     * Processes the transaction data by retrieving it, identifying column indices,
+     * extracting unique category combinations (using cache), and grouping them by type (using cache).
+     * Stores the processed data and combinations within the builder instance.
+     * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     processData() {
       // Get and process transaction data
@@ -751,8 +806,8 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Sets up the header row
-     * @return {FinancialOverviewBuilder} This builder instance for chaining
+     * Sets up the header row on the overview sheet using the `setupHeaderRow` helper function.
+     * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     setupHeader() {
       setupHeaderRow(this.overviewSheet, this.showSubCategories);
@@ -760,8 +815,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Generates the main content of the overview
-     * @return {FinancialOverviewBuilder} This builder instance for chaining
+     * Generates the main body of the overview sheet.
+     * Iterates through transaction types in the configured order, adding type headers,
+     * category/sub-category rows with formulas, and type subtotals.
+     * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     generateContent() {
       let rowIndex = 2; // Start after header
@@ -799,8 +856,8 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Adds net calculations to the overview
-     * @return {FinancialOverviewBuilder} This builder instance for chaining
+     * Adds the 'Net Calculations' section to the overview sheet using the `addNetCalculations` helper function.
+     * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     addNetCalculations() {
       this.lastContentRowIndex = addNetCalculations(
@@ -811,8 +868,9 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Adds metrics section to the overview
-     * @return {FinancialOverviewBuilder} This builder instance for chaining
+     * Adds the financial metrics section to the overview sheet by calling the `analyze` method
+     * of the injected `FinancialAnalysisService`. Logs an error if the service is unavailable.
+     * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     addMetrics() {
       // Create a combined config object for the FinancialAnalysisService
@@ -837,8 +895,8 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Formats the overview sheet
-     * @return {FinancialOverviewBuilder} This builder instance for chaining
+     * Applies formatting (column widths, borders) to the overview sheet using the `formatOverviewSheet` helper function.
+     * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     formatSheet() {
       formatOverviewSheet(this.overviewSheet);
@@ -846,8 +904,9 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Applies user preferences
-     * @return {FinancialOverviewBuilder} This builder instance for chaining
+     * Applies user preferences to the sheet, specifically showing or hiding the sub-category column
+     * based on the `showSubCategories` state determined during initialization.
+     * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     applyPreferences() {
       // Show/hide sub-categories based on preference
@@ -860,8 +919,9 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     /**
-     * Finalizes the build process
-     * @return {Object} Object containing information about the built overview
+     * Finalizes the build process and returns information about the generated overview.
+     * @return {{sheet: GoogleAppsScript.Spreadsheet.Sheet, lastRow: number, success: boolean}} An object containing
+     *         a reference to the overview sheet, the last row number with content, and a success flag.
      */
     build() {
       return {
@@ -878,9 +938,17 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   
   return {
     /**
-     * Creates a financial overview sheet based on transaction data
-     * @return {Object} Object containing information about the built overview
+     * Creates or regenerates the financial overview sheet.
+     * This is the main public entry point for generating the overview.
+     * It utilizes the `FinancialOverviewBuilder` to perform the steps.
+     * Provides UI feedback (loading spinner, success/error messages).
+     * @return {{sheet: GoogleAppsScript.Spreadsheet.Sheet, lastRow: number, success: boolean}} An object containing
+     *         a reference to the overview sheet, the last row number with content, and a success flag.
+     * @throws {Error} Re-throws any error encountered during the build process after logging and notifying the user.
      * @public
+     * @example
+     * // Called from a menu item or script:
+     * FinancialPlanner.FinanceOverview.create();
      */
     create: function() {
       try {
@@ -927,35 +995,52 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     },
     
     /**
-     * Handles edits to the overview sheet, specifically for the sub-category toggle checkbox
-     * Must be triggered from the onEdit(e) function
-     * @param {Object} e - The edit event object
+     * Handles edit events specifically for the 'Overview' sheet.
+     * Currently, it only reacts to changes in the 'Show Sub-Categories' checkbox.
+     * If the checkbox state changes, it updates the user preference and regenerates the overview.
+     * Intended to be called from a central `onEdit` dispatcher (like `FinancialPlanner.Controllers.onEdit`).
+     * @param {GoogleAppsScript.Events.SheetsOnEdit} e - The edit event object provided by Google Apps Script.
+     *        See {@link https://developers.google.com/apps-script/guides/triggers/events#edit_3}
+     * @return {void}
      * @public
+     * @example
+     * // Called from a central onEdit dispatcher:
+     * // function onEdit(e) {
+     * //   const sheetName = e.range.getSheet().getName();
+     * //   if (sheetName === FinancialPlanner.Config.get().SHEETS.OVERVIEW) {
+     * //     FinancialPlanner.FinanceOverview.handleEdit(e);
+     * //   } else if (sheetName === ...) { ... }
+     * // }
      */
     handleEdit: function(e) {
-      // Check if the edit was in the Overview sheet
-      if (e.range.getSheet().getName() !== config.getSection('SHEETS').OVERVIEW) return;
-      
-      // Check if the edit was to the checkbox cell
-      const subcategoryToggle = config.getSection('UI').SUBCATEGORY_TOGGLE;
-      if (e.range.getA1Notation() === subcategoryToggle.CHECKBOX_CELL) {
-        const newValue = e.range.getValue();
-        
-        // Update the user preference
-        setUserPreference("ShowSubCategories", newValue);
-        
-        // Show loading toast
-        uiService.showLoadingSpinner("Updating overview...");
-        
-        // Regenerate the overview
-        try {
-          this.create();
-          
-          const status = newValue ? "showing" : "hiding";
-          uiService.showSuccessNotification(`Overview updated, ${status} sub-categories`);
-        } catch (error) {
-          uiService.showErrorNotification("Update failed", error.message);
+      try {
+        // Check if the edit was in the Overview sheet
+        if (e.range.getSheet().getName() !== config.getSection('SHEETS').OVERVIEW) return;
+
+        // Check if the edit was to the checkbox cell
+        const subcategoryToggle = config.getSection('UI').SUBCATEGORY_TOGGLE;
+        if (e.range.getA1Notation() === subcategoryToggle.CHECKBOX_CELL) {
+          const newValue = e.range.getValue(); // Checkbox value is boolean
+
+          // Update the user preference
+          setUserPreference("ShowSubCategories", newValue);
+
+          // Show loading toast
+          uiService.showLoadingSpinner("Updating overview based on preference change...");
+
+          // Regenerate the overview
+          // Note: Calling create() directly might be heavy. Consider a more targeted update if possible in the future.
+          this.create(); // This already includes success/error UI feedback
+
+          // No need for separate success message here as create() handles it.
+          // const status = newValue ? "showing" : "hiding";
+          // uiService.showSuccessNotification(`Overview updated, ${status} sub-categories`);
+
         }
+      } catch (error) {
+         // Error during handleEdit itself (e.g., accessing config fails)
+         // The create() call has its own error handling.
+         errorService.handle(errorService.create("Error handling Overview sheet edit", { originalError: error.toString(), eventDetails: JSON.stringify(e) }), "Failed to process change on Overview sheet.");
       }
     }
   };
@@ -974,20 +1059,33 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
 // ============================================================================
 
 /**
- * Creates a financial overview sheet based on transaction data
- * This function is maintained for backward compatibility
- * @return {Object} Object containing information about the built overview
+ * Creates the financial overview sheet.
+ * Maintained for backward compatibility with older triggers or direct calls.
+ * Delegates to `FinancialPlanner.FinanceOverview.create()`.
+ * @return {object | undefined} The result object from `FinancialPlanner.FinanceOverview.create()`, or undefined if the service isn't loaded.
+ * @global
  */
 function createFinancialOverview() {
-  return FinancialPlanner.FinanceOverview.create();
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.FinanceOverview && FinancialPlanner.FinanceOverview.create) {
+    return FinancialPlanner.FinanceOverview.create();
+  }
+  Logger.log("Global createFinancialOverview: FinancialPlanner.FinanceOverview not available.");
+  // Optionally show an error to the user if appropriate for a direct call scenario
+  // SpreadsheetApp.getUi().alert("Error: Financial Overview module not loaded.");
 }
 
 /**
- * Handles edits to the overview sheet, specifically for the sub-category toggle checkbox
- * This function is maintained for backward compatibility
- * Must be triggered from the onEdit(e) function
- * @param {Object} e - The edit event object
+ * Handles edits on the overview sheet.
+ * Maintained for backward compatibility with older `onEdit` triggers that might call this directly.
+ * Delegates to `FinancialPlanner.FinanceOverview.handleEdit(e)`.
+ * @param {GoogleAppsScript.Events.SheetsOnEdit} e - The edit event object.
+ * @global
+ * @return {void}
  */
 function handleOverviewSheetEdits(e) {
-  return FinancialPlanner.FinanceOverview.handleEdit(e);
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.FinanceOverview && FinancialPlanner.FinanceOverview.handleEdit) {
+    FinancialPlanner.FinanceOverview.handleEdit(e);
+  } else {
+    Logger.log("Global handleOverviewSheetEdits: FinancialPlanner.FinanceOverview not available.");
+  }
 }

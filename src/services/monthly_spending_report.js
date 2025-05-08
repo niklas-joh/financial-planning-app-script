@@ -5,15 +5,25 @@
  * It follows the namespace pattern and uses dependency injection for better maintainability.
  */
 
-// Create the MonthlySpendingReport module within the FinancialPlanner namespace
+/**
+ * @namespace FinancialPlanner.MonthlySpendingReport
+ * @description Service for generating a detailed monthly spending report sheet.
+ * It analyzes transactions for the current month, categorizes expenses, calculates averages,
+ * identifies trends, and adds visualizations.
+ * @param {FinancialPlanner.Utils} utils - The utility service.
+ * @param {FinancialPlanner.UIService} uiService - The UI service for notifications.
+ * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
+ * @param {FinancialPlanner.Config} config - The global configuration service.
+ */
 FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorService, config) {
   // Private variables and functions
   
   /**
-   * Creates charts for the monthly spending report
-   * @param {SpreadsheetApp.Sheet} sheet - The report sheet
-   * @param {Object} categoryData - The category data for the chart
-   * @param {Number} totalExpenses - The total expenses amount
+   * Adds relevant charts (e.g., pie chart for expense breakdown) to the monthly report sheet.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet object where the report is generated.
+   * @param {object<string, object<string, number>>} categoryData - Processed data grouped by category and sub-category with summed amounts.
+   * @param {number} totalExpenses - The total expense amount for the month.
+   * @return {void}
    * @private
    */
   function addMonthlyReportCharts(sheet, categoryData, totalExpenses) {
@@ -27,19 +37,20 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
     });
     
     // Create temporary range for chart data
-    const chartRange = sheet.getRange(lastRow + 3, 1, categories.length + 1, 2);
+    const chartDataRangeStartRow = lastRow + 3;
+    const numChartDataRows = categories.length + 1; // +1 for header
+    const chartRange = sheet.getRange(chartDataRangeStartRow, 1, numChartDataRows, 2);
     
-    // Add header
-    sheet.getRange(lastRow + 3, 1).setValue("Category");
-    sheet.getRange(lastRow + 3, 2).setValue("Amount");
-    
-    // Add data
+    // Prepare data for batch write
+    const chartData = [["Category", "Amount"]]; // Header row
     for (let i = 0; i < categories.length; i++) {
-      sheet.getRange(lastRow + 4 + i, 1).setValue(categories[i]);
-      sheet.getRange(lastRow + 4 + i, 2).setValue(categoryValues[i]);
+      chartData.push([categories[i], categoryValues[i]]);
     }
     
-    // Create the chart
+    // Batch write chart data
+    chartRange.setValues(chartData);
+    
+    // Create the chart using the same range
     const pieChart = sheet.newChart()
       .setChartType(Charts.ChartType.PIE)
       .addRange(chartRange)
@@ -54,18 +65,19 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
   }
   
   /**
-   * Calculates the average spending for a specific category/subcategory over previous months
-   * @param {SpreadsheetApp.Sheet} sheet - The sheet containing transaction data
-   * @param {Array} data - The transaction data
-   * @param {String} category - The category to calculate for
-   * @param {String} subcategory - The subcategory to calculate for
-   * @param {Number} dateColIndex - The index of the date column
-   * @param {Number} typeColIndex - The index of the type column
-   * @param {Number} categoryColIndex - The index of the category column
-   * @param {Number} subcategoryColIndex - The index of the subcategory column
-   * @param {Number} amountColIndex - The index of the amount column
-   * @param {Number} monthsToLookBack - The number of months to look back
-   * @return {Number} The average amount
+   * Calculates the average monthly spending for a specific category and sub-category
+   * over a defined number of previous months.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The transaction sheet object (currently unused but passed).
+   * @param {Array<Array<any>>} data - The raw transaction data (2D array).
+   * @param {string} category - The category to filter by.
+   * @param {string} subcategory - The sub-category to filter by (use "(None)" if no sub-category).
+   * @param {number} dateColIndex - 0-based index of the 'Date' column.
+   * @param {number} typeColIndex - 0-based index of the 'Type' column.
+   * @param {number} categoryColIndex - 0-based index of the 'Category' column.
+   * @param {number} subcategoryColIndex - 0-based index of the 'Sub-Category' column.
+   * @param {number} amountColIndex - 0-based index of the 'Amount' column.
+   * @param {number} monthsToLookBack - The number of previous months to include in the average calculation.
+   * @return {number} The calculated average monthly spending for the specified criteria, or 0 if no data found.
    * @private
    */
   function calculatePreviousMonthsAverage(
@@ -127,8 +139,11 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
   }
   
   /**
-   * Creates a monthly spending report
-   * @return {SpreadsheetApp.Sheet} The report sheet
+   * Core function to generate the monthly spending report sheet.
+   * It fetches transaction data, filters for the current month's expenses,
+   * groups data, calculates totals and averages, formats the sheet, and adds charts.
+   * @return {GoogleAppsScript.Spreadsheet.Sheet} The generated or updated report sheet object.
+   * @throws {FinancialPlannerError} If the 'Transactions' sheet or required columns are not found.
    * @private
    */
   function createMonthlySpendingReport() {
@@ -208,87 +223,93 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
       categoryData[category][subcategory] += amount;
       totalExpenses += amount;
     });
-    
-    // Write data to report sheet
-    let rowIndex = 4;
-    
+
+    // --- Batch Write Data ---
+    const reportData = []; // Array to hold all row data for batch write
+    const formatInfo = []; // Array to hold info for formatting after batch write
+    let currentRowIndex = 4; // Start after headers
+
     Object.keys(categoryData).sort().forEach(category => {
       const subcategories = categoryData[category];
       let categoryTotal = 0;
-      
-      // Calculate category total
-      Object.values(subcategories).forEach(amount => {
-        categoryTotal += amount;
-      });
-      
-      // Add category header
-      reportSheet.getRange(rowIndex, 1).setValue(category);
-      reportSheet.getRange(rowIndex, 3).setValue(categoryTotal);
-      reportSheet.getRange(rowIndex, 4).setValue(categoryTotal / totalExpenses);
-      
-      // Format category row
-      reportSheet.getRange(rowIndex, 1, 1, 6).setBackground("#F3F3F3").setFontWeight("bold");
-      
-      rowIndex++;
-      
-      // Add subcategories
+      Object.values(subcategories).forEach(amount => { categoryTotal += amount; });
+
+      // Prepare category header row data
+      const categoryRowData = [category, "", categoryTotal, totalExpenses > 0 ? categoryTotal / totalExpenses : 0, "", ""];
+      reportData.push(categoryRowData);
+      formatInfo.push({ row: currentRowIndex, type: 'categoryHeader' });
+      currentRowIndex++;
+
+      // Prepare subcategory row data
       Object.keys(subcategories).sort().forEach(subcategory => {
         const amount = subcategories[subcategory];
-        
-        reportSheet.getRange(rowIndex, 1).setValue(""); // Empty category
-        reportSheet.getRange(rowIndex, 2).setValue(subcategory);
-        reportSheet.getRange(rowIndex, 3).setValue(amount);
-        reportSheet.getRange(rowIndex, 4).setValue(amount / totalExpenses);
-        
-        // Calculate average for last 3 months (excluding current)
         const last3MonthsAvg = calculatePreviousMonthsAverage(
-          transactionSheet, 
-          transactionData,
-          category,
-          subcategory,
-          dateColIndex,
-          typeColIndex,
-          categoryColIndex,
-          subcategoryColIndex,
-          amountColIndex,
-          3
+          transactionSheet, transactionData, category, subcategory,
+          dateColIndex, typeColIndex, categoryColIndex, subcategoryColIndex, amountColIndex, 3
         );
         
-        reportSheet.getRange(rowIndex, 5).setValue(last3MonthsAvg);
-        
-        // Add trend indicator
+        let trendValue = "";
+        let trendColor = null;
         if (last3MonthsAvg > 0) {
           const percentChange = (amount - last3MonthsAvg) / last3MonthsAvg;
-          
           if (percentChange > 0.1) {
-            reportSheet.getRange(rowIndex, 6).setValue("↑ " + (percentChange * 100).toFixed(0) + "%");
-            reportSheet.getRange(rowIndex, 6).setFontColor("#CC0000"); // Red for increase
+            trendValue = "↑ " + (percentChange * 100).toFixed(0) + "%";
+            trendColor = "#CC0000"; // Red
           } else if (percentChange < -0.1) {
-            reportSheet.getRange(rowIndex, 6).setValue("↓ " + (Math.abs(percentChange) * 100).toFixed(0) + "%");
-            reportSheet.getRange(rowIndex, 6).setFontColor("#006600"); // Green for decrease
+            trendValue = "↓ " + (Math.abs(percentChange) * 100).toFixed(0) + "%";
+            trendColor = "#006600"; // Green
           } else {
-            reportSheet.getRange(rowIndex, 6).setValue("→ Stable");
-            reportSheet.getRange(rowIndex, 6).setFontColor("#666666"); // Gray for stable
+            trendValue = "→ Stable";
+            trendColor = "#666666"; // Gray
           }
         }
-        
-        rowIndex++;
+
+        const subCategoryRowData = ["", subcategory, amount, totalExpenses > 0 ? amount / totalExpenses : 0, last3MonthsAvg, trendValue];
+        reportData.push(subCategoryRowData);
+        formatInfo.push({ row: currentRowIndex, type: 'subcategory', trendColor: trendColor });
+        currentRowIndex++;
       });
-      
-      rowIndex++; // Add space between categories
+
+      // Add empty row for spacing (optional, can be handled by formatting later)
+      reportData.push(["", "", "", "", "", ""]);
+      formatInfo.push({ row: currentRowIndex, type: 'spacer' });
+      currentRowIndex++;
     });
+
+    // Prepare total row data
+    const totalRowData = ["TOTAL EXPENSES", "", totalExpenses, totalExpenses > 0 ? 1 : 0, "", ""];
+    reportData.push(totalRowData);
+    formatInfo.push({ row: currentRowIndex, type: 'totalRow' });
+    const finalDataRowIndex = currentRowIndex; // Keep track of the last data row
+
+    // Batch write all data
+    if (reportData.length > 0) {
+        reportSheet.getRange(4, 1, reportData.length, 6).setValues(reportData);
+    }
+
+    // --- Apply Formatting (can still involve loops, but fewer I/O calls) ---
     
-    // Add total row
-    reportSheet.getRange(rowIndex, 1).setValue("TOTAL EXPENSES");
-    reportSheet.getRange(rowIndex, 3).setValue(totalExpenses);
-    reportSheet.getRange(rowIndex, 4).setValue(1); // 100%
-    
-    reportSheet.getRange(rowIndex, 1, 1, 6).setBackground("#D9D9D9").setFontWeight("bold");
-    
-    // Format columns
-    utils.formatAsCurrency(reportSheet.getRange(4, 3, rowIndex - 3, 1), config.getLocale().CURRENCY_SYMBOL, config.getLocale().CURRENCY_LOCALE);
-    reportSheet.getRange(4, 4, rowIndex - 3, 1).setNumberFormat("0.0%");
-    utils.formatAsCurrency(reportSheet.getRange(4, 5, rowIndex - 3, 1), config.getLocale().CURRENCY_SYMBOL, config.getLocale().CURRENCY_LOCALE);
+    // Apply number formats in batches
+    if (finalDataRowIndex >= 4) {
+        // Amount column (C) and Avg column (E)
+        utils.formatAsCurrency(reportSheet.getRange(4, 3, finalDataRowIndex - 4 + 1, 1), config.getLocale().CURRENCY_SYMBOL, config.getLocale().CURRENCY_LOCALE);
+        utils.formatAsCurrency(reportSheet.getRange(4, 5, finalDataRowIndex - 4 + 1, 1), config.getLocale().CURRENCY_SYMBOL, config.getLocale().CURRENCY_LOCALE);
+        // Percentage column (D)
+        reportSheet.getRange(4, 4, finalDataRowIndex - 4 + 1, 1).setNumberFormat("0.0%");
+    }
+
+    // Apply row-specific formatting based on collected info
+    formatInfo.forEach(info => {
+        const range = reportSheet.getRange(info.row, 1, 1, 6);
+        if (info.type === 'categoryHeader') {
+            range.setBackground("#F3F3F3").setFontWeight("bold");
+        } else if (info.type === 'totalRow') {
+            range.setBackground("#D9D9D9").setFontWeight("bold");
+        } else if (info.type === 'subcategory' && info.trendColor) {
+            reportSheet.getRange(info.row, 6).setFontColor(info.trendColor);
+        }
+        // Note: Spacers don't need specific formatting here unless desired
+    });
     
     // Add charts
     addMonthlyReportCharts(reportSheet, categoryData, totalExpenses);
@@ -302,8 +323,13 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
   // Public API
   return {
     /**
-     * Generates a monthly spending report
-     * @return {SpreadsheetApp.Sheet|null} The report sheet if created, or null
+     * Public method to generate the monthly spending report.
+     * Wraps the private `createMonthlySpendingReport` function with UI feedback and error handling.
+     * @return {GoogleAppsScript.Spreadsheet.Sheet | null} The generated report sheet object, or null if an error occurred.
+     * @public
+     * @example
+     * // Called from a menu item or controller:
+     * FinancialPlanner.MonthlySpendingReport.generate();
      */
     generate: function() {
       try {
@@ -322,6 +348,19 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
 })(FinancialPlanner.Utils, FinancialPlanner.UIService, FinancialPlanner.ErrorService, FinancialPlanner.Config);
 
 // Backward compatibility layer for existing global functions
+/**
+ * Generates the monthly spending report.
+ * Maintained for backward compatibility with older triggers or direct calls.
+ * Delegates to `FinancialPlanner.MonthlySpendingReport.generate()`.
+ * @return {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} The report sheet object, null if an error occurred during generation,
+ *         or undefined if the service isn't loaded.
+ * @global
+ */
 function generateMonthlySpendingReport() {
-  return FinancialPlanner.MonthlySpendingReport.generate();
+  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.MonthlySpendingReport && FinancialPlanner.MonthlySpendingReport.generate) {
+    return FinancialPlanner.MonthlySpendingReport.generate();
+  }
+  Logger.log("Global generateMonthlySpendingReport: FinancialPlanner.MonthlySpendingReport not available.");
+  // Optionally show an error to the user if appropriate for a direct call scenario
+  // SpreadsheetApp.getUi().alert("Error: Monthly Spending Report module not loaded.");
 }
