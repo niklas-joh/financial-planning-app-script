@@ -606,14 +606,6 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     sheet.setColumnWidth(17, uiConfig.AVERAGE); // Total column
     sheet.setColumnWidth(18, uiConfig.AVERAGE); // Average column
     
-    // Set metrics section column widths
-    sheet.setColumnWidth(10, uiConfig.EXPENSE_CATEGORY);
-    sheet.setColumnWidth(11, uiConfig.AMOUNT);
-    sheet.setColumnWidth(12, uiConfig.RATE);
-    sheet.setColumnWidth(13, uiConfig.RATE);
-    sheet.setColumnWidth(14, uiConfig.RATE);
-    sheet.setColumnWidth(15, uiConfig.AMOUNT);
-    
     // Add gridlines and borders to improve readability
     const data = sheet.getDataRange().getValues();
     

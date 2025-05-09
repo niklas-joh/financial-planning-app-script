@@ -53,7 +53,7 @@ const ConfigModule = (function() {
         CATEGORY: 120,
         SUBCATEGORY: 150,
         SHARED: 60,
-        MONTH: 70, // This was 50 in the uncommitted changes, reverting to original for now
+        MONTH: 60,
         AVERAGE: 80,
         EXPENSE_CATEGORY: 150,
         AMOUNT: 100,
