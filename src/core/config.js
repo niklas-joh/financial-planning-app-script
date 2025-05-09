@@ -52,12 +52,12 @@ FinancialPlanner.Config = (function() {
         NOTE_TEXT: "Toggle to show or hide sub-categories in the overview sheet"
       },
       COLUMN_WIDTHS: {
-        TYPE: 150,
-        CATEGORY: 150,
+        TYPE: 120,
+        CATEGORY: 120,
         SUBCATEGORY: 150,
-        SHARED: 80,
-        MONTH: 90,
-        AVERAGE: 100,
+        SHARED: 60,
+        MONTH: 70,
+        AVERAGE: 80,
         EXPENSE_CATEGORY: 150,
         AMOUNT: 100,
         RATE: 80
@@ -95,7 +95,7 @@ FinancialPlanner.Config = (function() {
       UI: {
         HEADER_BG: "#C62828",       // Deep red for headers
         HEADER_FONT: "#FFFFFF",     // White text for headers
-        METRICS_BG: "#FFEBEE",      // Very light red for metrics section
+        // METRICS_BG: "#FFEBEE",      // Very light red for metrics section
         BORDER: "#FF8F00",          // Amber for borders
         INCOME_FONT: "#388E3C",     // Green for income values
         EXPENSE_FONT: "#D32F2F",    // Red for expense values
@@ -132,7 +132,7 @@ FinancialPlanner.Config = (function() {
     // Locale settings
     LOCALE: {
       CURRENCY_SYMBOL: "€",
-      CURRENCY_LOCALE: "2", // Euro
+      CURRENCY_LOCALE: "0", // Euro
       DATE_FORMAT: "yyyy-MM-dd"
     },
     // Performance settings
