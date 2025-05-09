@@ -31,8 +31,9 @@ FinancialPlanner.Config = (function() {
     // Default target rates for expense categories
     TARGET_RATES: {
       ESSENTIALS: 0.5,    // 50% for essentials
-      WANTS: 0.3,         // 30% for wants/pleasure
-      EXTRA: 0.2,         // 20% for extras
+      WANTS: 0.2,         // 30% for wants/pleasure
+      EXTRA: 0.1,         // 20% for extras
+      SAVINGS: 0.2,       // 20% for savings
       DEFAULT: 0.2        // 20% default
     },
     // Header structure for the overview sheet
