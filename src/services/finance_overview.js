@@ -401,22 +401,25 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     // Apply conditional formatting for all rows at once
-    const valueRange = sheet.getRange(startRow, 5, numRows, 13); // Columns E through Q
+    const valueRange = sheet.getRange(startRow, 5, numRows, 13); // Columns E through Q (Total) - Average is col 18 (R)
     
-    // Format all values as currency
-    formatRangeAsCurrency(valueRange);
+    // Format all values as currency using the default format (which includes [RED])
+    formatRangeAsCurrency(valueRange, false); // false indicates not a total row
     
-    // Color income/expense values
-    for (let i = 0; i < numRows; i++) {
-      for (let col = 5; col <= 17; col++) {
-        const cell = sheet.getRange(startRow + i, col);
-        
-        if (type === config.getSection('TRANSACTION_TYPES').INCOME) {
-          cell.setFontColor(colors.INCOME_FONT);
-        } else if (expenseTypes.includes(type)) {
-          cell.setFontColor(colors.EXPENSE_FONT);
+    // Format Average column (R or 18) separately if needed, or include in valueRange if it should also be default currency
+    const averageRange = sheet.getRange(startRow, 18, numRows, 1);
+    formatRangeAsCurrency(averageRange, false);
+
+
+    // Color income values (non-total rows)
+    // Expense font color is now handled by the number format for negative values
+    if (type === config.getSection('TRANSACTION_TYPES').INCOME) {
+        for (let i = 0; i < numRows; i++) {
+          for (let col = 5; col <= 18; col++) { // E to R
+            const cell = sheet.getRange(startRow + i, col);
+            cell.setFontColor(colors.INCOME_FONT);
+          }
         }
-      }
     }
     
     return rowIndex + numRows;
@@ -439,27 +442,29 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     
     // Add subtotal for this type
     sheet.getRange(rowIndex, 1).setValue(`Total ${type}`);
-    sheet.getRange(rowIndex, 1, 1, headers.length)
+    sheet.getRange(rowIndex, 1, 1, headers.length) // Format the entire row (A to R)
       .setBackground(typeColors.BG)
       .setFontWeight("bold")
-      .setFontColor(typeColors.FONT);
+      .setFontColor(typeColors.FONT); // Set font color for the whole row first
     
     // Add subtotal formulas for each month column and the average column using batch operations
     const formulas = [];
-    const startRow = rowIndex - rowCount;
-    const endRow = rowIndex - 1;
+    const startRowForSum = rowIndex - rowCount;
+    const endRowForSum = rowIndex - 1;
     
     // Loop for columns E (5) to R (18)
-    for (let monthCol = 5; monthCol <= 18; monthCol++) { // Changed 17 to 18
-      formulas.push(`=SUM(${utils.columnToLetter(monthCol)}${startRow}:${utils.columnToLetter(monthCol)}${endRow})`);
+    for (let monthCol = 5; monthCol <= 18; monthCol++) { 
+      formulas.push(`=SUM(${utils.columnToLetter(monthCol)}${startRowForSum}:${utils.columnToLetter(monthCol)}${endRowForSum})`);
     }
     
     // Set all formulas at once for columns E to R (14 columns)
-    const formulaRange = sheet.getRange(rowIndex, 5, 1, 14); // Changed 13 to 14
+    const formulaRange = sheet.getRange(rowIndex, 5, 1, 14); 
     formulaRange.setFormulas([formulas]);
     
-    // Format the subtotal row as currency
-    formatRangeAsCurrency(formulaRange); // Added this line
+    // Format the subtotal row's numeric cells using CURRENCY_TOTAL_ROW (no [RED])
+    formatRangeAsCurrency(formulaRange, true); 
+    // Explicitly set font color for numeric cells again to ensure it overrides any number format color
+    formulaRange.setFontColor(typeColors.FONT); 
     
     return rowIndex + 1;
   }
@@ -476,7 +481,7 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     // Find rows containing total Income, Expenses, and Savings
     const data = sheet.getDataRange().getValues();
     const headers = config.getSection('HEADERS');
-    const colors = config.getSection('COLORS').UI;
+    const uiColors = config.getSection('COLORS').UI; // Use UI colors
     
     // Find the rows containing the totals we need
     const totals = findTotalRows(data);
@@ -489,46 +494,43 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     
     // Add a section header for Net Calculations
     sheet.getRange(startRow, 1).setValue("Net Calculations");
-    sheet.getRange(startRow, 1, 1, headers.length)
-      .setBackground(colors.NET_BG)
+    sheet.getRange(startRow, 1, 1, headers.length) // Format entire row
+      .setBackground(uiColors.NET_BG)
       .setFontWeight("bold")
-      .setFontColor(colors.NET_FONT);
+      .setFontColor(uiColors.NET_FONT); // Set font for whole row
     
     startRow++;
     
     // Add Net (Income - Expenses) row
     sheet.getRange(startRow, 1).setValue("Net (Total Income - Expenses)");
-    sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
+    sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold"); // Label part
     
-    // Create all formulas at once
     const netFormulas = [];
-    for (let col = 5; col <= 17; col++) {
+    for (let col = 5; col <= 18; col++) { // E to R (Average)
       netFormulas.push(`=${utils.columnToLetter(col)}${incomeRow}-${utils.columnToLetter(col)}${expensesRow}`);
     }
     
-    // Apply formulas in batch
-    sheet.getRange(startRow, 5, 1, 13).setFormulas([netFormulas]);
-    
-    // Format the cells
-    formatRangeAsCurrency(sheet.getRange(startRow, 5, 1, 13));
+    const netNumericRange = sheet.getRange(startRow, 5, 1, 14); // E to R
+    netNumericRange.setFormulas([netFormulas]);
+    formatRangeAsCurrency(netNumericRange, true); // Use total row format
+    netNumericRange.setFontColor(uiColors.NET_FONT); // Ensure font color for numbers
     
     startRow++;
     
-    // Add additional calculations if savings data exists
     if (savingsRow) {
       // Add Total Expenses + Savings row
       sheet.getRange(startRow, 1).setValue("Total Expenses + Savings");
       sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
       
-      // Create formulas
       const expSavFormulas = [];
-      for (let col = 5; col <= 17; col++) {
+      for (let col = 5; col <= 18; col++) { // E to R
         expSavFormulas.push(`=${utils.columnToLetter(col)}${expensesRow}+${utils.columnToLetter(col)}${savingsRow}`);
       }
       
-      // Apply formulas in batch
-      sheet.getRange(startRow, 5, 1, 13).setFormulas([expSavFormulas]);
-      formatRangeAsCurrency(sheet.getRange(startRow, 5, 1, 13));
+      const expSavNumericRange = sheet.getRange(startRow, 5, 1, 14); // E to R
+      expSavNumericRange.setFormulas([expSavFormulas]);
+      formatRangeAsCurrency(expSavNumericRange, true);
+      expSavNumericRange.setFontColor(uiColors.NET_FONT);
       
       startRow++;
       
@@ -536,21 +538,21 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       sheet.getRange(startRow, 1).setValue("Net (Total Income - Expenses - Savings)");
       sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
       
-      // Create formulas
       const totalNetFormulas = [];
-      for (let col = 5; col <= 17; col++) {
+      for (let col = 5; col <= 18; col++) { // E to R
         totalNetFormulas.push(`=${utils.columnToLetter(col)}${incomeRow}-${utils.columnToLetter(col)}${expensesRow}-${utils.columnToLetter(col)}${savingsRow}`);
       }
       
-      // Apply formulas in batch
-      sheet.getRange(startRow, 5, 1, 13).setFormulas([totalNetFormulas]);
-      formatRangeAsCurrency(sheet.getRange(startRow, 5, 1, 13));
+      const totalNetNumericRange = sheet.getRange(startRow, 5, 1, 14); // E to R
+      totalNetNumericRange.setFormulas([totalNetFormulas]);
+      formatRangeAsCurrency(totalNetNumericRange, true);
+      totalNetNumericRange.setFontColor(uiColors.NET_FONT);
     }
     
     // Add a bottom border to the last row
     sheet.getRange(startRow, 1, 1, headers.length).setBorder(
       null, null, true, null, null, null, 
-      colors.BORDER, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
+      uiColors.BORDER, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
     );
     
     return startRow + 2; // Add space after net calculations
@@ -572,10 +574,32 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     
     for (let i = 0; i < data.length; i++) {
       if (data[i][0] === "Total Income") totals.incomeRow = i + 1;
-      if (data[i][0] === "Total Expenses") totals.expensesRow = i + 1;
+      if (data[i][0] === "Total Expenses") totals.expensesRow = i + 1; // This will capture the "Total Expenses" specific row if it exists
       if (data[i][0] === "Total Savings") totals.savingsRow = i + 1;
     }
     
+    // If "Total Expenses" wasn't found directly, try to find the last expense type total row
+    // This logic might need adjustment if "Total Expenses" is explicitly added elsewhere
+    if (!totals.expensesRow) {
+        const expenseTypes = config.getSection('EXPENSE_TYPES');
+        let lastExpenseTypeRow = -1;
+        for (let i = data.length - 1; i >= 0; i--) {
+            if (expenseTypes.some(et => data[i][0] === `Total ${et}`)) {
+                lastExpenseTypeRow = i + 1;
+                break;
+            }
+        }
+        if (lastExpenseTypeRow !== -1) {
+            // This is a fallback, ideally "Total Expenses" row is explicitly created
+            // For now, let's assume the net calculations need a row that sums all expenses.
+            // The current structure sums individual expense type totals.
+            // If a single "Total Expenses" row is needed for net calculations, it should be created.
+            // For now, we'll use the last found expense type total as a proxy if "Total Expenses" is missing.
+            // This part of the logic might be complex if "Total Expenses" isn't a single, clearly identifiable row.
+        }
+    }
+
+
     return totals;
   }
   
@@ -598,12 +622,12 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     sheet.setColumnWidth(3, uiConfig.SUBCATEGORY);
     sheet.setColumnWidth(4, uiConfig.SHARED);
     
-    // Set month column widths
+    // Set month column widths (E to P, columns 5 to 16)
     for (let i = 5; i <= 16; i++) {
       sheet.setColumnWidth(i, uiConfig.MONTH);
     }
     
-    // Set Total and Average column widths
+    // Set Total and Average column widths (Q and R, columns 17 and 18)
     sheet.setColumnWidth(17, uiConfig.AVERAGE); // Total column
     sheet.setColumnWidth(18, uiConfig.AVERAGE); // Average column
     
@@ -612,8 +636,8 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     
     // Add bottom borders to total rows
     for (let i = 0; i < data.length; i++) {
-      if (data[i][0] && data[i][0].startsWith("Total ")) {
-        sheet.getRange(i + 1, 1, 1, headers.length).setBorder(
+      if (data[i][0] && data[i][0].toString().startsWith("Total ")) {
+        sheet.getRange(i + 1, 1, 1, headers.length).setBorder( // headers.length should be 18
           null, null, true, null, null, null, 
           colors.BORDER, SpreadsheetApp.BorderStyle.SOLID_MEDIUM
         );
@@ -632,34 +656,37 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     const typeHeaders = config.getSection('COLORS').TYPE_HEADERS;
     const transactionTypes = config.getSection('TRANSACTION_TYPES');
     
-    let colors = typeHeaders.DEFAULT;
+    let colors = typeHeaders.DEFAULT; // Default
     
-    if (type === transactionTypes.INCOME) {
-      colors = typeHeaders.INCOME;
-    } else if (type === transactionTypes.ESSENTIALS) {
-      colors = typeHeaders.ESSENTIALS;
-    } else if (type === "Wants/Pleasure") {
-      colors = typeHeaders.WANTS_PLEASURE;
-    } else if (type === transactionTypes.EXTRA) {
-      colors = typeHeaders.EXTRA;
-    } else if (type === transactionTypes.SAVINGS) {
-      colors = typeHeaders.SAVINGS;
+    // Find a match in a case-insensitive way, or use direct mapping
+    const normalizedType = type.toLowerCase();
+    for (const key in transactionTypes) {
+        if (transactionTypes[key].toLowerCase() === normalizedType && typeHeaders[key]) {
+            colors = typeHeaders[key];
+            break;
+        }
+    }
+    // Fallback for "Wants/Pleasure" if not directly mapped via ENUM key
+    if (normalizedType === "wants/pleasure" && typeHeaders.WANTS_PLEASURE) {
+        colors = typeHeaders.WANTS_PLEASURE;
     }
     
     return colors;
   }
   
   /**
-   * Formats a given cell range as currency using the locale settings from the application configuration.
+   * Formats a given cell range as currency using the appropriate number format string from the application configuration.
    * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to format.
+   * @param {boolean} [isTotalRow=false] - Whether this range is for a total row, which uses a different number format.
    * @return {void}
    * @private
    */
-  function formatRangeAsCurrency(range) {
-    utils.formatAsCurrency(range, 
-      config.getSection('LOCALE').CURRENCY_SYMBOL, 
-      config.getSection('LOCALE').CURRENCY_LOCALE
-    );
+  function formatRangeAsCurrency(range, isTotalRow = false) {
+    const localeConfig = config.getSection('LOCALE');
+    const numberFormatString = isTotalRow ? 
+      localeConfig.NUMBER_FORMATS.CURRENCY_TOTAL_ROW : 
+      localeConfig.NUMBER_FORMATS.CURRENCY_DEFAULT;
+    utils.formatAsCurrency(range, numberFormatString); // utils.formatAsCurrency now expects the full format string
   }
   
   /**
@@ -672,8 +699,6 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
    */
   function getUserPreference(key, defaultValue) {
     try {
-      // Assuming settingsService.getPreference exists and is the correct method.
-      // Based on previous files, it might be settingsService.getValue
       return settingsService.getValue(key, defaultValue);
     } catch (error) {
       if (errorService && errorService.log) {
@@ -695,8 +720,6 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
    */
   function setUserPreference(key, value) {
     try {
-      // Assuming settingsService.setPreference exists and is the correct method.
-      // Based on previous files, it might be settingsService.setValue
       settingsService.setValue(key, value);
     } catch (error) {
       if (errorService && errorService.log) {
@@ -740,14 +763,12 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       this.spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
       const sheetNames = config.getSection('SHEETS');
       
-      // Get or create the Overview sheet and clear it
       this.overviewSheet = utils.getOrCreateSheet(
         this.spreadsheet, 
         sheetNames.OVERVIEW
       );
       clearSheetContent(this.overviewSheet);
       
-      // Get transaction sheet
       this.transactionSheet = this.spreadsheet.getSheetByName(
         sheetNames.TRANSACTIONS
       );
@@ -759,7 +780,6 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
         );
       }
       
-      // Get user preference for showing sub-categories
       this.showSubCategories = getUserPreference("ShowSubCategories", true);
       
       return this;
@@ -772,12 +792,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
      * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     processData() {
-      // Get and process transaction data
       const { data, indices } = getProcessedTransactionData(this.transactionSheet);
       this.transactionData = data;
       this.columnIndices = indices;
       
-      // Get category combinations with caching
       this.categoryCombinations = cacheService.get(
         config.getSection('CACHE').KEYS.CATEGORY_COMBINATIONS,
         () => getUniqueCategoryCombinations(
@@ -789,7 +807,6 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
         )
       );
       
-      // Group categories by type
       this.groupedCombinations = cacheService.get(
         config.getSection('CACHE').KEYS.GROUPED_COMBINATIONS,
         () => groupCategoryCombinations(this.categoryCombinations)
@@ -814,17 +831,13 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
      * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     generateContent() {
-      let rowIndex = 2; // Start after header
+      let rowIndex = 2; 
       
-      // Process each type in the defined order
       config.getSection('TYPE_ORDER').forEach(type => {
-        // Skip if this type doesn't exist in the data
         if (!this.groupedCombinations[type]) return;
         
-        // Add type header row
         rowIndex = addTypeHeaderRow(this.overviewSheet, type, rowIndex);
         
-        // Add rows for each category/subcategory in this type
         rowIndex = addCategoryRows(
           this.overviewSheet, 
           this.groupedCombinations[type], 
@@ -833,7 +846,6 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
           this.columnIndices
         );
         
-        // Add subtotal for this type
         rowIndex = addTypeSubtotalRow(
           this.overviewSheet, 
           type, 
@@ -841,7 +853,7 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
           this.groupedCombinations[type].length
         );
         
-        rowIndex += 2; // Add space between categories
+        rowIndex += 2; 
       });
       
       this.lastContentRowIndex = rowIndex;
@@ -866,18 +878,9 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
      * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     addMetrics() {
-      // Create a combined config object for the FinancialAnalysisService
-      const analysisConfig = {
-        ...config.get(),
-        // Add any additional config needed by FinancialAnalysisService (already handled by FinancialAnalysisService itself using main config)
-      };
-      
-      // Use the injected FinancialAnalysisService
-      // The analyze method of FinancialAnalysisService handles its own instantiation and config
       if (analysisServiceInstance && analysisServiceInstance.analyze) {
          analysisServiceInstance.analyze(this.spreadsheet, this.overviewSheet);
       } else {
-        // Fallback or error if the service is not available, though it should be injected
         console.error("FinancialAnalysisService not available for addMetrics");
         if (errorService) {
             errorService.log(errorService.create("FinancialAnalysisService not available in FinanceOverview", { severity: "high"}));
@@ -902,7 +905,6 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
      * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     applyPreferences() {
-      // Show/hide sub-categories based on preference
       if (this.showSubCategories) {
         this.overviewSheet.showColumns(3, 1);
       } else {
@@ -946,9 +948,8 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     create: function() {
       try {
         uiService.showLoadingSpinner("Generating financial overview...");
-        cacheService.invalidateAll(); // Clear cache to ensure fresh data
+        cacheService.invalidateAll(); 
         
-        // Use the builder pattern for a cleaner implementation
         const builder = new FinancialOverviewBuilder();
         
         const result = builder
@@ -969,12 +970,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       } catch (error) {
         uiService.hideLoadingSpinner();
         
-        // Process the error
         if (error.name === 'FinancialPlannerError') {
           errorService.log(error);
           uiService.showErrorNotification("Error generating overview", error.message);
         } else {
-          // Convert to our custom error format and log
           const wrappedError = errorService.create(
             "Failed to generate financial overview", 
             { originalError: error.message, stack: error.stack, severity: "high" }
@@ -996,43 +995,20 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
      *        See {@link https://developers.google.com/apps-script/guides/triggers/events#edit_3}
      * @return {void}
      * @public
-     * @example
-     * // Called from a central onEdit dispatcher:
-     * // function onEdit(e) {
-     * //   const sheetName = e.range.getSheet().getName();
-     * //   if (sheetName === FinancialPlanner.Config.get().SHEETS.OVERVIEW) {
-     * //     FinancialPlanner.FinanceOverview.handleEdit(e);
-     * //   } else if (sheetName === ...) { ... }
-     * // }
      */
     handleEdit: function(e) {
       try {
-        // Check if the edit was in the Overview sheet
         if (e.range.getSheet().getName() !== config.getSection('SHEETS').OVERVIEW) return;
 
-        // Check if the edit was to the checkbox cell
         const subcategoryToggle = config.getSection('UI').SUBCATEGORY_TOGGLE;
         if (e.range.getA1Notation() === subcategoryToggle.CHECKBOX_CELL) {
-          const newValue = e.range.getValue(); // Checkbox value is boolean
+          const newValue = e.range.getValue(); 
 
-          // Update the user preference
           setUserPreference("ShowSubCategories", newValue);
-
-          // Show loading toast
           uiService.showLoadingSpinner("Updating overview based on preference change...");
-
-          // Regenerate the overview
-          // Note: Calling create() directly might be heavy. Consider a more targeted update if possible in the future.
-          this.create(); // This already includes success/error UI feedback
-
-          // No need for separate success message here as create() handles it.
-          // const status = newValue ? "showing" : "hiding";
-          // uiService.showSuccessNotification(`Overview updated, ${status} sub-categories`);
-
+          this.create(); 
         }
       } catch (error) {
-         // Error during handleEdit itself (e.g., accessing config fails)
-         // The create() call has its own error handling.
          errorService.handle(errorService.create("Error handling Overview sheet edit", { originalError: error.toString(), eventDetails: JSON.stringify(e) }), "Failed to process change on Overview sheet.");
       }
     }
@@ -1043,8 +1019,8 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   FinancialPlanner.CacheService, 
   FinancialPlanner.ErrorService, 
   FinancialPlanner.Config,
-  FinancialPlanner.SettingsService, // Injected SettingsService
-  FinancialPlanner.FinancialAnalysisService // Injected FinancialAnalysisService
+  FinancialPlanner.SettingsService, 
+  FinancialPlanner.FinancialAnalysisService 
 );
 
 // ============================================================================
@@ -1063,8 +1039,6 @@ function createFinancialOverview() {
     return FinancialPlanner.FinanceOverview.create();
   }
   Logger.log("Global createFinancialOverview: FinancialPlanner.FinanceOverview not available.");
-  // Optionally show an error to the user if appropriate for a direct call scenario
-  // SpreadsheetApp.getUi().alert("Error: Financial Overview module not loaded.");
 }
 
 /**

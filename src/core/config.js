@@ -74,7 +74,7 @@ const ConfigModule = (function() {
         HEADER_FONT: '#FFFFFF',
         BORDER: '#FF8F00',
         INCOME_FONT: '#388E3C',
-        EXPENSE_FONT: '#D32F2F',
+        EXPENSE_FONT: '#D32F2F', 
         SAVINGS_FONT: '#1565C0',
         NEUTRAL_FONT: '#424242',
         NET_BG: '#424242',
@@ -98,9 +98,13 @@ const ConfigModule = (function() {
       EXPIRY_SECONDS: 21600, // 6 hours
     },
     LOCALE: {
-      CURRENCY_SYMBOL: '€',
-      CURRENCY_LOCALE: '0',
+      CURRENCY_SYMBOL: '€', 
+      CURRENCY_LOCALE_CODE: '0', 
       DATE_FORMAT: 'yyyy-MM-dd',
+      NUMBER_FORMATS: {
+        CURRENCY_DEFAULT: '_-[$€-0]* #,##0_-;_-[RED][$€-0]* #,##0_-;* "-";_-@_-',
+        CURRENCY_TOTAL_ROW: '_-[$€-0]* #,##0_-;_-[$€-0] (#,##0)_-;* "-";_-@_-' 
+      }
     },
     PERFORMANCE: {
       BATCH_SIZE: 50,
