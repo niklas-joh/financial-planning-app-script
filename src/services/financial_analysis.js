@@ -65,6 +65,25 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
        */
       this.analysisSheet = utils.getOrCreateSheet(spreadsheet, this.config.SHEETS.ANALYSIS);
       
+      let formatString;
+      const globalConfigInstance = config; 
+      const globalLocale = globalConfigInstance.getLocale ? globalConfigInstance.getLocale() : null;
+
+      if (globalLocale && globalLocale.NUMBER_FORMATS && globalLocale.NUMBER_FORMATS.CURRENCY_DEFAULT) {
+          formatString = globalLocale.NUMBER_FORMATS.CURRENCY_DEFAULT;
+      } else {
+          if (this.config && this.config.LOCALE && this.config.LOCALE.NUMBER_FORMATS && this.config.LOCALE.NUMBER_FORMATS.CURRENCY_DEFAULT) {
+              formatString = this.config.LOCALE.NUMBER_FORMATS.CURRENCY_DEFAULT;
+          }
+      }
+
+      if (!formatString) {
+          // Fallback to a hardcoded default if not found in config. This indicates a config issue.
+          formatString = '_-[$€-0]* #,##0_-;_-[RED][$€-0]* #,##0_-;* "-";_-@_-'; 
+          Logger.log("Warning: CURRENCY_DEFAULT not found in configuration. Using hardcoded default for FinancialAnalysisService.");
+      }
+      this.currencyFormatDefault = formatString;
+      
       /**
        * Holds the data extracted from the overview sheet for analysis.
        * Populated by `extractDataFromOverview`.
@@ -74,9 +93,16 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
       this.data = null;
       
       /**
-       * Holds calculated total values (average monthly) for key categories (Income, Expenses, Savings, etc.).
+       * Holds calculated total and average monthly values for key categories (Income, Expenses, Savings, etc.).
        * Populated by `extractDataFromOverview`.
-       * @type {{income: {row: number, value: number}, expenses: {row: number, value: number}, savings: {row: number, value: number}, essentials: {row: number, value: number}, wantsPleasure: {row: number, value: number}, extra: {row: number, value: number}} | null}
+       * @type {{
+       *   income: {row: number, total: number, average: number},
+       *   expenses: {row: number, total: number, average: number},
+       *   savings: {row: number, total: number, average: number},
+       *   essentials: {row: number, total: number, average: number},
+       *   wantsPleasure: {row: number, total: number, average: number},
+       *   extra: {row: number, total: number, average: number}
+       * } | null}
        * @private
        */
       this.totals = null;
@@ -143,13 +169,13 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
       
       // Initialize totals
       this.totals = {
-        income: { row: -1, value: 0 },
-        expenses: { row: -1, value: 0 },
-        savings: { row: -1, value: 0 },
+        income: { row: -1, total: 0, average: 0 },
+        expenses: { row: -1, total: 0, average: 0 },
+        savings: { row: -1, total: 0, average: 0 },
         // Add expense type totals
-        essentials: { row: -1, value: 0 },
-        wantsPleasure: { row: -1, value: 0 },
-        extra: { row: -1, value: 0 }
+        essentials: { row: -1, total: 0, average: 0 },
+        wantsPleasure: { row: -1, total: 0, average: 0 },
+        extra: { row: -1, total: 0, average: 0 }
       };
       
       // Extract month names from headers (columns 5-16 in overview sheet)
@@ -164,51 +190,62 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         // Check for total rows
         if (rowData[0] === "Total Income") {
           this.totals.income.row = i + 1;
-          this.totals.income.value = rowData[16]; // Average column
+          this.totals.income.total = rowData[16]; 
+          this.totals.income.average = rowData[17];
         } else if (rowData[0] === "Total Essentials") {
           // Track Essentials separately
           this.totals.essentials.row = i + 1;
-          this.totals.essentials.value = rowData[16]; // Average column
+          this.totals.essentials.total = rowData[16];
+          this.totals.essentials.average = rowData[17];
           
           // Also add to total expenses
           if (this.totals.expenses.row === -1) {
-            this.totals.expenses.row = i + 1;
-            this.totals.expenses.value = 0;
+            this.totals.expenses.row = i + 1; // Set row only once
+            this.totals.expenses.total = 0;
+            this.totals.expenses.average = 0;
           }
-          this.totals.expenses.value += rowData[16];
+          this.totals.expenses.total += rowData[16];
+          this.totals.expenses.average += rowData[17];
         } else if (rowData[0] === "Total Wants/Pleasure") {
           // Track Wants/Pleasure separately
           this.totals.wantsPleasure.row = i + 1;
-          this.totals.wantsPleasure.value = rowData[16]; // Average column
+          this.totals.wantsPleasure.total = rowData[16];
+          this.totals.wantsPleasure.average = rowData[17];
           
           // Also add to total expenses
           if (this.totals.expenses.row === -1) {
-            this.totals.expenses.row = i + 1;
-            this.totals.expenses.value = 0;
+            this.totals.expenses.row = i + 1; // Set row only once
+            this.totals.expenses.total = 0;
+            this.totals.expenses.average = 0;
           }
-          this.totals.expenses.value += rowData[16];
+          this.totals.expenses.total += rowData[16];
+          this.totals.expenses.average += rowData[17];
         } else if (rowData[0] === "Total Extra") {
           // Track Extra separately
           this.totals.extra.row = i + 1;
-          this.totals.extra.value = rowData[16]; // Average column
+          this.totals.extra.total = rowData[16];
+          this.totals.extra.average = rowData[17];
           
           // Also add to total expenses
           if (this.totals.expenses.row === -1) {
-            this.totals.expenses.row = i + 1;
-            this.totals.expenses.value = 0;
+            this.totals.expenses.row = i + 1; // Set row only once
+            this.totals.expenses.total = 0;
+            this.totals.expenses.average = 0;
           }
-          this.totals.expenses.value += rowData[16];
+          this.totals.expenses.total += rowData[16];
+          this.totals.expenses.average += rowData[17];
         } else if (rowData[0] === "Total Savings") {
           this.totals.savings.row = i + 1;
-          this.totals.savings.value = rowData[16]; // Average column
+          this.totals.savings.total = rowData[16]; 
+          this.totals.savings.average = rowData[17];
         }
         
-        // Extract categories
+        // Extract categories (using average for individual category amounts in this.data, as before)
         if (rowData[0] === "Income" && rowData[1]) {
           this.data.incomeCategories.push({
             category: rowData[1],
             subcategory: rowData[2] || "",
-            amount: rowData[16], // Average column
+            amount: rowData[17], // Use Average column for individual category display
             row: i + 1
           });
         } else if ((rowData[0] === "Essentials" || rowData[0] === "Wants/Pleasure" || rowData[0] === "Extra") && rowData[1]) {
@@ -216,14 +253,14 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
             type: rowData[0],
             category: rowData[1],
             subcategory: rowData[2] || "",
-            amount: rowData[16], // Average column
+            amount: rowData[17], // Use Average column for individual category display
             row: i + 1
           });
         } else if (rowData[0] === "Savings" && rowData[1]) {
           this.data.savingsCategories.push({
             category: rowData[1],
             subcategory: rowData[2] || "",
-            amount: rowData[16], // Average column
+            amount: rowData[17], // Use Average column for individual category display
             row: i + 1
           });
         }
@@ -521,8 +558,9 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         );
         
         if (currencyRows.length > 0) {
+          const currencyFormat = this.currencyFormatDefault;
           currencyRows.forEach(row => {
-            utils.formatAsCurrency(this.analysisSheet.getRange(row, 2, 1, 2));
+            utils.formatAsCurrency(this.analysisSheet.getRange(row, 2, 1, 2), currencyFormat);
           });
         }
         
@@ -719,7 +757,8 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
           }
           
           // Format currency cells (amount column)
-          utils.formatAsCurrency(this.analysisSheet.getRange(startRow, 3, currentCategoryRow, 1));
+          const currencyFormat = this.currencyFormatDefault;
+          utils.formatAsCurrency(this.analysisSheet.getRange(startRow, 3, currentCategoryRow, 1), currencyFormat);
           
           // Format percentage cells (percentage columns)
           utils.formatAsPercentage(this.analysisSheet.getRange(startRow, 4, currentCategoryRow, 3));
