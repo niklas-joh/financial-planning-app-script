@@ -20,97 +20,19 @@ function initialize() {
     return;
   }
   
-  // Register global functions for Google Apps Script
-  registerGlobalFunctions();
-  
   // Log successful initialization
   Logger.log('Financial Planning Tools initialized successfully');
   Logger.log(`Version: ${FinancialPlanner.VERSION}`);
 }
 
-/**
- * Registers global functions that need to be accessible from Google Sheets UI
- * This is necessary because Google Apps Script requires global functions for triggers and menu items
- */
-function registerGlobalFunctions() {
-  // Core functions for Google Apps Script triggers
-  const coreFunctions = [
-    'onOpen',
-    'onEdit'
-  ];
-  
-  // Financial overview functions
-  const overviewFunctions = [
-    'createFinancialOverview',
-    'handleOverviewSheetEdits'
-  ];
-  
-  // Report functions
-  const reportFunctions = [
-    'generateMonthlySpendingReport',
-    'generateYearlySummary',
-    'generateCategoryBreakdown',
-    'generateSavingsAnalysis'
-  ];
-  
-  // Visualization functions
-  const visualizationFunctions = [
-    'createSpendingTrendsChart',
-    'createBudgetVsActualChart',
-    'createIncomeVsExpensesChart',
-    'createCategoryPieChart'
-  ];
-  
-  // Financial analysis functions
-  const financialAnalysisFunctions = [
-    'showKeyMetrics',
-    'suggestSavingsOpportunities',
-    'detectSpendingAnomalies',
-    'analyzeFixedVsVariableExpenses',
-    'generateCashFlowForecast'
-  ];
-  
-  // Settings functions
-  const settingsFunctions = [
-    'toggleShowSubCategories',
-    'setBudgetTargets',
-    'setupEmailReports'
-  ];
-  
-  // Utility functions
-  const utilityFunctions = [
-    'refreshCache'
-  ];
-  
-  // Combine all function lists
-  const allFunctions = [
-    ...coreFunctions,
-    ...overviewFunctions,
-    ...reportFunctions,
-    ...visualizationFunctions,
-    ...financialAnalysisFunctions,
-    ...settingsFunctions,
-    ...utilityFunctions
-  ];
-  
-  // Create global references to functions in the FinancialPlanner namespace
-  allFunctions.forEach(funcName => {
-    // Skip if function is already defined globally
-    if (typeof this[funcName] !== 'undefined') {
-      return;
-    }
-    
-    // Find the function in the FinancialPlanner namespace
-    // This will be updated as modules are refactored to use the namespace pattern
-    if (FinancialPlanner.Controllers && typeof FinancialPlanner.Controllers[funcName] === 'function') {
-      this[funcName] = FinancialPlanner.Controllers[funcName];
-    }
-    // Add more namespace checks as modules are refactored
-  });
-  
-  // Log registration results
-  Logger.log(`Registered ${allFunctions.length} global functions`);
-}
-
 // Run initialization
-initialize();
+// Ensure this runs after all modules in 00_module_loader.js are initialized.
+// The 'files' array in appsscript.json should order index.js towards the end.
+if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.Controllers) {
+  initialize();
+} else {
+  // This case should ideally not happen if file order is correct.
+  // It means FinancialPlanner or its core components weren't loaded before index.js.
+  Logger.log('FinancialPlanner namespace or Controllers not ready at the time of index.js execution. Initialization skipped.');
+  // Consider a fallback or a way to defer initialize() if this becomes an issue.
+}

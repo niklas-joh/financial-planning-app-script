@@ -1,14 +1,24 @@
 {
   "scriptId": "184Uut3nqa_VZyvpWsCCHamkcYa90PWA6uNe7jsiTevgNgB5pJaiEYtTf",
-  "rootDir": "/Users/niklas/Documents/Coding/AppScript/Financial Planning - Drop Downs",
+  "rootDir": "src",
   "parentId": ["1iE0v-ilG9jp9osaJGsdnvojgGo-GPn0-YlHuUM37Xc4"],
   "fileExtension": "js",
   "filePushOrder": [
+    "src/core/config.js",
+    "src/core/ui-service.js",
+    "src/core/error-service.js",
+    "src/core/cache-service.js",
+    "src/core/settings-service.js",
+    "src/core/controllers.js",
+    "src/core/00_module_loader.js",
     "src/utils/common.js",
-    "src/features/dropdowns.js",
-    "src/features/finance_overview.js",
-    "src/features/monthly_spending_report.js",
-    "src/main.js",
+    "src/services/dropdowns.js",
+    "src/services/finance_overview.js",
+    "src/services/financial_analysis.js",
+    "src/services/monthly_spending_report.js",
+    "src/services/reports.js",
+    "src/services/settings.js",
+    "src/services/visualizations.js",
     "src/index.js"
   ]
 }

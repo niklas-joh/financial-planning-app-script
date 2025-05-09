@@ -1,0 +1,19 @@
+# General ignores (these are typically project root relative)
+.DS_Store
+*.log
+*.lock
+
+# Version control
+.git/**
+
+# Node.js
+node_modules/**
+
+# Project-specific non-source directories (at project root)
+cline/**
+gh/**
+
+# Files within src (rootDir), patterns relative to src/
+tests/**
+# If there was a .claspignore file inside src that needed ignoring:
+# .claspignore

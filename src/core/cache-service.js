@@ -1,260 +1,166 @@
 /**
- * Financial Planning Tools - Cache Service
- * 
- * This file provides a centralized service for caching operations,
- * helping to improve performance by caching expensive operations.
+ * @fileoverview Cache Service Module for Financial Planning Tools.
+ * Provides centralized caching operations to improve performance.
+ * This module is designed to be instantiated by 00_module_loader.js.
  */
 
-// Create the CacheService module within the FinancialPlanner namespace
-FinancialPlanner.CacheService = (function(config) {
-  // Private variables
-  
-  // In-memory cache for ultra-fast access to frequently used data
-  const memoryCache = {};
-  
-  // Private functions
-  
+// eslint-disable-next-line no-unused-vars
+const CacheServiceModule = (function() {
   /**
-   * Checks if the cache is enabled in the configuration.
-   * @return {boolean} True if caching is enabled, false otherwise.
-   * @private
+   * Constructor for the CacheServiceModule.
+   * @param {object} configInstance - An instance of ConfigModule.
+   * @param {object} errorServiceInstance - An instance of ErrorServiceModule.
+   * @constructor
    */
-  function isCacheEnabled() {
-    return config.getSection('CACHE').ENABLED === true;
+  function CacheServiceModuleConstructor(configInstance, errorServiceInstance) {
+    this.config = configInstance;
+    this.errorService = errorServiceInstance;
+    this.memoryCache = {}; // In-memory cache for ultra-fast access
   }
-  
-  /**
-   * Gets the default cache expiry time in seconds from the configuration.
-   * @return {number} Cache expiry time in seconds.
-   * @private
-   */
-  function getDefaultExpirySeconds() {
-    return config.getSection('CACHE').EXPIRY_SECONDS || 3600; // Default to 1 hour
-  }
-  
-  /**
-   * Generates a cache key with a namespace prefix to avoid collisions.
-   * @param {string} key The base key.
-   * @return {string} The namespaced key (e.g., "fp_myKey").
-   * @private
-   */
-  function generateNamespacedKey(key) {
-    return `fp_${key}`;
-  }
-  
-  // Public API
-  return {
-    /**
-     * Gets a value from the cache. If the value is not found or is expired,
-     * it computes the value using the provided function, caches it, and then returns it.
-     * If caching is disabled via configuration, it directly calls the computeFunction.
-     *
-     * @param {string} key The unique key for the cache entry.
-     * @param {function(): any} computeFunction A function that computes the value if it's not in the cache.
-     *                                        This function should return the value to be cached.
-     * @param {number} [expirySeconds] The number of seconds for which the item should be cached.
-     *                                 Defaults to the value from `config.getSection('CACHE').EXPIRY_SECONDS` or 3600.
-     * @return {any} The cached or computed value.
-     *
-     * @example
-     * const expensiveData = FinancialPlanner.CacheService.get('myDataKey', function() {
-     *   return someExpensiveCalculation();
-     * }, 600); // Cache for 10 minutes
-     *
-     * @example
-     * // Using default expiry
-     * const anotherData = FinancialPlanner.CacheService.get('anotherKey', function() {
-     *   return fetchSomeData();
-     * });
-     */
-    get: function(key, computeFunction, expirySeconds) {
-      // If caching is disabled, just compute the value
-      if (!isCacheEnabled()) {
-        return computeFunction();
-      }
-      
-      // Set default expiry if not provided
-      if (expirySeconds === undefined) {
-        expirySeconds = getDefaultExpirySeconds();
-      }
-      
-      // Generate namespaced key
-      const namespacedKey = generateNamespacedKey(key);
-      
-      // Check memory cache first (fastest)
-      if (memoryCache[namespacedKey] && memoryCache[namespacedKey].expiry > Date.now()) {
-        return memoryCache[namespacedKey].value;
-      }
-      
-      // Then check script cache
-      try {
-        const cache = CacheService.getScriptCache();
-        const cached = cache.get(namespacedKey);
-        
-        if (cached != null) {
-          try {
-            const value = JSON.parse(cached);
-            
-            // Store in memory cache too for faster access next time
-            memoryCache[namespacedKey] = {
-              value: value,
-              expiry: Date.now() + (expirySeconds * 1000)
-            };
-            
-            return value;
-          } catch (parseError) {
-            // If parsing fails, treat as cache miss
-            console.warn(`Failed to parse cached value for key ${key}:`, parseError);
-          }
-        }
-        
-        // Cache miss - compute the value
-        const result = computeFunction();
-        
-        // Store in both caches
-        try {
-          // Convert to JSON string for storage
-          const jsonResult = JSON.stringify(result);
-          
-          // Store in script cache
-          cache.put(namespacedKey, jsonResult, expirySeconds);
-          
-          // Store in memory cache
-          memoryCache[namespacedKey] = {
-            value: result,
-            expiry: Date.now() + (expirySeconds * 1000)
-          };
-        } catch (cacheError) {
-          console.warn(`Failed to cache result for key ${key}:`, cacheError);
-        }
-        
-        return result;
-      } catch (error) {
-        console.warn(`Cache operation failed for key ${key}:`, error);
-        // Fall back to direct computation
-        return computeFunction();
-      }
-    },
-    
-    /**
-     * Invalidates (removes) a specific cache entry from both memory and script cache.
-     * Does nothing if caching is disabled.
-     *
-     * @param {string} key The cache key to invalidate.
-     *
-     * @example
-     * FinancialPlanner.CacheService.invalidate('staleDataKey');
-     */
-    invalidate: function(key) {
-      if (!isCacheEnabled()) return;
-      
-      const namespacedKey = generateNamespacedKey(key);
-      
-      // Remove from memory cache
-      delete memoryCache[namespacedKey];
-      
-      // Remove from script cache
-      try {
-        const cache = CacheService.getScriptCache();
-        cache.remove(namespacedKey);
-      } catch (error) {
-        console.warn(`Failed to invalidate cache for key ${key}:`, error);
-      }
-    },
-    
-    /**
-     * Invalidates all cache entries in the memory cache that start with the given prefix.
-     * Note: This currently only affects the in-memory cache due to limitations
-     * with Google Apps Script's CacheService prefix removal.
-     * Does nothing if caching is disabled.
-     *
-     * @param {string} prefix The prefix of keys to invalidate (e.g., "user_settings_").
-     *
-     * @example
-     * FinancialPlanner.CacheService.invalidateByPrefix('user_specific_data_');
-     */
-    invalidateByPrefix: function(prefix) {
-      if (!isCacheEnabled()) return;
-      
-      // Remove from memory cache
-      const namespacedPrefix = generateNamespacedKey(prefix);
-      
-      Object.keys(memoryCache).forEach(key => {
-        if (key.startsWith(namespacedPrefix)) {
-          delete memoryCache[key];
-        }
-      });
-      
-      // Note: CacheService doesn't provide a way to remove by prefix,
-      // so we need to track keys with the same prefix separately if needed
-    },
-    
-    /**
-     * Invalidates all known cache entries.
-     * This clears the entire in-memory cache and attempts to remove known keys
-     * (defined in `config.getSection('CACHE').KEYS`) from the script cache.
-     * Does nothing if caching is disabled.
-     *
-     * @example
-     * FinancialPlanner.CacheService.invalidateAll();
-     */
-    invalidateAll: function() {
-      if (!isCacheEnabled()) return;
-      
-      // Clear memory cache
-      Object.keys(memoryCache).forEach(key => {
-        delete memoryCache[key];
-      });
-      
-      // Clear script cache for known keys
-      try {
-        const cache = CacheService.getScriptCache();
-        const keys = Object.values(config.getSection('CACHE').KEYS || {})
-          .map(key => generateNamespacedKey(key));
-        
-        if (keys.length > 0) {
-          cache.removeAll(keys);
-        }
-      } catch (error) {
-        console.warn("Failed to invalidate all cache entries:", error);
-      }
-    },
-    
-    /**
-     * Puts a value directly into the cache (both memory and script cache).
-     * If caching is disabled, this operation does nothing.
-     *
-     * @param {string} key The unique key for the cache entry.
-     * @param {any} value The value to cache. Must be serializable to JSON for script cache.
-     * @param {number} [expirySeconds] The number of seconds for which the item should be cached.
-     *                                 Defaults to the value from `config.getSection('CACHE').EXPIRY_SECONDS` or 3600.
-     *
-     * @example
-     * FinancialPlanner.CacheService.put('userPreferences', { theme: 'dark', notifications: true }, 86400); // Cache for 1 day
-     */
-    put: function(key, value, expirySeconds) {
-      if (!isCacheEnabled()) return;
-      
-      // Set default expiry if not provided
-      if (expirySeconds === undefined) {
-        expirySeconds = getDefaultExpirySeconds();
-      }
-      
-      const namespacedKey = generateNamespacedKey(key);
-      
-      // Store in memory cache
-      memoryCache[namespacedKey] = {
-        value: value,
-        expiry: Date.now() + (expirySeconds * 1000)
-      };
-      
-      // Store in script cache
-      try {
-        const cache = CacheService.getScriptCache();
-        cache.put(namespacedKey, JSON.stringify(value), expirySeconds);
-      } catch (error) {
-        console.warn(`Failed to put value in cache for key ${key}:`, error);
-      }
+
+  // Private helper methods (prefixed with _ and attached to prototype or defined in closure)
+
+  CacheServiceModuleConstructor.prototype._isCacheEnabled = function() {
+    try {
+      return this.config.getSection('CACHE').ENABLED === true;
+    } catch (e) {
+      this.errorService.log(this.errorService.create('Failed to read CACHE.ENABLED config', { originalError: e, severity: 'medium' }));
+      return false; // Default to cache disabled if config is broken
     }
   };
-})(FinancialPlanner.Config);
+
+  CacheServiceModuleConstructor.prototype._getDefaultExpirySeconds = function() {
+    try {
+      return this.config.getSection('CACHE').EXPIRY_SECONDS || 3600; // Default to 1 hour
+    } catch (e) {
+      this.errorService.log(this.errorService.create('Failed to read CACHE.EXPIRY_SECONDS config', { originalError: e, severity: 'medium' }));
+      return 3600; // Default to 1 hour if config is broken
+    }
+  };
+
+  CacheServiceModuleConstructor.prototype._generateNamespacedKey = function(key) {
+    return `fp_${key}`;
+  };
+
+  // Public API methods
+
+  CacheServiceModuleConstructor.prototype.get = function(key, computeFunction, expirySeconds) {
+    if (!this._isCacheEnabled()) {
+      return computeFunction();
+    }
+
+    const effectiveExpirySeconds = expirySeconds === undefined ? this._getDefaultExpirySeconds() : expirySeconds;
+    const namespacedKey = this._generateNamespacedKey(key);
+
+    if (this.memoryCache[namespacedKey] && this.memoryCache[namespacedKey].expiry > Date.now()) {
+      return this.memoryCache[namespacedKey].value;
+    }
+
+    try {
+      const scriptCache = CacheService.getScriptCache();
+      const cached = scriptCache.get(namespacedKey);
+
+      if (cached != null) {
+        try {
+          const value = JSON.parse(cached);
+          this.memoryCache[namespacedKey] = {
+            value: value,
+            expiry: Date.now() + (effectiveExpirySeconds * 1000),
+          };
+          return value;
+        } catch (parseError) {
+          this.errorService.log(this.errorService.create(`Failed to parse cached value for key ${key}`, { originalError: parseError, severity: 'warning' }));
+        }
+      }
+
+      const result = computeFunction();
+      try {
+        const jsonResult = JSON.stringify(result);
+        scriptCache.put(namespacedKey, jsonResult, effectiveExpirySeconds);
+        this.memoryCache[namespacedKey] = {
+          value: result,
+          expiry: Date.now() + (effectiveExpirySeconds * 1000),
+        };
+      } catch (cachePutError) {
+        this.errorService.log(this.errorService.create(`Failed to cache result for key ${key}`, { originalError: cachePutError, severity: 'warning' }));
+      }
+      return result;
+    } catch (error) {
+      this.errorService.log(this.errorService.create(`Cache 'get' operation failed for key ${key}`, { originalError: error, severity: 'warning' }));
+      return computeFunction(); // Fall back to direct computation
+    }
+  };
+
+  CacheServiceModuleConstructor.prototype.put = function(key, value, expirySeconds) {
+    if (!this._isCacheEnabled()) return;
+
+    const effectiveExpirySeconds = expirySeconds === undefined ? this._getDefaultExpirySeconds() : expirySeconds;
+    const namespacedKey = this._generateNamespacedKey(key);
+
+    this.memoryCache[namespacedKey] = {
+      value: value,
+      expiry: Date.now() + (effectiveExpirySeconds * 1000),
+    };
+
+    try {
+      const scriptCache = CacheService.getScriptCache();
+      scriptCache.put(namespacedKey, JSON.stringify(value), effectiveExpirySeconds);
+    } catch (error) {
+      this.errorService.log(this.errorService.create(`Failed to put value in cache for key ${key}`, { originalError: error, severity: 'warning' }));
+    }
+  };
+
+  CacheServiceModuleConstructor.prototype.invalidate = function(key) {
+    if (!this._isCacheEnabled()) return;
+    const namespacedKey = this._generateNamespacedKey(key);
+
+    delete this.memoryCache[namespacedKey];
+
+    try {
+      const scriptCache = CacheService.getScriptCache();
+      scriptCache.remove(namespacedKey);
+    } catch (error) {
+      this.errorService.log(this.errorService.create(`Failed to invalidate cache for key ${key}`, { originalError: error, severity: 'warning' }));
+    }
+  };
+
+  CacheServiceModuleConstructor.prototype.invalidateByPrefix = function(prefix) {
+    if (!this._isCacheEnabled()) return;
+    const namespacedPrefix = this._generateNamespacedKey(prefix);
+
+    Object.keys(this.memoryCache).forEach(key => {
+      if (key.startsWith(namespacedPrefix)) {
+        delete this.memoryCache[key];
+      }
+    });
+    // Note: Script cache does not support removeByPrefix easily.
+    // This could be logged as a known limitation or handled if specific keys are tracked.
+    this.errorService.log(this.errorService.create('invalidateByPrefix only affects memory cache due to Apps Script CacheService limitations.', { severity: 'info', prefix: namespacedPrefix }));
+  };
+
+  CacheServiceModuleConstructor.prototype.invalidateAll = function() {
+    if (!this._isCacheEnabled()) return;
+
+    Object.keys(this.memoryCache).forEach(key => {
+      delete this.memoryCache[key];
+    });
+
+    try {
+      const scriptCache = CacheService.getScriptCache();
+      const cacheConfig = this.config.getSection('CACHE');
+      const knownKeys = cacheConfig && cacheConfig.KEYS ? Object.values(cacheConfig.KEYS) : [];
+      
+      const namespacedKeysToRemove = knownKeys.map(key => this._generateNamespacedKey(key));
+
+      if (namespacedKeysToRemove.length > 0) {
+        scriptCache.removeAll(namespacedKeysToRemove);
+      }
+      // To clear truly *all* script cache, one would have to iterate and remove,
+      // or accept that only known keys are cleared. This implementation clears known keys.
+    } catch (error) {
+      this.errorService.log(this.errorService.create('Failed to invalidate all known cache entries from script cache', { originalError: error, severity: 'warning' }));
+    }
+  };
+
+  return CacheServiceModuleConstructor;
+})();
