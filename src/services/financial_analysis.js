@@ -343,12 +343,14 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
       // Consistent background color for all metrics
       const metricBgColor = this.config.COLORS.UI.METRICS_BG;
       
-      // 1. Expenses/Income Ratio
-      if (this.totals.income.row > 0 && this.totals.expenses.row > 0) {
-        metricValues.push(["Expenses/Income Ratio"]);
-        metricFormulas.push([`=-${this.totals.expenses.value}/${this.totals.income.value}`]);
-        metricTargets.push([this.config.TARGET_RATES.DEFAULT * -1]); // Use config target rate with negative sign
-        metricDescriptions.push(["Negative % indicates spending, lower absolute value is better"]);
+      // 1. Expenses/Income Ratio (Uses Average)
+      if (this.totals.income.average && this.totals.expenses.average) {
+        metricValues.push(["Expenses/Income Ratio (Avg Monthly)"]);
+        // Ensure income.average is not zero to prevent division by zero errors
+        const expensesIncomeRatioFormula = this.totals.income.average !== 0 ? `=-${this.totals.expenses.average}/${this.totals.income.average}` : 0;
+        metricFormulas.push([expensesIncomeRatioFormula]);
+        metricTargets.push([this.config.TARGET_RATES.DEFAULT * -1]); // Target based on average
+        metricDescriptions.push(["Avg monthly expenses as % of avg monthly income. Lower absolute value is better."]);
         metricBackgrounds.push([metricBgColor]);
         
         // Add conditional formatting (green if meeting target, red if not)
@@ -367,12 +369,13 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         currentMetricRow++;
       }
       
-      // 2. Essentials Rate
-      if (this.totals.income.row > 0 && this.totals.essentials.row > 0) {
-        metricValues.push(["Essentials Rate"]);
-        metricFormulas.push([`=${this.totals.essentials.value}/${this.totals.income.value}`]);
+      // 2. Essentials Rate (Uses Average)
+      if (this.totals.income.average && this.totals.essentials.average) {
+        metricValues.push(["Essentials Rate (Avg Monthly)"]);
+        const essentialsRateFormula = this.totals.income.average !== 0 ? `=${this.totals.essentials.average}/${this.totals.income.average}` : 0;
+        metricFormulas.push([essentialsRateFormula]);
         metricTargets.push([this.config.TARGET_RATES.ESSENTIALS]);
-        metricDescriptions.push(["Percentage of income spent on essential expenses (lower is better)"]);
+        metricDescriptions.push(["Avg monthly essentials spending as % of avg monthly income. Lower is better."]);
         metricBackgrounds.push([metricBgColor]);
         
         // Add conditional formatting (red if exceeding target)
@@ -390,12 +393,13 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         currentMetricRow++;
       }
       
-      // 3. Wants/Pleasure Rate
-      if (this.totals.income.row > 0 && this.totals.wantsPleasure.row > 0) {
-        metricValues.push(["Wants/Pleasure Rate"]);
-        metricFormulas.push([`=${this.totals.wantsPleasure.value}/${this.totals.income.value}`]);
-        metricTargets.push([this.config.TARGET_RATES.WANTS_PLEASURE]);
-        metricDescriptions.push(["Percentage of income spent on wants and pleasure (discretionary spending)"]);
+      // 3. Wants/Pleasure Rate (Uses Average)
+      if (this.totals.income.average && this.totals.wantsPleasure.average) {
+        metricValues.push(["Wants/Pleasure Rate (Avg Monthly)"]);
+        const wantsRateFormula = this.totals.income.average !== 0 ? `=${this.totals.wantsPleasure.average}/${this.totals.income.average}` : 0;
+        metricFormulas.push([wantsRateFormula]);
+        metricTargets.push([this.config.TARGET_RATES.WANTS_PLEASURE || this.config.TARGET_RATES.WANTS]); // Fallback for WANTS
+        metricDescriptions.push(["Avg monthly wants/pleasure spending as % of avg monthly income."]);
         metricBackgrounds.push([metricBgColor]);
         
         // Add conditional formatting (red if exceeding target)
@@ -413,12 +417,13 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         currentMetricRow++;
       }
       
-      // 4. Extra Expenses Rate
-      if (this.totals.income.row > 0 && this.totals.extra.row > 0) {
-        metricValues.push(["Extra Expenses Rate"]);
-        metricFormulas.push([`=${this.totals.extra.value}/${this.totals.income.value}`]);
+      // 4. Extra Expenses Rate (Uses Average)
+      if (this.totals.income.average && this.totals.extra.average) {
+        metricValues.push(["Extra Expenses Rate (Avg Monthly)"]);
+        const extraRateFormula = this.totals.income.average !== 0 ? `=${this.totals.extra.average}/${this.totals.income.average}` : 0;
+        metricFormulas.push([extraRateFormula]);
         metricTargets.push([this.config.TARGET_RATES.EXTRA]);
-        metricDescriptions.push(["Percentage of income spent on extra/miscellaneous expenses"]);
+        metricDescriptions.push(["Avg monthly extra spending as % of avg monthly income."]);
         metricBackgrounds.push([metricBgColor]);
         
         // Add conditional formatting (red if exceeding target)
@@ -451,36 +456,44 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         currentMetricRow++;
       }
       
-      // 5. Savings Rate
-      if (this.totals.income.row > 0 && this.totals.savings.row > 0) {
-        metricValues.push(["Savings Rate"]);
-        metricFormulas.push([`=-${this.totals.savings.value}/${this.totals.income.value}`]);
-        metricTargets.push([this.config.TARGET_RATES.DEFAULT]); // Use config target rate
-        metricDescriptions.push(["Positive % indicates saving money, negative % indicates withdrawing from savings"]);
+      // 5. Savings Rate (Uses Average)
+      if (this.totals.income.average && this.totals.savings.average) {
+        metricValues.push(["Savings Rate (Avg Monthly)"]);
+        // Savings are often represented as positive contributions, so target is positive.
+        // If this.totals.savings.average is negative (withdrawal), the rate will be negative.
+        const savingsRateFormula = this.totals.income.average !== 0 ? `=${this.totals.savings.average}/${this.totals.income.average}` : 0;
+        metricFormulas.push([savingsRateFormula]);
+        metricTargets.push([this.config.TARGET_RATES.SAVINGS]); // Use specific SAVINGS target
+        metricDescriptions.push(["Avg monthly savings as % of avg monthly income. Higher is better."]);
         metricBackgrounds.push([metricBgColor]);
-        
-        // Add conditional formatting (green if meeting target, red if not)
-        const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
-        const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        
+
+        // Conditional formatting for Savings Rate (Green if >= target, Red if < target)
+        const targetCellSR = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
+        const valueCellSR = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
         conditionalFormatRules.push({
           row: startRow + currentMetricRow,
           rule: SpreadsheetApp.newConditionalFormatRule()
-            .whenFormulaSatisfied(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
-            .setBackground("#FFCDD2") // Light red if below target
-            .setRanges([valueCell])
+            .whenFormulaSatisfied(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`) // Less than target is "bad"
+            .setBackground("#FFCDD2") // Light red
+            .setRanges([valueCellSR])
         });
-        
+        conditionalFormatRules.push({
+            row: startRow + currentMetricRow,
+            rule: SpreadsheetApp.newConditionalFormatRule()
+              .whenFormulaSatisfied(`B${startRow + currentMetricRow}>=C${startRow + currentMetricRow}`) // Greater or equal to target is "good"
+              .setBackground("#C8E6C9") // Light green
+              .setRanges([valueCellSR])
+        });
         currentMetricRow++;
       }
       
       // Add another separator
-      if (currentMetricRow > 0) {
+      if (currentMetricRow > 0 && metricValues[metricValues.length-1][0] !== "") { // Avoid double separators
         metricValues.push([""]);
         metricFormulas.push([""]);
         metricTargets.push([""]);
         metricDescriptions.push([""]);
-        metricBackgrounds.push(["#E0E0E0"]); // Light gray separator
+        metricBackgrounds.push(["#E0E0E0"]); // Correct background for separator
         
         // Add a horizontal line for visual separation
         this.analysisSheet.getRange(startRow + currentMetricRow, 1, 1, 4)
@@ -488,29 +501,126 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         
         currentMetricRow++;
       }
-      
-      // 6. Monthly Net Cash Flow
-      if (this.totals.income.row > 0 && this.totals.expenses.row > 0) {
-        metricValues.push(["Monthly Net Cash Flow"]);
-        metricFormulas.push([`=${this.totals.income.value}-${this.totals.expenses.value}`]);
-        metricTargets.push([0]); // Target is positive cash flow
-        metricDescriptions.push(["Positive value means you're earning more than spending, negative means you're spending more than earning"]);
+
+      // --- NEW CASH FLOW METRICS ---
+
+      const incomeAvg = this.totals.income.average || 0;
+      const essentialsAvg = this.totals.essentials.average || 0;
+      const wantsAvg = this.totals.wantsPleasure.average || 0;
+      const extraAvg = this.totals.extra.average || 0;
+      const savingsAvg = this.totals.savings.average || 0;
+      const runningExpensesAvg = essentialsAvg + wantsAvg + extraAvg;
+
+      const incomeTotal = this.totals.income.total || 0;
+      const essentialsTotal = this.totals.essentials.total || 0;
+      const wantsTotal = this.totals.wantsPleasure.total || 0;
+      const extraTotal = this.totals.extra.total || 0;
+      const savingsTotal = this.totals.savings.total || 0;
+      const runningExpensesTotal = essentialsTotal + wantsTotal + extraTotal;
+
+      const targetRates = this.config.TARGET_RATES;
+
+      // Helper function to add metric pairs (Avg Monthly, Period Total)
+      const addMetricPair = (baseName, avgValue, totalValue, avgTargetFormula, totalTargetFormula, description) => {
+        // Avg Monthly
+        metricValues.push([`${baseName} (Avg Monthly)`]);
+        metricFormulas.push([`=${avgValue}`]);
+        metricTargets.push([avgTargetFormula === null ? "" : `=${avgTargetFormula}`]); // Allow null for no target
+        metricDescriptions.push([description]);
         metricBackgrounds.push([metricBgColor]);
-        
-        // Add conditional formatting (green if positive, red if negative)
+        let valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+        conditionalFormatRules.push({ // General: green if positive, red if negative
+            row: startRow + currentMetricRow,
+            rule: SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0).setBackground("#FFCDD2").setRanges([valueCell])
+        });
+        conditionalFormatRules.push({
+            row: startRow + currentMetricRow,
+            rule: SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThanOrEqualTo(0).setBackground("#C8E6C9").setRanges([valueCell])
+        });
+        currentMetricRow++;
+
+        // Period Total
+        metricValues.push([`${baseName} (Period Total)`]);
+        metricFormulas.push([`=${totalValue}`]);
+        metricTargets.push([totalTargetFormula === null ? "" : `=${totalTargetFormula}`]); // Allow null for no target
+        metricDescriptions.push([description]);
+        metricBackgrounds.push([metricBgColor]);
+        valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
+         conditionalFormatRules.push({ // General: green if positive, red if negative
+            row: startRow + currentMetricRow,
+            rule: SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0).setBackground("#FFCDD2").setRanges([valueCell])
+        });
+        conditionalFormatRules.push({
+            row: startRow + currentMetricRow,
+            rule: SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThanOrEqualTo(0).setBackground("#C8E6C9").setRanges([valueCell])
+        });
+        currentMetricRow++;
+      };
+      
+      // 6. Net Income after Essentials
+      addMetricPair(
+        "Net Income after Essentials",
+        `${incomeAvg} - ${essentialsAvg}`,
+        `${incomeTotal} - ${essentialsTotal}`,
+        incomeAvg !== 0 ? `${incomeAvg} * (1 - ${targetRates.ESSENTIALS})` : 0,
+        incomeTotal !== 0 ? `${incomeTotal} * (1 - ${targetRates.ESSENTIALS})` : 0,
+        "Income remaining after essential expenses. Higher is better."
+      );
+      
+      // 7. Net Income after Running Expenses
+      addMetricPair(
+        "Net Income after Running Expenses",
+        `${incomeAvg} - (${essentialsAvg} + ${wantsAvg} + ${extraAvg})`,
+        `${incomeTotal} - (${essentialsTotal} + ${wantsTotal} + ${extraTotal})`,
+        incomeAvg !== 0 ? `${incomeAvg} * (1 - (${targetRates.ESSENTIALS} + ${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA}))` : 0,
+        incomeTotal !== 0 ? `${incomeTotal} * (1 - (${targetRates.ESSENTIALS} + ${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA}))` : 0,
+        "Income remaining after all typical expenses (Essentials, Wants, Extra). Higher is better."
+      );
+
+      // 8. Overall Net Cash Flow (after all spending & savings contributions)
+      // This is effectively Income - All Expenses - Savings Contributions
+      addMetricPair(
+        "Overall Net Cash Flow",
+        `${incomeAvg} - ${runningExpensesAvg} - ${savingsAvg}`,
+        `${incomeTotal} - ${runningExpensesTotal} - ${savingsTotal}`,
+        // Target is ideally 0 if all income is allocated according to targets
+        incomeAvg !== 0 ? `${incomeAvg} * (1 - (${targetRates.ESSENTIALS} + ${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA} + ${targetRates.SAVINGS}))` : 0,
+        incomeTotal !== 0 ? `${incomeTotal} * (1 - (${targetRates.ESSENTIALS} + ${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA} + ${targetRates.SAVINGS}))` : 0,
+        "Surplus/deficit after all expenses and savings contributions. Aim for zero or positive."
+      );
+
+      // 9. Discretionary Spending Power (Income - Essentials - Savings)
+      addMetricPair(
+        "Discretionary Spending Power",
+        `${incomeAvg} - ${essentialsAvg} - ${savingsAvg}`,
+        `${incomeTotal} - ${essentialsTotal} - ${savingsTotal}`,
+        incomeAvg !== 0 ? `${incomeAvg} * (${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA})` : 0, // Target is sum of Wants & Extra target rates
+        incomeTotal !== 0 ? `${incomeTotal} * (${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA})` : 0,
+        "Amount available for Wants/Pleasure and Extra spending after essentials and savings."
+      );
+      
+      // Original Monthly Net Cash Flow (Income - Total Expenses (not including savings))
+      // This is slightly different from "Overall Net Cash Flow" if savings are considered an "expense" in the latter.
+      // For clarity, let's rename the original "Monthly Net Cash Flow" to "Income vs Expenses (Avg Monthly)"
+      if (this.totals.income.average && this.totals.expenses.average) {
+        metricValues.push(["Income vs Expenses (Avg Monthly)"]);
+        metricFormulas.push([`=${incomeAvg}-${runningExpensesAvg}`]); // Income - (Essentials + Wants + Extra)
+        metricTargets.push([0]); // Target is positive cash flow before savings
+        metricDescriptions.push(["Avg monthly income minus avg monthly running expenses (Essentials, Wants, Extra). Positive is good."]);
+        metricBackgrounds.push([metricBgColor]);
         const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        
         conditionalFormatRules.push({
           row: startRow + currentMetricRow,
-          rule: SpreadsheetApp.newConditionalFormatRule()
-            .whenFormulaSatisfied(`B${startRow + currentMetricRow}<0`)
-            .setBackground("#FFCDD2") // Light red if negative
-            .setRanges([valueCell])
+          rule: SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0).setBackground("#FFCDD2").setRanges([valueCell])
         });
-        
+         conditionalFormatRules.push({
+          row: startRow + currentMetricRow,
+          rule: SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThanOrEqualTo(0).setBackground("#C8E6C9").setRanges([valueCell])
+        });
         currentMetricRow++;
       }
-      
+
+
       // Write all data to the sheet in batches if we have metrics
       if (currentMetricRow > 0) {
         // Set metric names
@@ -540,30 +650,44 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
           );
         }
         
-        // Format percentage cells
-        const percentageRows = metricValues.map((_, i) => startRow + i).filter(row => 
-          this.analysisSheet.getRange(row, 1).getValue() !== "Monthly Net Cash Flow" && 
-          this.analysisSheet.getRange(row, 1).getValue() !== ""
-        );
-        
+        // Format percentage cells (Value and Target columns)
+        const percentageMetricNames = [
+          "Expenses/Income Ratio (Avg Monthly)", 
+          "Essentials Rate (Avg Monthly)", 
+          "Wants/Pleasure Rate (Avg Monthly)", 
+          "Extra Expenses Rate (Avg Monthly)",
+          "Savings Rate (Avg Monthly)"
+        ];
+        const percentageRows = metricValues.map((val, i) => ({ name: val[0], row: startRow + i }))
+          .filter(item => percentageMetricNames.includes(item.name))
+          .map(item => item.row);
+
         if (percentageRows.length > 0) {
           percentageRows.forEach(row => {
-            utils.formatAsPercentage(this.analysisSheet.getRange(row, 2, 1, 2));
+            // Format both Value (column B) and Target (column C) as percentage
+            utils.formatAsPercentage(this.analysisSheet.getRange(row, 2, 1, 2)); 
           });
         }
         
-        // Format currency cells
-        const currencyRows = metricValues.map((_, i) => startRow + i).filter(row => 
-          this.analysisSheet.getRange(row, 1).getValue() === "Monthly Net Cash Flow"
-        );
+        // Format currency cells (Value and Target columns)
+        const currencyMetricNames = [
+          "Net Income after Essentials (Avg Monthly)", "Net Income after Essentials (Period Total)",
+          "Net Income after Running Expenses (Avg Monthly)", "Net Income after Running Expenses (Period Total)",
+          "Overall Net Cash Flow (Avg Monthly)", "Overall Net Cash Flow (Period Total)",
+          "Discretionary Spending Power (Avg Monthly)", "Discretionary Spending Power (Period Total)",
+          "Income vs Expenses (Avg Monthly)"
+        ];
+        const currencyRows = metricValues.map((val, i) => ({ name: val[0], row: startRow + i }))
+          .filter(item => currencyMetricNames.includes(item.name))
+          .map(item => item.row);
         
         if (currencyRows.length > 0) {
           const currencyFormat = this.currencyFormatDefault;
           currencyRows.forEach(row => {
+            // Format both Value (column B) and Target (column C) as currency
             utils.formatAsCurrency(this.analysisSheet.getRange(row, 2, 1, 2), currencyFormat);
           });
         }
-        
         // Apply conditional formatting rules
         if (conditionalFormatRules.length > 0) {
           const rules = this.analysisSheet.getConditionalFormatRules();
@@ -656,10 +780,10 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
           amountValues.push([category.amount]);
           
           // Calculate percentage of income
-          if (this.totals.income.value > 0) {
-            percentFormulas.push([`=C${startRow + currentCategoryRow}/${this.totals.income.value}`]);
+          if (this.totals.income.average > 0) {
+            percentFormulas.push([`=C${startRow + currentCategoryRow}/${this.totals.income.average}`]);
           } else {
-            percentFormulas.push([0]);
+            percentFormulas.push(["N/A"]); // Or 0, depending on desired display for no income
           }
           
           // Set target rate based on expense type
@@ -695,13 +819,13 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         // Add Total Expenses row
         categoryValues.push(["Total Expenses"]);
         typeValues.push(["All"]);
-        amountValues.push([this.totals.expenses.value]);
+        amountValues.push([this.totals.expenses.average]); // Show average total expenses here
         
-        // Calculate percentage of income for total
-        if (this.totals.income.value > 0) {
-          percentFormulas.push([`=C${startRow + currentCategoryRow}/${this.totals.income.value}`]);
+        // Calculate percentage of income for total expenses (average)
+        if (this.totals.income.average > 0) {
+          percentFormulas.push([`=C${startRow + currentCategoryRow}/${this.totals.income.average}`]);
         } else {
-          percentFormulas.push([0]);
+          percentFormulas.push(["N/A"]); // Or 0
         }
         
         targetValues.push([0.8]); // Target 80%
