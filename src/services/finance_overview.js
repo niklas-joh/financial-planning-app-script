@@ -151,14 +151,15 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
    * @param {number} params.subcategoryCol - 1-based column number for 'Sub-Category'.
    * @param {number} params.dateCol - 1-based column number for 'Date'.
    * @param {number} params.amountCol - 1-based column number for 'Amount'.
-   * @param {number} params.sharedCol - 1-based column number for 'Shared' status.
+   * @param {number} params.sharedCol - 1-based column number for 'Shared' status (in Transactions sheet, now unused for division).
+   * @param {number} overviewSheetCurrentRow - The 1-based row number in the Overview sheet where this formula will be placed.
    * @return {string} The `SUMIFS` formula string.
    * @private
    */
-  function buildMonthlySumFormula(params) {
+  function buildMonthlySumFormula(params, overviewSheetCurrentRow) { // Added overviewSheetCurrentRow
     const {
       type, category, subcategory, monthDate, sheetName,
-      typeCol, categoryCol, subcategoryCol, dateCol, amountCol, sharedCol
+      typeCol, categoryCol, subcategoryCol, dateCol, amountCol // sharedCol removed from destructuring
     } = params;
     
     const month = monthDate.getMonth() + 1; // 1-indexed month
@@ -188,24 +189,19 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       baseCriteria.push(`${sheetName}!${utils.columnToLetter(subcategoryCol)}:${utils.columnToLetter(subcategoryCol)}, "${subcategory}"`);
     }
     
-    // For expense types, handle shared expenses differently
+    // Standard SUMIFS formula based on criteria from Transactions sheet
+    const sumifsFormula = `SUMIFS(${sumRange}, ${baseCriteria.join(", ")})`;
+    
+    // For expense types, divide by 2 if the checkbox in column D of the Overview sheet is TRUE for the current row
     const expenseTypes = config.getSection('EXPENSE_TYPES');
-    if (expenseTypes.includes(type) && sharedCol > 0) {
-      // Non-shared expenses (Shared = "")
-      const nonSharedCriteria = [...baseCriteria];
-      nonSharedCriteria.push(`${sheetName}!${utils.columnToLetter(sharedCol)}:${utils.columnToLetter(sharedCol)}, ""`);
-      const nonSharedFormula = `SUMIFS(${sumRange}, ${nonSharedCriteria.join(", ")})`;
-      
-      // Shared expenses (Shared = TRUE, divided by 2)
-      const sharedCriteria = [...baseCriteria];
-      sharedCriteria.push(`${sheetName}!${utils.columnToLetter(sharedCol)}:${utils.columnToLetter(sharedCol)}, "true"`);
-      const sharedFormula = `SUMIFS(${sumRange}, ${sharedCriteria.join(", ")})/2`;
-      
-      return `${nonSharedFormula} + (${sharedFormula})`;
+    if (expenseTypes.includes(type)) {
+      // The divisor is determined by the state of the checkbox in column D of the current row in the Overview sheet
+      const divisorFormula = `IF(D${overviewSheetCurrentRow}=TRUE, 2, 1)`;
+      return `(${sumifsFormula}) / ${divisorFormula}`;
     }
     
-    // Standard formula for non-shared items
-    return `SUMIFS(${sumRange}, ${baseCriteria.join(", ")})`;
+    // For non-expense types (e.g., Income), return the simple SUMIFS
+    return sumifsFormula;
   }
   
   /**
@@ -369,10 +365,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
           subcategoryCol: columnIndices.subcategory + 1,
           dateCol: columnIndices.date + 1,
           amountCol: columnIndices.amount + 1,
-          sharedCol: columnIndices.shared + 1
+          sharedCol: columnIndices.shared + 1 // This param is still passed but ignored by new buildMonthlySumFormula division logic
         };
         
-        rowFormulas.push(buildMonthlySumFormula(formulaParams));
+        rowFormulas.push(buildMonthlySumFormula(formulaParams, currentRow)); // Pass currentRow
       }
       
       // Add formula for each month column
@@ -448,17 +444,22 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       .setFontWeight("bold")
       .setFontColor(typeColors.FONT);
     
-    // Add subtotal formulas for each month column using batch operations
+    // Add subtotal formulas for each month column and the average column using batch operations
     const formulas = [];
     const startRow = rowIndex - rowCount;
     const endRow = rowIndex - 1;
     
-    for (let monthCol = 5; monthCol <= 17; monthCol++) {
+    // Loop for columns E (5) to R (18)
+    for (let monthCol = 5; monthCol <= 18; monthCol++) { // Changed 17 to 18
       formulas.push(`=SUM(${utils.columnToLetter(monthCol)}${startRow}:${utils.columnToLetter(monthCol)}${endRow})`);
     }
     
-    // Set all formulas at once for better performance
-    sheet.getRange(rowIndex, 5, 1, 13).setFormulas([formulas]);
+    // Set all formulas at once for columns E to R (14 columns)
+    const formulaRange = sheet.getRange(rowIndex, 5, 1, 14); // Changed 13 to 14
+    formulaRange.setFormulas([formulas]);
+    
+    // Format the subtotal row as currency
+    formatRangeAsCurrency(formulaRange); // Added this line
     
     return rowIndex + 1;
   }
