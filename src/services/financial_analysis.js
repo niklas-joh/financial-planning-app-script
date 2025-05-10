@@ -5,7 +5,7 @@
  * service. It creates a separate Analysis sheet with key metrics, expense category analysis,
  * and visualizations.
  * 
- * Version: 2.2.1
+ * Version: 2.2.3
  * Last Updated: 2025-05-10
  */
 
@@ -55,12 +55,9 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
     analyze() {
       let currentRow = 2; // Start after main sheet header
       currentRow = this.addKeyMetricsSection(currentRow);
-      // Spacing is now handled by the return value of addKeyMetricsSection if needed, or can be added here.
-      // The +2 was for a general large section spacer. Individual cards have their own spacing.
-      // Let's assume addKeyMetricsSection returns the row *after* the last card's spacing.
-      currentRow += 1; // Add one more row of general spacing before next section title
+      currentRow += 1; 
       currentRow = this.addExpenseCategoriesSection(currentRow);
-      currentRow += 2; // Space after Expense Categories
+      currentRow += 2; 
       this.createExpenditureCharts(currentRow);
     }
 
@@ -127,19 +124,17 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
       this.analysisSheet.getRange("A1:F1").setBackground(this.config.COLORS.UI.HEADER_BG).setFontWeight("bold").setFontColor(this.config.COLORS.UI.HEADER_FONT).setHorizontalAlignment("center");
       this.analysisSheet.setFrozenRows(1);
       
-      this.analysisSheet.setColumnWidth(1, 20); // Narrow column A for spacing or icons later
-      this.analysisSheet.setColumnWidth(2, 120); // Card Col B1
-      this.analysisSheet.setColumnWidth(3, 120); // Card Col B2
-      this.analysisSheet.setColumnWidth(4, 20);  // Narrow column D for spacing
-      this.analysisSheet.setColumnWidth(5, 120); // Card Col E1
-      this.analysisSheet.setColumnWidth(6, 120); // Card Col E2
-      // If more columns are needed for other sections, they can be added/adjusted later.
+      this.analysisSheet.setColumnWidth(1, 20); 
+      this.analysisSheet.setColumnWidth(2, 120); 
+      this.analysisSheet.setColumnWidth(3, 120); 
+      this.analysisSheet.setColumnWidth(4, 20);  
+      this.analysisSheet.setColumnWidth(5, 120); 
+      this.analysisSheet.setColumnWidth(6, 120); 
       this.analysisSheet.setName(this.config.SHEETS.ANALYSIS);
     }
 
     addKeyMetricsSection(startRow) {
-      let currentRowColB = startRow;
-      let currentRowColE = startRow;
+      let currentRow = startRow;
       const sheet = this.analysisSheet;
       const totals = this.totals;
       const serviceInstance = this; 
@@ -149,16 +144,16 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         const valuesRow = cardStartRow + 1;
         const sparklineRow = cardStartRow + 2;
         const labelsRow = cardStartRow + 3;
-        const cardEndRow = labelsRow;
-        const cardWidth = 2; // Cards are 2 columns wide
+        const descriptionRow = cardStartRow + 4; 
+        const cardEndRow = descriptionRow; 
+        const cardWidth = 2; 
 
-        // Row Heights
         sheet.setRowHeight(headerRow, 25);
         sheet.setRowHeight(valuesRow, 35);
         sheet.setRowHeight(sparklineRow, 30);
         sheet.setRowHeight(labelsRow, 20);
+        sheet.setRowHeight(descriptionRow, 35); // Adjusted for potentially longer descriptions
 
-        // 1. Header Row
         sheet.getRange(headerRow, startCardColumn, 1, cardWidth).merge()
           .setValue(metricConf.name)
           .setBackground('#E2EFDA')
@@ -167,9 +162,8 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
           .setHorizontalAlignment('center')
           .setVerticalAlignment('middle');
 
-        // 2. Values Row
-        const monthlyValueCell = sheet.getRange(valuesRow, startCardColumn, 1, 1); // Col 1 of card
-        const annualValueCell = sheet.getRange(valuesRow, startCardColumn + 1, 1, 1); // Col 2 of card
+        const monthlyValueCell = sheet.getRange(valuesRow, startCardColumn, 1, 1);
+        const annualValueCell = sheet.getRange(valuesRow, startCardColumn + 1, 1, 1);
 
         monthlyValueCell.setFormula(metricConf.avgFormula)
           .setFontSize(18).setFontColor('#008000')
@@ -184,7 +178,7 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
             .setFontSize(18).setFontColor('#008000')
             .setHorizontalAlignment('center').setVerticalAlignment('middle');
         } else {
-          annualValueCell.setValue('') // Blank if no total/target
+          annualValueCell.setValue('')
             .setHorizontalAlignment('center').setVerticalAlignment('middle');
         }
         
@@ -200,127 +194,149 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
           }
         }
 
-        // 3. Sparkline Row
         sheet.getRange(sparklineRow, startCardColumn, 1, cardWidth).merge()
           .setValue(metricConf.sparklinePlaceholderText || `[Sparkline: ${metricConf.name}]`)
           .setHorizontalAlignment('center').setVerticalAlignment('middle')
           .setFontStyle('italic').setFontColor('#AAAAAA');
 
-        // 4. Labels Row
-        sheet.getRange(labelsRow, startCardColumn, 1, 1) // Col 1 of card
+        sheet.getRange(labelsRow, startCardColumn, 1, 1)
           .setValue(metricConf.avgLabel || 'Monthly Avg.')
           .setFontSize(9).setFontColor('#808080')
           .setHorizontalAlignment('center').setVerticalAlignment('middle');
         
-        sheet.getRange(labelsRow, startCardColumn + 1, 1, 1) // Col 2 of card
-          .setValue(metricConf.totalLabel || 'Annual Total')
+        sheet.getRange(labelsRow, startCardColumn + 1, 1, 1)
+          .setValue(metricConf.totalLabel || (metricConf.targetValue !== undefined ? 'Target' : 'Annual Total'))
           .setFontSize(9).setFontColor('#808080')
           .setHorizontalAlignment('center').setVerticalAlignment('middle');
+
+        sheet.getRange(descriptionRow, startCardColumn, 1, cardWidth).merge()
+          .setValue(metricConf.description || '')
+          .setFontSize(9).setFontColor('#595959')
+          .setHorizontalAlignment('center').setVerticalAlignment('top')
+          .setWrap(true);
         
-        // Card Border
-        sheet.getRange(headerRow, startCardColumn, 4, cardWidth) // 4 rows, cardWidth columns
+        sheet.getRange(headerRow, startCardColumn, 5, cardWidth) 
           .setBorder(true, true, true, true, true, true, '#A9D18E', SpreadsheetApp.BorderStyle.SOLID_THIN);
         
         return cardEndRow + 1; 
       };
-
-      const cashFlowMetricConfigs = [
+      
+      const pairedMetrics = [
         {
-          name: 'Net Income (after Essentials)',
-          avgFormula: `=${totals.income.averageRef}-${totals.essentials.averageRef}`,
-          totalFormula: `=${totals.income.totalRef}-${totals.essentials.totalRef}`,
-          sparklinePlaceholderText: `[Trend: NI after Essentials]`,
-          valueType: 'currency',
+          cashFlow: {
+            name: 'Total Gross Income',
+            avgFormula: `=IFERROR(${totals.income.averageRef}, "N/A")`,
+            totalFormula: `=IFERROR(${totals.income.totalRef}, "N/A")`,
+            sparklinePlaceholderText: `[Trend: Gross Income]`,
+            valueType: 'currency',
+            description: "Total income from all sources before any deductions or allocations."
+          },
+          rate: {
+            name: 'Overall Savings Rate',
+            avgFormula: `=IFERROR(${totals.savings.averageRef}/${totals.income.averageRef},0)`,
+            targetValue: serviceInstance.config.TARGET_RATES.SAVINGS !== undefined ? serviceInstance.config.TARGET_RATES.SAVINGS : 'N/A',
+            sparklinePlaceholderText: `[Trend: Savings Rate]`,
+            valueType: 'percentage',
+            avgLabel: 'Avg Rate',
+            description: "Percentage of gross income allocated to savings."
+          }
         },
         {
-          name: 'Discretionary Spending Power',
-          avgFormula: `=${totals.income.averageRef}-${totals.essentials.averageRef}-${totals.savings.averageRef}`,
-          totalFormula: `=${totals.income.totalRef}-${totals.essentials.totalRef}-${totals.savings.totalRef}`,
-          sparklinePlaceholderText: `[Trend: Discretionary Spending]`,
-          valueType: 'currency',
+          cashFlow: {
+            name: 'Income after Essentials',
+            avgFormula: `=IFERROR(${totals.income.averageRef}+${totals.essentials.averageRef}, "N/A")`,
+            totalFormula: `=IFERROR(${totals.income.totalRef}+${totals.essentials.totalRef}, "N/A")`,
+            sparklinePlaceholderText: `[Trend: NI after Essentials]`,
+            valueType: 'currency',
+            description: "Income remaining after covering essential living costs."
+          },
+          rate: {
+            name: 'Essentials Spending Rate',
+            avgFormula: `=IFERROR(ABS(${totals.essentials.averageRef})/${totals.income.averageRef},0)`,
+            targetValue: serviceInstance.config.TARGET_RATES.ESSENTIALS !== undefined ? serviceInstance.config.TARGET_RATES.ESSENTIALS : 'N/A',
+            sparklinePlaceholderText: `[Trend: Essentials Rate]`,
+            valueType: 'percentage',
+            avgLabel: 'Avg Rate',
+            description: "Percentage of gross income spent on essential needs."
+          }
         },
         {
-          name: 'Overall Net Cash Flow',
-          avgFormula: `=${totals.income.averageRef}-(${totals.essentials.averageRef}+${totals.wantsPleasure.averageRef}+${totals.extra.averageRef})`,
-          totalFormula: `=${totals.income.totalRef}-(${totals.essentials.totalRef}+${totals.wantsPleasure.totalRef}+${totals.extra.totalRef})`,
-          sparklinePlaceholderText: `[Trend: Net Cash Flow]`,
-          valueType: 'currency',
+          cashFlow: {
+            name: 'Income after Core Spending',
+            avgFormula: `=IFERROR(${totals.income.averageRef}+${totals.essentials.averageRef}+${totals.wantsPleasure.averageRef}, "N/A")`,
+            totalFormula: `=IFERROR(${totals.income.totalRef}+${totals.essentials.totalRef}+${totals.wantsPleasure.totalRef}, "N/A")`,
+            sparklinePlaceholderText: `[Trend: NI after Core Spend]`,
+            valueType: 'currency',
+            description: "Income after essential and regular discretionary (wants/pleasure) costs."
+          },
+          rate: {
+            name: 'Wants/Pleasure Spending Rate',
+            avgFormula: `=IFERROR(ABS(${totals.wantsPleasure.averageRef})/${totals.income.averageRef},0)`,
+            targetValue: serviceInstance.config.TARGET_RATES.WANTS_PLEASURE !== undefined ? serviceInstance.config.TARGET_RATES.WANTS_PLEASURE : 'N/A',
+            sparklinePlaceholderText: `[Trend: Wants Rate]`,
+            valueType: 'percentage',
+            avgLabel: 'Avg Rate',
+            description: "Percentage of gross income spent on wants and pleasure."
+          }
         },
         {
-          name: 'Net Income after Running Expenses',
-          avgFormula: `=(${totals.income.averageRef}-(${totals.essentials.averageRef}+${totals.wantsPleasure.averageRef}))`,
-          totalFormula: `=(${totals.income.totalRef}-(${totals.essentials.totalRef}+${totals.wantsPleasure.totalRef}))`,
-          sparklinePlaceholderText: `[Trend: NI after Running Exp.]`,
-          valueType: 'currency',
+          cashFlow: {
+            name: 'Allocatable Income',
+            avgFormula: `=IFERROR(${totals.income.averageRef}+${totals.essentials.averageRef}+${totals.wantsPleasure.averageRef}-${totals.savings.averageRef}, "N/A")`,
+            totalFormula: `=IFERROR(${totals.income.totalRef}+${totals.essentials.totalRef}+${totals.wantsPleasure.totalRef}-${totals.savings.totalRef}, "N/A")`,
+            sparklinePlaceholderText: `[Trend: Allocatable Income]`,
+            valueType: 'currency',
+            description: "Funds for 'Extra' spending or more savings, after core costs & planned savings."
+          },
+          rate: {
+            name: 'Extra Spending Rate',
+            avgFormula: `=IFERROR(ABS(${totals.extra.averageRef})/${totals.income.averageRef},0)`,
+            targetValue: serviceInstance.config.TARGET_RATES.EXTRA !== undefined ? serviceInstance.config.TARGET_RATES.EXTRA : 'N/A',
+            sparklinePlaceholderText: `[Trend: Extra Rate]`,
+            valueType: 'percentage',
+            avgLabel: 'Avg Rate',
+            description: "Percentage of gross income spent on non-categorized extra items."
+          }
+        },
+        {
+          cashFlow: {
+            name: 'Final Net Surplus/Deficit',
+            avgFormula: `=IFERROR(${totals.income.averageRef}+${totals.essentials.averageRef}+${totals.wantsPleasure.averageRef}+${totals.extra.averageRef}-${totals.savings.averageRef}, "N/A")`,
+            totalFormula: `=IFERROR(${totals.income.totalRef}+${totals.essentials.totalRef}+${totals.wantsPleasure.totalRef}+${totals.extra.totalRef}-${totals.savings.totalRef}, "N/A")`,
+            sparklinePlaceholderText: `[Trend: Final Surplus/Deficit]`,
+            valueType: 'currency',
+            description: "The final financial surplus or deficit after all income, expenses, and savings."
+          },
+          rate: {
+            name: 'Net Surplus Rate',
+            avgFormula: `=IFERROR((${totals.income.averageRef}+${totals.essentials.averageRef}+${totals.wantsPleasure.averageRef}+${totals.extra.averageRef}-${totals.savings.averageRef})/${totals.income.averageRef},0)`,
+            targetValue: 0, // Target is typically to be >= 0%
+            sparklinePlaceholderText: `[Trend: Surplus Rate]`,
+            valueType: 'percentage',
+            avgLabel: 'Avg Rate',
+            description: "Final surplus/deficit as a percentage of gross income."
+          }
         }
       ];
 
-      const rateMetricConfigs = [
-        {
-          name: 'Savings Rate',
-          avgFormula: `=IFERROR(${totals.savings.averageRef}/${totals.income.averageRef},0)`,
-          targetValue: serviceInstance.config.TARGET_RATES.SAVINGS !== undefined ? serviceInstance.config.TARGET_RATES.SAVINGS : 'N/A',
-          sparklinePlaceholderText: `[Trend: Savings Rate]`,
-          valueType: 'percentage',
-          avgLabel: 'Avg Rate',
-          totalLabel: 'Target'
-        },
-        {
-          name: 'Essentials Rate',
-          avgFormula: `=IFERROR(${totals.essentials.averageRef}/${totals.income.averageRef},0)`,
-          targetValue: serviceInstance.config.TARGET_RATES.ESSENTIALS !== undefined ? serviceInstance.config.TARGET_RATES.ESSENTIALS : 'N/A',
-          sparklinePlaceholderText: `[Trend: Essentials Rate]`,
-          valueType: 'percentage',
-          avgLabel: 'Avg Rate',
-          totalLabel: 'Target'
-        },
-        {
-          name: 'Wants/Pleasure Rate',
-          avgFormula: `=IFERROR(${totals.wantsPleasure.averageRef}/${totals.income.averageRef},0)`,
-          targetValue: serviceInstance.config.TARGET_RATES.WANTS_PLEASURE !== undefined ? serviceInstance.config.TARGET_RATES.WANTS_PLEASURE : 'N/A',
-          sparklinePlaceholderText: `[Trend: Wants Rate]`,
-          valueType: 'percentage',
-          avgLabel: 'Avg Rate',
-          totalLabel: 'Target'
-        },
-        {
-          name: 'Extra Rate',
-          avgFormula: `=IFERROR(${totals.extra.averageRef}/${totals.income.averageRef},0)`,
-          targetValue: serviceInstance.config.TARGET_RATES.EXTRA !== undefined ? serviceInstance.config.TARGET_RATES.EXTRA : 'N/A',
-          sparklinePlaceholderText: `[Trend: Extra Rate]`,
-          valueType: 'percentage',
-          avgLabel: 'Avg Rate',
-          totalLabel: 'Target'
-        }
-      ];
-
-      // Add Key Metrics Title spanning B-F (or B-C and E-F separately if preferred)
-      sheet.getRange(startRow, 2, 1, 5).merge() // Merge B to F for the title "Key Financial Metrics"
+      sheet.getRange(currentRow, 2, 1, 5).merge() 
            .setValue("Key Financial Metrics")
            .setFontWeight("bold").setFontSize(14)
            .setHorizontalAlignment("center").setVerticalAlignment("middle")
-           .setBackground(this.config.COLORS.UI.HEADER_BG || '#D3D3D3') // Use a header-like background
+           .setBackground(this.config.COLORS.UI.HEADER_BG || '#D3D3D3') 
            .setFontColor(this.config.COLORS.UI.HEADER_FONT || '#000000');
-      sheet.setRowHeight(startRow, 30); // Height for the title row
-      
-      let currentTitleRow = startRow + 1; // Actual cards start below this title
-      currentRowColB = currentTitleRow;
-      currentRowColE = currentTitleRow;
+      sheet.setRowHeight(currentRow, 30); 
+      currentRow++; 
 
-
-      cashFlowMetricConfigs.forEach(conf => {
-        currentRowColB = createMetricCard(conf, currentRowColB, 2); // Start in Col B (2)
-        sheet.setRowHeight(currentRowColB, 15); // Spacing row
-        currentRowColB++;
+      pairedMetrics.forEach(pair => {
+        createMetricCard(pair.cashFlow, currentRow, 2); // Cash flow card in Col B-C
+        createMetricCard(pair.rate, currentRow, 5);     // Rate card in Col E-F
+        currentRow += 5; // Each card is 5 rows high (header, value, sparkline, label, description)
+        sheet.setRowHeight(currentRow, 15); // Spacing row
+        currentRow++;
       });
       
-      rateMetricConfigs.forEach(conf => {
-        currentRowColE = createMetricCard(conf, currentRowColE, 5); // Start in Col E (5)
-        sheet.setRowHeight(currentRowColE, 15); // Spacing row
-        currentRowColE++;
-      });
-      
-      return Math.max(currentRowColB, currentRowColE); // Return the greater of the two current rows
+      return currentRow;
     }
 
     addExpenseCategoriesSection(startRow) {
@@ -355,9 +371,9 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         });
         
         categoryData.push([
-          "Total Expenses", "All", this.totals.expenses.average,
+          "Total Expenses", "All", this.totals.expenses.average, 
           (this.totals.income.averageRef && this.totals.income.average > 0) ? `=C${startRow + currentCategoryRow}/${this.totals.income.averageRef}` : "N/A",
-          0.8, // Example target for total expenses
+          0.8, 
           `=D${startRow + currentCategoryRow}-E${startRow + currentCategoryRow}`
         ]);
         currentCategoryRow++;
@@ -383,8 +399,8 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
       const analysisData = this.analysisSheet.getDataRange().getValues();
       let categoryStartRow = -1, categoryEndRow = -1;
       for (let i = 0; i < analysisData.length; i++) {
-        if (analysisData[i][0] === "Category" && analysisData[i][1] === "Type") categoryStartRow = i + 2; // Data starts on the row after header
-        else if (analysisData[i][0] === "Total Expenses" && analysisData[i][1] === "All") { categoryEndRow = i; break; } // Data ends on the row before total
+        if (analysisData[i][0] === "Category" && analysisData[i][1] === "Type") categoryStartRow = i + 2; 
+        else if (analysisData[i][0] === "Total Expenses" && analysisData[i][1] === "All") { categoryEndRow = i; break; } 
       }
 
       if (categoryStartRow === -1 || categoryEndRow === -1 || categoryEndRow < categoryStartRow) {
@@ -392,8 +408,7 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         return;
       }
       
-      // Pie chart for categories (excluding total)
-      const pieDataRange = this.analysisSheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 3); // Category name and Amount
+      const pieDataRange = this.analysisSheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 3); 
       const pieChart = this.analysisSheet.newChart().setChartType(Charts.ChartType.PIE).addRange(pieDataRange)
         .setPosition(startRow, 1, 0, 0).setOption('title', 'Expenditure Breakdown by Category')
         .setOption('titleTextStyle', { color: this.config.COLORS.CHART.TITLE, fontSize: 16, bold: true })
@@ -404,18 +419,16 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
         .setOption('tooltip', { showColorCode: true, textStyle: { fontSize: 12 }}).build();
       this.analysisSheet.insertChart(pieChart);
 
-      // Column chart for rates vs targets (excluding total)
-      // Range: Category (col A), % of Income (col D), Target % (col E)
       const columnChartDataRanges = [
-        this.analysisSheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 1), // Category names
-        this.analysisSheet.getRange(categoryStartRow, 4, categoryEndRow - categoryStartRow + 1, 1), // % of Income
-        this.analysisSheet.getRange(categoryStartRow, 5, categoryEndRow - categoryStartRow + 1, 1)  // Target %
+        this.analysisSheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 1), 
+        this.analysisSheet.getRange(categoryStartRow, 4, categoryEndRow - categoryStartRow + 1, 1), 
+        this.analysisSheet.getRange(categoryStartRow, 5, categoryEndRow - categoryStartRow + 1, 1)  
       ];
       
       const columnChartBuilder = this.analysisSheet.newChart().setChartType(Charts.ChartType.COLUMN);
       columnChartDataRanges.forEach(range => columnChartBuilder.addRange(range));
       
-      const columnChart = columnChartBuilder.setPosition(startRow, 5, 0, 0) // Positioned to the right of pie, adjust col index if needed
+      const columnChart = columnChartBuilder.setPosition(startRow, 5, 0, 0) 
         .setOption('title', 'Expense Rates vs Targets')
         .setOption('titleTextStyle', { color: this.config.COLORS.CHART.TITLE, fontSize: 16, bold: true })
         .setOption('legend', { position: 'top', textStyle: { color: this.config.COLORS.CHART.TEXT, fontSize: 12 }})
