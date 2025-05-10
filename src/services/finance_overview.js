@@ -176,31 +176,35 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     // Sum range
     const sumRange = `${sheetName}!${utils.columnToLetter(amountCol)}:${utils.columnToLetter(amountCol)}`;
     
-    // Base criteria for all formulas
+    // Base criteria for type and date are always included
     const baseCriteria = [
       `${sheetName}!${utils.columnToLetter(typeCol)}:${utils.columnToLetter(typeCol)}, "${type}"`,
-      `${sheetName}!${utils.columnToLetter(categoryCol)}:${utils.columnToLetter(categoryCol)}, "${category}"`,
       `${sheetName}!${utils.columnToLetter(dateCol)}:${utils.columnToLetter(dateCol)}, ">=${startDateFormatted}"`,
       `${sheetName}!${utils.columnToLetter(dateCol)}:${utils.columnToLetter(dateCol)}, "<=${endDateFormatted}"`
     ];
-    
-    // Add subcategory criteria if it exists
-    if (subcategory) {
-      baseCriteria.push(`${sheetName}!${utils.columnToLetter(subcategoryCol)}:${utils.columnToLetter(subcategoryCol)}, "${subcategory}"`);
+
+    // Add category criteria if a category is provided
+    if (category) {
+      baseCriteria.push(`${sheetName}!${utils.columnToLetter(categoryCol)}:${utils.columnToLetter(categoryCol)}, "${category}"`);
+      // Add subcategory criteria only if both category and subcategory are provided
+      if (subcategory) {
+        baseCriteria.push(`${sheetName}!${utils.columnToLetter(subcategoryCol)}:${utils.columnToLetter(subcategoryCol)}, "${subcategory}"`);
+      }
     }
     
-    // Standard SUMIFS formula based on criteria from Transactions sheet
+    // Standard SUMIFS formula based on the constructed criteria
     const sumifsFormula = `SUMIFS(${sumRange}, ${baseCriteria.join(", ")})`;
     
-    // For expense types, divide by 2 if the checkbox in column D of the Overview sheet is TRUE for the current row
+    // For expense types at the category/subcategory level (where 'category' is present),
+    // divide by 2 if the 'Shared' checkbox in column D of the Overview sheet is TRUE for the current row.
+    // This division does not apply to "Total [Type]" rows where 'category' is null.
     const expenseTypes = config.getSection('EXPENSE_TYPES');
-    if (expenseTypes.includes(type)) {
-      // The divisor is determined by the state of the checkbox in column D of the current row in the Overview sheet
+    if (category && expenseTypes.includes(type)) {
       const divisorFormula = `IF(D${overviewSheetCurrentRow}=TRUE, 2, 1)`;
       return `(${sumifsFormula}) / ${divisorFormula}`;
     }
     
-    // For non-expense types (e.g., Income), return the simple SUMIFS
+    // For non-expense types or "Total [Type]" rows, return the simple SUMIFS
     return sumifsFormula;
   }
   
@@ -275,6 +279,37 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     // Set column width for the Shared? column
     sheet.setColumnWidth(4, uiConfig.COLUMN_WIDTHS.SHARED);
   }
+
+  /**
+   * Adds a styled major section header (e.g., "Income", "Expenses", "Savings") to the overview sheet.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @param {string} title - The title for the section header.
+   * @param {number} rowIndex - The 1-based row index where this header should be inserted.
+   * @return {number} The next available row index after inserting the header.
+   * @private
+   */
+  function addMajorSectionHeader(sheet, title, rowIndex) {
+    const headersConfig = config.getSection('HEADERS');
+    const uiColors = config.getSection('COLORS').UI;
+    // Define style for major headers, could be moved to config if more complex
+    const style = {
+      fontSize: 12,
+      fontWeight: "bold",
+      backgroundColor: uiColors.SECTION_HEADER_BG || "#d3d3d3", // Light grey default
+      fontColor: uiColors.SECTION_HEADER_FONT || "#000000"     // Black default
+    };
+
+    const headerRange = sheet.getRange(rowIndex, 1, 1, headersConfig.length);
+    headerRange.setValue(title) // Sets value in the first cell of the range
+      .setBackground(style.backgroundColor)
+      .setFontWeight(style.fontWeight)
+      .setFontColor(style.fontColor)
+      .setFontSize(style.fontSize)
+      .setVerticalAlignment("middle");
+      // .setHorizontalAlignment("left"); // Default is left, explicitly set if needed
+
+    return rowIndex + 1; // Return next available row
+  }
   
   /**
    * Adds a styled header row for a specific transaction type (e.g., "Income", "Essentials") to the overview sheet.
@@ -285,16 +320,16 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
    * @private
    */
   function addTypeHeaderRow(sheet, type, rowIndex) {
-    // Get colors for this type
-    const typeColors = getTypeColors(type);
     const headers = config.getSection('HEADERS');
-    
-    // Add Type header row with appropriate color
+    // const uiColors = config.getSection('COLORS').UI; // Available if a specific neutral color is needed from config
+
+    // Add Type header row with neutral styling
     sheet.getRange(rowIndex, 1).setValue(type);
     sheet.getRange(rowIndex, 1, 1, headers.length)
-      .setBackground(typeColors.BG)
+      // Removed .setBackground(typeColors.BG) to use default (no specific background)
       .setFontWeight("bold")
-      .setFontColor(typeColors.FONT);
+      // Removed .setFontColor(typeColors.FONT) to use default font color
+      ; // Semicolon kept for consistent style if other chained methods were present
     
     return rowIndex + 1;
   }
@@ -423,6 +458,110 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     }
     
     return rowIndex + numRows;
+  }
+
+  /**
+   * Adds a total row for a specific transaction type (e.g., "Total Essentials") above its detailed category rows.
+   * Formulas in this row sum directly from the "Transactions" sheet for the entire type.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @param {string} type - The name of the transaction type.
+   * @param {number} rowIndex - The 1-based row index where this total row should be inserted.
+   * @param {object} columnIndices - An object mapping transaction data column names to their 0-based indices.
+   * @return {number} The next available row index after inserting the total row.
+   * @private
+   */
+  function addTypeTotalRowAboveDetails(sheet, type, rowIndex, columnIndices) {
+    const typeColors = getTypeColors(type); // For styling, consistent with subtotals
+    const headers = config.getSection('HEADERS');
+    const sheetNames = config.getSection('SHEETS');
+
+    sheet.getRange(rowIndex, 1).setValue(`Total ${type}`);
+    const rowRange = sheet.getRange(rowIndex, 1, 1, headers.length);
+    rowRange.setBackground(typeColors.BG)
+      .setFontWeight("bold")
+      .setFontColor(typeColors.FONT);
+
+    const formulas = [];
+    // Loop for month columns E (5) to P (16)
+    for (let monthCol = 5; monthCol <= 16; monthCol++) {
+      const monthDate = new Date(2024, monthCol - 5, 1); // Represents the first day of the month
+      
+      const formulaParams = {
+        type: type,
+        // category: undefined, // Explicitly undefined, or just omit
+        // subcategory: undefined, // Explicitly undefined, or just omit
+        monthDate: monthDate,
+        sheetName: sheetNames.TRANSACTIONS,
+        typeCol: columnIndices.type + 1,
+        categoryCol: columnIndices.category + 1,       // Passed for structure, but won't be used in criteria if category is null
+        subcategoryCol: columnIndices.subcategory + 1, // Passed for structure
+        dateCol: columnIndices.date + 1,
+        amountCol: columnIndices.amount + 1
+        // overviewSheetCurrentRow is passed to buildMonthlySumFormula, 
+        // but division logic is skipped if 'category' is not provided.
+      };
+      formulas.push(buildMonthlySumFormula(formulaParams, rowIndex));
+    }
+
+    // Total of monthly totals (Column Q, index 17)
+    formulas.push(`=SUM(${utils.columnToLetter(5)}${rowIndex}:${utils.columnToLetter(16)}${rowIndex})`);
+    // Average of monthly totals (Column R, index 18)
+    formulas.push(`=AVERAGE(${utils.columnToLetter(5)}${rowIndex}:${utils.columnToLetter(16)}${rowIndex})`);
+    
+    const formulaRange = sheet.getRange(rowIndex, 5, 1, 14); // E to R (12 months + Total + Average = 14 columns)
+    formulaRange.setFormulas([formulas]);
+    formatRangeAsCurrency(formulaRange, true); // true for total row formatting (e.g., no red for negative)
+    formulaRange.setFontColor(typeColors.FONT); // Ensure font color consistency after number formatting
+
+    return rowIndex + 1;
+  }
+
+  /**
+   * Adds an "Overall Total Expenses" row to the overview sheet.
+   * This row sums the totals from each individual expense type's "Total [Type]" row.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The overview sheet object.
+   * @param {number} rowIndex - The 1-based row index where this overall total row should be inserted.
+   * @param {Array<number>} expenseTypeTotalRowIndices - An array of 1-based row numbers where individual expense type totals are located.
+   * @return {number} The next available row index.
+   * @private
+   */
+  function addOverallExpensesTotalRow(sheet, rowIndex, expenseTypeTotalRowIndices) {
+    const headers = config.getSection('HEADERS');
+    const uiColors = config.getSection('COLORS').UI;
+    const style = { // Style for the "Total Expenses" row
+      backgroundColor: uiColors.GRAND_TOTAL_BG || "#bfbfbf", // A distinct grey
+      fontColor: uiColors.GRAND_TOTAL_FONT || "#000000",
+      fontWeight: "bold",
+      fontSize: 11 
+    };
+
+    sheet.getRange(rowIndex, 1).setValue("Total Expenses");
+    const rowRange = sheet.getRange(rowIndex, 1, 1, headers.length);
+    rowRange.setBackground(style.backgroundColor)
+      .setFontWeight(style.fontWeight)
+      .setFontColor(style.fontColor)
+      .setFontSize(style.fontSize)
+      .setVerticalAlignment("middle");
+
+    const formulas = [];
+    if (expenseTypeTotalRowIndices.length === 0) {
+      // If there are no expense type totals to sum, fill with 0
+      for (let i = 0; i < 14; i++) formulas.push(0); // For 12 months + Total + Average
+    } else {
+      // Columns E (5) to R (18)
+      for (let monthCol = 5; monthCol <= 18; monthCol++) {
+        const colLetter = utils.columnToLetter(monthCol);
+        const sumParts = expenseTypeTotalRowIndices.map(rn => `${colLetter}${rn}`);
+        formulas.push(`=SUM(${sumParts.join(",")})`);
+      }
+    }
+    
+    const formulaRange = sheet.getRange(rowIndex, 5, 1, 14); // E to R
+    formulaRange.setFormulas([formulas]);
+    formatRangeAsCurrency(formulaRange, true); // Total row formatting
+    formulaRange.setFontColor(style.fontColor); // Ensure font color consistency
+
+    return rowIndex + 1;
   }
   
   /**
@@ -578,26 +717,10 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       if (data[i][0] === "Total Savings") totals.savingsRow = i + 1;
     }
     
-    // If "Total Expenses" wasn't found directly, try to find the last expense type total row
-    // This logic might need adjustment if "Total Expenses" is explicitly added elsewhere
-    if (!totals.expensesRow) {
-        const expenseTypes = config.getSection('EXPENSE_TYPES');
-        let lastExpenseTypeRow = -1;
-        for (let i = data.length - 1; i >= 0; i--) {
-            if (expenseTypes.some(et => data[i][0] === `Total ${et}`)) {
-                lastExpenseTypeRow = i + 1;
-                break;
-            }
-        }
-        if (lastExpenseTypeRow !== -1) {
-            // This is a fallback, ideally "Total Expenses" row is explicitly created
-            // For now, let's assume the net calculations need a row that sums all expenses.
-            // The current structure sums individual expense type totals.
-            // If a single "Total Expenses" row is needed for net calculations, it should be created.
-            // For now, we'll use the last found expense type total as a proxy if "Total Expenses" is missing.
-            // This part of the logic might be complex if "Total Expenses" isn't a single, clearly identifiable row.
-        }
-    }
+    // The explicit "Total Expenses" row should be found by the loop above.
+    // Removed fallback logic for expensesRow, as it's no longer appropriate
+    // with the new addOverallExpensesTotalRow function creating a specific "Total Expenses" line.
+    // If it's not found, totals.expensesRow will remain null, and addNetCalculations will handle it.
 
 
     return totals;
@@ -831,30 +954,94 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
      * @return {FinancialOverviewBuilder} Returns the builder instance for method chaining.
      */
     generateContent() {
-      let rowIndex = 2; 
+      let rowIndex = 2; // Start after the main sheet header row
+      const transactionTypes = config.getSection('TRANSACTION_TYPES'); // e.g., { INCOME: "Income", SAVINGS: "Savings", ... }
+      const expenseTypeKeys = config.getSection('EXPENSE_TYPES'); // Array of strings like ["Essentials", "Wants/Pleasure", "Extra"]
       
-      config.getSection('TYPE_ORDER').forEach(type => {
-        if (!this.groupedCombinations[type]) return;
-        
-        rowIndex = addTypeHeaderRow(this.overviewSheet, type, rowIndex);
-        
+      // --- INCOME SECTION ---
+      const incomeTypeString = transactionTypes.INCOME; // Assuming "Income" is the key in TRANSACTION_TYPES
+      if (incomeTypeString && this.groupedCombinations[incomeTypeString]) {
+        rowIndex = addMajorSectionHeader(this.overviewSheet, incomeTypeString, rowIndex);
+        rowIndex = addTypeHeaderRow(this.overviewSheet, incomeTypeString, rowIndex);
         rowIndex = addCategoryRows(
-          this.overviewSheet, 
-          this.groupedCombinations[type], 
-          rowIndex, 
-          type, 
+          this.overviewSheet,
+          this.groupedCombinations[incomeTypeString],
+          rowIndex,
+          incomeTypeString,
           this.columnIndices
         );
-        
         rowIndex = addTypeSubtotalRow(
-          this.overviewSheet, 
-          type, 
-          rowIndex, 
-          this.groupedCombinations[type].length
+          this.overviewSheet,
+          incomeTypeString,
+          rowIndex,
+          this.groupedCombinations[incomeTypeString].length
         );
-        
-        rowIndex += 2; 
-      });
+        rowIndex += 1; // Space after Income section
+      }
+
+      // --- EXPENSES SECTION ---
+      const expenseTypeTotalRowIndices = []; // To store row numbers of "Total [ExpenseType]" rows
+      const relevantExpenseTypes = expenseTypeKeys.filter(type => this.groupedCombinations[type] && this.groupedCombinations[type].length > 0);
+
+      if (relevantExpenseTypes.length > 0) {
+        rowIndex = addMajorSectionHeader(this.overviewSheet, "Expenses", rowIndex);
+        expenseTypeKeys.forEach(typeKey => { 
+          const expenseTypeString = typeKey; 
+          if (this.groupedCombinations[expenseTypeString] && this.groupedCombinations[expenseTypeString].length > 0) {
+            rowIndex = addTypeHeaderRow(this.overviewSheet, expenseTypeString, rowIndex);
+            
+            const currentTypeTotalRow = rowIndex; // Row where "Total [Type]" will be placed
+            rowIndex = addTypeTotalRowAboveDetails(
+              this.overviewSheet,
+              expenseTypeString,
+              rowIndex,
+              this.columnIndices
+            );
+            expenseTypeTotalRowIndices.push(currentTypeTotalRow); // Store it for "Total Expenses" sum
+
+            rowIndex = addCategoryRows(
+              this.overviewSheet,
+              this.groupedCombinations[expenseTypeString],
+              rowIndex,
+              expenseTypeString,
+              this.columnIndices
+            );
+            rowIndex += 1; // Space after each expense type's block
+          }
+        });
+
+        // Add the "Total Expenses" row, summing the individual expense type totals
+        if (expenseTypeTotalRowIndices.length > 0) {
+          rowIndex = addOverallExpensesTotalRow(
+            this.overviewSheet,
+            rowIndex,
+            expenseTypeTotalRowIndices
+          );
+          rowIndex += 1; // Space after "Total Expenses" row
+        }
+      }
+
+      // --- SAVINGS SECTION ---
+      const savingsTypeString = transactionTypes.SAVINGS; // Assuming "Savings" is the key in TRANSACTION_TYPES
+      if (savingsTypeString && this.groupedCombinations[savingsTypeString]) {
+        rowIndex = addMajorSectionHeader(this.overviewSheet, savingsTypeString, rowIndex);
+        rowIndex = addTypeHeaderRow(this.overviewSheet, savingsTypeString, rowIndex);
+        rowIndex = addTypeTotalRowAboveDetails( // Add total for Savings ABOVE details
+          this.overviewSheet,
+          savingsTypeString,
+          rowIndex,
+          this.columnIndices
+        );
+        rowIndex = addCategoryRows(
+          this.overviewSheet,
+          this.groupedCombinations[savingsTypeString],
+          rowIndex,
+          savingsTypeString,
+          this.columnIndices
+        );
+        // Removed addTypeSubtotalRow for Savings as total is now above
+        rowIndex += 1; // Space after Savings section
+      }
       
       this.lastContentRowIndex = rowIndex;
       return this;
