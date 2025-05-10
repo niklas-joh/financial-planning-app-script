@@ -5,64 +5,25 @@
  * service. It creates a separate Analysis sheet with key metrics, expense category analysis,
  * and visualizations.
  * 
- * Version: 2.1.0
- * Last Updated: 2025-05-08
+ * Version: 2.2.1
+ * Last Updated: 2025-05-10
  */
 
 /**
  * @namespace FinancialPlanner.FinancialAnalysisService
  * @description Service for performing financial analysis based on the data aggregated in the 'Overview' sheet.
  * It generates key metrics, analyzes expense categories against targets, and creates visualizations in a dedicated 'Analysis' sheet.
- * @param {FinancialPlanner.Utils} utils - The utility service.
- * @param {FinancialPlanner.UIService} uiService - The UI service for notifications.
- * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
- * @param {FinancialPlanner.Config} config - The global configuration service.
  */
 FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorService, config) {
   // ============================================================================
   // PRIVATE IMPLEMENTATION
   // ============================================================================
   
-  /**
-   * Internal class responsible for performing the financial analysis calculations and sheet manipulations.
-   * @class FinancialAnalysisService
-   * @private
-   */
   class FinancialAnalysisService {
-    /**
-     * Creates an instance of the internal FinancialAnalysisService class.
-     * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The active spreadsheet object.
-     * @param {GoogleAppsScript.Spreadsheet.Sheet} overviewSheet - The sheet object containing the generated financial overview data.
-     * @param {object} analysisConfig - A configuration object, typically derived from `FinancialPlanner.Config.get()`.
-     * @constructor
-     */
     constructor(spreadsheet, overviewSheet, analysisConfig) {
-      /**
-       * The active spreadsheet.
-       * @type {GoogleAppsScript.Spreadsheet.Spreadsheet}
-       * @private
-       */
       this.spreadsheet = spreadsheet;
-      
-      /**
-       * The overview sheet containing summarized financial data.
-       * @type {GoogleAppsScript.Spreadsheet.Sheet}
-       * @private
-       */
       this.overviewSheet = overviewSheet;
-      
-      /**
-       * Configuration object used by the analysis service.
-       * @type {object}
-       * @private
-       */
       this.config = analysisConfig;
-      
-      /**
-       * The sheet where analysis results are displayed. Created if it doesn't exist.
-       * @type {GoogleAppsScript.Spreadsheet.Sheet}
-       * @private
-       */
       this.analysisSheet = utils.getOrCreateSheet(spreadsheet, this.config.SHEETS.ANALYSIS);
       
       let formatString;
@@ -78,1163 +39,444 @@ FinancialPlanner.FinancialAnalysisService = (function(utils, uiService, errorSer
       }
 
       if (!formatString) {
-          // Fallback to a hardcoded default if not found in config. This indicates a config issue.
           formatString = '_-[$€-0]* #,##0_-;_-[RED][$€-0]* #,##0_-;* "-";_-@_-'; 
           Logger.log("Warning: CURRENCY_DEFAULT not found in configuration. Using hardcoded default for FinancialAnalysisService.");
       }
       this.currencyFormatDefault = formatString;
-      
-      /**
-       * Holds the data extracted from the overview sheet for analysis.
-       * Populated by `extractDataFromOverview`.
-       * @type {{incomeCategories: Array<object>, expenseCategories: Array<object>, savingsCategories: Array<object>, months: Array<string>} | null}
-       * @private
-       */
       this.data = null;
-      
-      /**
-       * Holds calculated total and average monthly values for key categories (Income, Expenses, Savings, etc.).
-       * Populated by `extractDataFromOverview`.
-       * @type {{
-       *   income: {row: number, total: number, average: number},
-       *   expenses: {row: number, total: number, average: number},
-       *   savings: {row: number, total: number, average: number},
-       *   essentials: {row: number, total: number, average: number},
-       *   wantsPleasure: {row: number, total: number, average: number},
-       *   extra: {row: number, total: number, average: number}
-       * } | null}
-       * @private
-       */
       this.totals = null;
     }
 
-    /**
-     * Initializes the analysis service instance.
-     * Extracts data from the overview sheet and sets up the analysis sheet structure and formatting.
-     * @return {void}
-     * @public
-     */
     initialize() {
-      // Extract data from the overview sheet for analysis
       this.extractDataFromOverview();
-      
-      // Clear and set up the analysis sheet
       this.setupAnalysisSheet();
     }
 
-    /**
-     * Executes the core analysis workflow.
-     * Calls methods to add key metrics, expense category analysis, and charts to the analysis sheet.
-     * @return {void}
-     * @public
-     */
     analyze() {
-      // Start at row 2 (after header)
-      let currentRow = 2;
-      
-      // Add key metrics section
+      let currentRow = 2; // Start after main sheet header
       currentRow = this.addKeyMetricsSection(currentRow);
-      
-      // Add space between sections
-      currentRow += 2;
-      
-      // Add expense categories section
+      // Spacing is now handled by the return value of addKeyMetricsSection if needed, or can be added here.
+      // The +2 was for a general large section spacer. Individual cards have their own spacing.
+      // Let's assume addKeyMetricsSection returns the row *after* the last card's spacing.
+      currentRow += 1; // Add one more row of general spacing before next section title
       currentRow = this.addExpenseCategoriesSection(currentRow);
-      
-      // Add space between sections
-      currentRow += 2;
-      
-      // Create expenditure charts
+      currentRow += 2; // Space after Expense Categories
       this.createExpenditureCharts(currentRow);
     }
 
-    /**
-     * Extracts and structures relevant data from the 'Overview' sheet.
-     * Populates `this.data` with categorized amounts and `this.totals` with key summary figures (like total income, expenses).
-     * It specifically looks for rows starting with "Total [Type]" to get summary values.
-     * @return {void}
-     * @private
-     */
     extractDataFromOverview() {
-      // Get all data from the overview sheet
       const overviewData = this.overviewSheet.getDataRange().getValues();
-      
-      // Initialize data structure
-      this.data = {
-        incomeCategories: [],
-        expenseCategories: [],
-        savingsCategories: [],
-        months: []
-      };
-      
-      // Initialize totals
+      this.data = { incomeCategories: [], expenseCategories: [], savingsCategories: [], months: [] };
       this.totals = {
-        income: { row: -1, total: 0, average: 0 },
-        expenses: { row: -1, total: 0, average: 0 },
-        savings: { row: -1, total: 0, average: 0 },
-        // Add expense type totals
-        essentials: { row: -1, total: 0, average: 0 },
-        wantsPleasure: { row: -1, total: 0, average: 0 },
-        extra: { row: -1, total: 0, average: 0 }
+        income: { row: -1, total: 0, average: 0, totalRef: '', averageRef: '', monthlyValuesRangeRef: '' },
+        expenses: { row: -1, total: 0, average: 0, totalRef: '', averageRef: '' , monthlyValuesRangeRef: ''}, 
+        savings: { row: -1, total: 0, average: 0, totalRef: '', averageRef: '', monthlyValuesRangeRef: '' },
+        essentials: { row: -1, total: 0, average: 0, totalRef: '', averageRef: '', monthlyValuesRangeRef: '' },
+        wantsPleasure: { row: -1, total: 0, average: 0, totalRef: '', averageRef: '', monthlyValuesRangeRef: '' },
+        extra: { row: -1, total: 0, average: 0, totalRef: '', averageRef: '', monthlyValuesRangeRef: '' }
       };
       
-      // Extract month names from headers (columns 5-16 in overview sheet)
-      for (let i = 4; i <= 15; i++) {
+      const overviewSheetName = `'${this.config.SHEETS.OVERVIEW}'`;
+      const monthlyStartColLetter = utils.columnToLetter(5); 
+      const monthlyEndColLetter = utils.columnToLetter(16); 
+      const totalColLetter = utils.columnToLetter(17); 
+      const averageColLetter = utils.columnToLetter(18);
+
+      for (let i = 4; i <= 15; i++) { 
         this.data.months.push(overviewData[0][i]);
       }
       
-      // Find rows containing total Income, Expenses, and Savings
       for (let i = 0; i < overviewData.length; i++) {
         const rowData = overviewData[i];
+        const currentRowNum = i + 1;
+        const monthlyRange = `${overviewSheetName}!${monthlyStartColLetter}${currentRowNum}:${monthlyEndColLetter}${currentRowNum}`;
         
-        // Check for total rows
-        if (rowData[0] === "Total Income") {
-          this.totals.income.row = i + 1;
-          this.totals.income.total = rowData[16]; 
-          this.totals.income.average = rowData[17];
-        } else if (rowData[0] === "Total Essentials") {
-          // Track Essentials separately
-          this.totals.essentials.row = i + 1;
-          this.totals.essentials.total = rowData[16];
-          this.totals.essentials.average = rowData[17];
-          
-          // Also add to total expenses
-          if (this.totals.expenses.row === -1) {
-            this.totals.expenses.row = i + 1; // Set row only once
-            this.totals.expenses.total = 0;
-            this.totals.expenses.average = 0;
-          }
-          this.totals.expenses.total += rowData[16];
-          this.totals.expenses.average += rowData[17];
+        const assignRefs = (category) => {
+          category.row = currentRowNum;
+          category.total = rowData[16]; 
+          category.average = rowData[17];
+          category.totalRef = `${overviewSheetName}!${totalColLetter}${currentRowNum}`;
+          category.averageRef = `${overviewSheetName}!${averageColLetter}${currentRowNum}`;
+          category.monthlyValuesRangeRef = monthlyRange;
+        };
+
+        if (rowData[0] === "Total Income") assignRefs(this.totals.income);
+        else if (rowData[0] === "Total Essentials") {
+          assignRefs(this.totals.essentials);
+          if (this.totals.expenses.row === -1) this.totals.expenses.row = currentRowNum;
+          this.totals.expenses.total += rowData[16]; this.totals.expenses.average += rowData[17];
         } else if (rowData[0] === "Total Wants/Pleasure") {
-          // Track Wants/Pleasure separately
-          this.totals.wantsPleasure.row = i + 1;
-          this.totals.wantsPleasure.total = rowData[16];
-          this.totals.wantsPleasure.average = rowData[17];
-          
-          // Also add to total expenses
-          if (this.totals.expenses.row === -1) {
-            this.totals.expenses.row = i + 1; // Set row only once
-            this.totals.expenses.total = 0;
-            this.totals.expenses.average = 0;
-          }
-          this.totals.expenses.total += rowData[16];
-          this.totals.expenses.average += rowData[17];
+          assignRefs(this.totals.wantsPleasure);
+          if (this.totals.expenses.row === -1) this.totals.expenses.row = currentRowNum;
+          this.totals.expenses.total += rowData[16]; this.totals.expenses.average += rowData[17];
         } else if (rowData[0] === "Total Extra") {
-          // Track Extra separately
-          this.totals.extra.row = i + 1;
-          this.totals.extra.total = rowData[16];
-          this.totals.extra.average = rowData[17];
-          
-          // Also add to total expenses
-          if (this.totals.expenses.row === -1) {
-            this.totals.expenses.row = i + 1; // Set row only once
-            this.totals.expenses.total = 0;
-            this.totals.expenses.average = 0;
-          }
-          this.totals.expenses.total += rowData[16];
-          this.totals.expenses.average += rowData[17];
-        } else if (rowData[0] === "Total Savings") {
-          this.totals.savings.row = i + 1;
-          this.totals.savings.total = rowData[16]; 
-          this.totals.savings.average = rowData[17];
-        }
+          assignRefs(this.totals.extra);
+          if (this.totals.expenses.row === -1) this.totals.expenses.row = currentRowNum;
+          this.totals.expenses.total += rowData[16]; this.totals.expenses.average += rowData[17];
+        } else if (rowData[0] === "Total Savings") assignRefs(this.totals.savings);
         
-        // Extract categories (using average for individual category amounts in this.data, as before)
-        if (rowData[0] === "Income" && rowData[1]) {
-          this.data.incomeCategories.push({
-            category: rowData[1],
-            subcategory: rowData[2] || "",
-            amount: rowData[17], // Use Average column for individual category display
-            row: i + 1
-          });
-        } else if ((rowData[0] === "Essentials" || rowData[0] === "Wants/Pleasure" || rowData[0] === "Extra") && rowData[1]) {
-          this.data.expenseCategories.push({
-            type: rowData[0],
-            category: rowData[1],
-            subcategory: rowData[2] || "",
-            amount: rowData[17], // Use Average column for individual category display
-            row: i + 1
-          });
-        } else if (rowData[0] === "Savings" && rowData[1]) {
-          this.data.savingsCategories.push({
-            category: rowData[1],
-            subcategory: rowData[2] || "",
-            amount: rowData[17], // Use Average column for individual category display
-            row: i + 1
-          });
-        }
+        if (rowData[0] === "Income" && rowData[1]) this.data.incomeCategories.push({ category: rowData[1], subcategory: rowData[2] || "", amount: rowData[17], row: i + 1 });
+        else if ((rowData[0] === "Essentials" || rowData[0] === "Wants/Pleasure" || rowData[0] === "Extra") && rowData[1]) this.data.expenseCategories.push({ type: rowData[0], category: rowData[1], subcategory: rowData[2] || "", amount: rowData[17], row: i + 1 });
+        else if (rowData[0] === "Savings" && rowData[1]) this.data.savingsCategories.push({ category: rowData[1], subcategory: rowData[2] || "", amount: rowData[17], row: i + 1 });
       }
     }
 
-    /**
-     * Clears and sets up the basic structure and formatting of the 'Analysis' sheet.
-     * Includes setting the main header, freezing the header row, and setting initial column widths.
-     * @return {void}
-     * @private
-     */
     setupAnalysisSheet() {
-      // Clear existing content
-      this.analysisSheet.clear();
-      this.analysisSheet.clearFormats();
-      
-      // Set up header and formatting
+      this.analysisSheet.clear(); this.analysisSheet.clearFormats();
       this.analysisSheet.getRange("A1").setValue("Financial Analysis");
-      this.analysisSheet.getRange("A1:J1")
-        .setBackground(this.config.COLORS.UI.HEADER_BG)
-        .setFontWeight("bold")
-        .setFontColor(this.config.COLORS.UI.HEADER_FONT);
-      
-      // Freeze the header row
+      this.analysisSheet.getRange("A1:F1").setBackground(this.config.COLORS.UI.HEADER_BG).setFontWeight("bold").setFontColor(this.config.COLORS.UI.HEADER_FONT).setHorizontalAlignment("center");
       this.analysisSheet.setFrozenRows(1);
       
-      // Set column widths for better readability
-      this.analysisSheet.setColumnWidth(1, 200); // Metric/Category
-      this.analysisSheet.setColumnWidth(2, 120); // Value
-      this.analysisSheet.setColumnWidth(3, 120); // Target
-      
-      // Set sheet description
+      this.analysisSheet.setColumnWidth(1, 20); // Narrow column A for spacing or icons later
+      this.analysisSheet.setColumnWidth(2, 120); // Card Col B1
+      this.analysisSheet.setColumnWidth(3, 120); // Card Col B2
+      this.analysisSheet.setColumnWidth(4, 20);  // Narrow column D for spacing
+      this.analysisSheet.setColumnWidth(5, 120); // Card Col E1
+      this.analysisSheet.setColumnWidth(6, 120); // Card Col E2
+      // If more columns are needed for other sections, they can be added/adjusted later.
       this.analysisSheet.setName(this.config.SHEETS.ANALYSIS);
     }
 
-    /**
-     * Adds the 'Key Metrics' section to the analysis sheet.
-     * Calculates and displays metrics like Expenses/Income Ratio, Savings Rate, and individual expense category rates against targets.
-     * Applies formatting and conditional formatting for readability.
-     * @param {number} startRow - The 1-based row index where the section should start.
-     * @return {number} The next available row index after adding the section.
-     * @private
-     */
     addKeyMetricsSection(startRow) {
-      // Add Key Metrics header
-      this.analysisSheet.getRange(startRow, 1).setValue("Key Metrics");
-      this.analysisSheet.getRange(startRow, 1, 1, 4) // Expanded to include description column
-        .setBackground(this.config.COLORS.UI.HEADER_BG)
-        .setFontWeight("bold")
-        .setFontColor(this.config.COLORS.UI.HEADER_FONT)
-        .setHorizontalAlignment("center");
-      
-      startRow++;
-      
-      // Create a metrics table
-      this.analysisSheet.getRange(startRow, 1, 1, 4) // Expanded to include description column
-        .setValues([["Metric", "Value", "Target", "Description"]])
-        .setBackground("#F5F5F5")
-        .setFontWeight("bold")
-        .setHorizontalAlignment("center");
-      
-      // Set width for description column
-      this.analysisSheet.setColumnWidth(4, 300);
-      
-      startRow++;
-      
-      // Initialize arrays for batch processing
-      const metricsStartRow = startRow;
-      let currentMetricRow = 0;
-      
-      // Arrays for batch processing
-      const metricValues = [];
-      const metricFormulas = [];
-      const metricTargets = [];
-      const metricDescriptions = [];
-      const metricBackgrounds = [];
-      const conditionalFormatRules = [];
-      
-      // Consistent background color for all metrics
-      const metricBgColor = this.config.COLORS.UI.METRICS_BG;
-      
-      // 1. Expenses/Income Ratio (Uses Average)
-      if (this.totals.income.average && this.totals.expenses.average) {
-        metricValues.push(["Expenses/Income Ratio (Avg Monthly)"]);
-        // Ensure income.average is not zero to prevent division by zero errors
-        const expensesIncomeRatioFormula = this.totals.income.average !== 0 ? `=-${this.totals.expenses.average}/${this.totals.income.average}` : 0;
-        metricFormulas.push([expensesIncomeRatioFormula]);
-        metricTargets.push([this.config.TARGET_RATES.DEFAULT * -1]); // Target based on average
-        metricDescriptions.push(["Avg monthly expenses as % of avg monthly income. Lower absolute value is better."]);
-        metricBackgrounds.push([metricBgColor]);
-        
-        // Add conditional formatting (green if meeting target, red if not)
-        // Use direct cell reference instead of string formula
-        const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
-        const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        
-        conditionalFormatRules.push({
-          row: startRow + currentMetricRow,
-          rule: SpreadsheetApp.newConditionalFormatRule()
-            .whenFormulaSatisfied(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`)
-            .setBackground("#FFCDD2") // Light red if below target (more negative)
-            .setRanges([valueCell])
-        });
-        
-        currentMetricRow++;
-      }
-      
-      // 2. Essentials Rate (Uses Average)
-      if (this.totals.income.average && this.totals.essentials.average) {
-        metricValues.push(["Essentials Rate (Avg Monthly)"]);
-        const essentialsRateFormula = this.totals.income.average !== 0 ? `=${this.totals.essentials.average}/${this.totals.income.average}` : 0;
-        metricFormulas.push([essentialsRateFormula]);
-        metricTargets.push([this.config.TARGET_RATES.ESSENTIALS]);
-        metricDescriptions.push(["Avg monthly essentials spending as % of avg monthly income. Lower is better."]);
-        metricBackgrounds.push([metricBgColor]);
-        
-        // Add conditional formatting (red if exceeding target)
-        const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
-        const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        
-        conditionalFormatRules.push({
-          row: startRow + currentMetricRow,
-          rule: SpreadsheetApp.newConditionalFormatRule()
-            .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
-            .setBackground("#FFCDD2") // Light red if above target
-            .setRanges([valueCell])
-        });
-        
-        currentMetricRow++;
-      }
-      
-      // 3. Wants/Pleasure Rate (Uses Average)
-      if (this.totals.income.average && this.totals.wantsPleasure.average) {
-        metricValues.push(["Wants/Pleasure Rate (Avg Monthly)"]);
-        const wantsRateFormula = this.totals.income.average !== 0 ? `=${this.totals.wantsPleasure.average}/${this.totals.income.average}` : 0;
-        metricFormulas.push([wantsRateFormula]);
-        metricTargets.push([this.config.TARGET_RATES.WANTS_PLEASURE || this.config.TARGET_RATES.WANTS]); // Fallback for WANTS
-        metricDescriptions.push(["Avg monthly wants/pleasure spending as % of avg monthly income."]);
-        metricBackgrounds.push([metricBgColor]);
-        
-        // Add conditional formatting (red if exceeding target)
-        const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
-        const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        
-        conditionalFormatRules.push({
-          row: startRow + currentMetricRow,
-          rule: SpreadsheetApp.newConditionalFormatRule()
-            .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
-            .setBackground("#FFCDD2") // Light red if above target
-            .setRanges([valueCell])
-        });
-        
-        currentMetricRow++;
-      }
-      
-      // 4. Extra Expenses Rate (Uses Average)
-      if (this.totals.income.average && this.totals.extra.average) {
-        metricValues.push(["Extra Expenses Rate (Avg Monthly)"]);
-        const extraRateFormula = this.totals.income.average !== 0 ? `=${this.totals.extra.average}/${this.totals.income.average}` : 0;
-        metricFormulas.push([extraRateFormula]);
-        metricTargets.push([this.config.TARGET_RATES.EXTRA]);
-        metricDescriptions.push(["Avg monthly extra spending as % of avg monthly income."]);
-        metricBackgrounds.push([metricBgColor]);
-        
-        // Add conditional formatting (red if exceeding target)
-        const targetCell = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
-        const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        
-        conditionalFormatRules.push({
-          row: startRow + currentMetricRow,
-          rule: SpreadsheetApp.newConditionalFormatRule()
-            .whenFormulaSatisfied(`B${startRow + currentMetricRow}>C${startRow + currentMetricRow}`)
-            .setBackground("#FFCDD2") // Light red if above target
-            .setRanges([valueCell])
-        });
-        
-        currentMetricRow++;
-      }
-      
-      // Add separator (empty row with light gray background)
-      if (currentMetricRow > 0) {
-        metricValues.push([""]);
-        metricFormulas.push([""]);
-        metricTargets.push([""]);
-        metricDescriptions.push([""]);
-        metricBackgrounds.push(["#E0E0E0"]); // Light gray separator
-        
-        // Add a horizontal line for visual separation
-        this.analysisSheet.getRange(startRow + currentMetricRow, 1, 1, 4)
-          .setBorder(false, false, true, false, false, false, "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID);
-        
-        currentMetricRow++;
-      }
-      
-      // 5. Savings Rate (Uses Average)
-      if (this.totals.income.average && this.totals.savings.average) {
-        metricValues.push(["Savings Rate (Avg Monthly)"]);
-        // Savings are often represented as positive contributions, so target is positive.
-        // If this.totals.savings.average is negative (withdrawal), the rate will be negative.
-        const savingsRateFormula = this.totals.income.average !== 0 ? `=${this.totals.savings.average}/${this.totals.income.average}` : 0;
-        metricFormulas.push([savingsRateFormula]);
-        metricTargets.push([this.config.TARGET_RATES.SAVINGS]); // Use specific SAVINGS target
-        metricDescriptions.push(["Avg monthly savings as % of avg monthly income. Higher is better."]);
-        metricBackgrounds.push([metricBgColor]);
+      let currentRowColB = startRow;
+      let currentRowColE = startRow;
+      const sheet = this.analysisSheet;
+      const totals = this.totals;
+      const serviceInstance = this; 
 
-        // Conditional formatting for Savings Rate (Green if >= target, Red if < target)
-        const targetCellSR = this.analysisSheet.getRange(startRow + currentMetricRow, 3);
-        const valueCellSR = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        conditionalFormatRules.push({
-          row: startRow + currentMetricRow,
-          rule: SpreadsheetApp.newConditionalFormatRule()
-            .whenFormulaSatisfied(`B${startRow + currentMetricRow}<C${startRow + currentMetricRow}`) // Less than target is "bad"
-            .setBackground("#FFCDD2") // Light red
-            .setRanges([valueCellSR])
-        });
-        conditionalFormatRules.push({
-            row: startRow + currentMetricRow,
-            rule: SpreadsheetApp.newConditionalFormatRule()
-              .whenFormulaSatisfied(`B${startRow + currentMetricRow}>=C${startRow + currentMetricRow}`) // Greater or equal to target is "good"
-              .setBackground("#C8E6C9") // Light green
-              .setRanges([valueCellSR])
-        });
-        currentMetricRow++;
-      }
-      
-      // Add another separator
-      if (currentMetricRow > 0 && metricValues[metricValues.length-1][0] !== "") { // Avoid double separators
-        metricValues.push([""]);
-        metricFormulas.push([""]);
-        metricTargets.push([""]);
-        metricDescriptions.push([""]);
-        metricBackgrounds.push(["#E0E0E0"]); // Correct background for separator
-        
-        // Add a horizontal line for visual separation
-        this.analysisSheet.getRange(startRow + currentMetricRow, 1, 1, 4)
-          .setBorder(false, false, true, false, false, false, "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID);
-        
-        currentMetricRow++;
-      }
+      const createMetricCard = (metricConf, cardStartRow, startCardColumn) => {
+        const headerRow = cardStartRow;
+        const valuesRow = cardStartRow + 1;
+        const sparklineRow = cardStartRow + 2;
+        const labelsRow = cardStartRow + 3;
+        const cardEndRow = labelsRow;
+        const cardWidth = 2; // Cards are 2 columns wide
 
-      // --- NEW CASH FLOW METRICS ---
+        // Row Heights
+        sheet.setRowHeight(headerRow, 25);
+        sheet.setRowHeight(valuesRow, 35);
+        sheet.setRowHeight(sparklineRow, 30);
+        sheet.setRowHeight(labelsRow, 20);
 
-      const incomeAvg = this.totals.income.average || 0;
-      const essentialsAvg = this.totals.essentials.average || 0;
-      const wantsAvg = this.totals.wantsPleasure.average || 0;
-      const extraAvg = this.totals.extra.average || 0;
-      const savingsAvg = this.totals.savings.average || 0;
-      const runningExpensesAvg = essentialsAvg + wantsAvg + extraAvg;
+        // 1. Header Row
+        sheet.getRange(headerRow, startCardColumn, 1, cardWidth).merge()
+          .setValue(metricConf.name)
+          .setBackground('#E2EFDA')
+          .setFontWeight('bold')
+          .setFontColor('black')
+          .setHorizontalAlignment('center')
+          .setVerticalAlignment('middle');
 
-      const incomeTotal = this.totals.income.total || 0;
-      const essentialsTotal = this.totals.essentials.total || 0;
-      const wantsTotal = this.totals.wantsPleasure.total || 0;
-      const extraTotal = this.totals.extra.total || 0;
-      const savingsTotal = this.totals.savings.total || 0;
-      const runningExpensesTotal = essentialsTotal + wantsTotal + extraTotal;
+        // 2. Values Row
+        const monthlyValueCell = sheet.getRange(valuesRow, startCardColumn, 1, 1); // Col 1 of card
+        const annualValueCell = sheet.getRange(valuesRow, startCardColumn + 1, 1, 1); // Col 2 of card
 
-      const targetRates = this.config.TARGET_RATES;
+        monthlyValueCell.setFormula(metricConf.avgFormula)
+          .setFontSize(18).setFontColor('#008000')
+          .setHorizontalAlignment('center').setVerticalAlignment('middle');
 
-      // Helper function to add metric pairs (Avg Monthly, Period Total)
-      const addMetricPair = (baseName, avgValue, totalValue, avgTargetFormula, totalTargetFormula, description) => {
-        // Avg Monthly
-        metricValues.push([`${baseName} (Avg Monthly)`]);
-        metricFormulas.push([`=${avgValue}`]);
-        metricTargets.push([avgTargetFormula === null ? "" : `=${avgTargetFormula}`]); // Allow null for no target
-        metricDescriptions.push([description]);
-        metricBackgrounds.push([metricBgColor]);
-        let valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        conditionalFormatRules.push({ // General: green if positive, red if negative
-            row: startRow + currentMetricRow,
-            rule: SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0).setBackground("#FFCDD2").setRanges([valueCell])
-        });
-        conditionalFormatRules.push({
-            row: startRow + currentMetricRow,
-            rule: SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThanOrEqualTo(0).setBackground("#C8E6C9").setRanges([valueCell])
-        });
-        currentMetricRow++;
-
-        // Period Total
-        metricValues.push([`${baseName} (Period Total)`]);
-        metricFormulas.push([`=${totalValue}`]);
-        metricTargets.push([totalTargetFormula === null ? "" : `=${totalTargetFormula}`]); // Allow null for no target
-        metricDescriptions.push([description]);
-        metricBackgrounds.push([metricBgColor]);
-        valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-         conditionalFormatRules.push({ // General: green if positive, red if negative
-            row: startRow + currentMetricRow,
-            rule: SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0).setBackground("#FFCDD2").setRanges([valueCell])
-        });
-        conditionalFormatRules.push({
-            row: startRow + currentMetricRow,
-            rule: SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThanOrEqualTo(0).setBackground("#C8E6C9").setRanges([valueCell])
-        });
-        currentMetricRow++;
-      };
-      
-      // 6. Net Income after Essentials
-      addMetricPair(
-        "Net Income after Essentials",
-        `${incomeAvg} - ${essentialsAvg}`,
-        `${incomeTotal} - ${essentialsTotal}`,
-        incomeAvg !== 0 ? `${incomeAvg} * (1 - ${targetRates.ESSENTIALS})` : 0,
-        incomeTotal !== 0 ? `${incomeTotal} * (1 - ${targetRates.ESSENTIALS})` : 0,
-        "Income remaining after essential expenses. Higher is better."
-      );
-      
-      // 7. Net Income after Running Expenses
-      addMetricPair(
-        "Net Income after Running Expenses",
-        `${incomeAvg} - (${essentialsAvg} + ${wantsAvg} + ${extraAvg})`,
-        `${incomeTotal} - (${essentialsTotal} + ${wantsTotal} + ${extraTotal})`,
-        incomeAvg !== 0 ? `${incomeAvg} * (1 - (${targetRates.ESSENTIALS} + ${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA}))` : 0,
-        incomeTotal !== 0 ? `${incomeTotal} * (1 - (${targetRates.ESSENTIALS} + ${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA}))` : 0,
-        "Income remaining after all typical expenses (Essentials, Wants, Extra). Higher is better."
-      );
-
-      // 8. Overall Net Cash Flow (after all spending & savings contributions)
-      // This is effectively Income - All Expenses - Savings Contributions
-      addMetricPair(
-        "Overall Net Cash Flow",
-        `${incomeAvg} - ${runningExpensesAvg} - ${savingsAvg}`,
-        `${incomeTotal} - ${runningExpensesTotal} - ${savingsTotal}`,
-        // Target is ideally 0 if all income is allocated according to targets
-        incomeAvg !== 0 ? `${incomeAvg} * (1 - (${targetRates.ESSENTIALS} + ${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA} + ${targetRates.SAVINGS}))` : 0,
-        incomeTotal !== 0 ? `${incomeTotal} * (1 - (${targetRates.ESSENTIALS} + ${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA} + ${targetRates.SAVINGS}))` : 0,
-        "Surplus/deficit after all expenses and savings contributions. Aim for zero or positive."
-      );
-
-      // 9. Discretionary Spending Power (Income - Essentials - Savings)
-      addMetricPair(
-        "Discretionary Spending Power",
-        `${incomeAvg} - ${essentialsAvg} - ${savingsAvg}`,
-        `${incomeTotal} - ${essentialsTotal} - ${savingsTotal}`,
-        incomeAvg !== 0 ? `${incomeAvg} * (${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA})` : 0, // Target is sum of Wants & Extra target rates
-        incomeTotal !== 0 ? `${incomeTotal} * (${targetRates.WANTS_PLEASURE || targetRates.WANTS} + ${targetRates.EXTRA})` : 0,
-        "Amount available for Wants/Pleasure and Extra spending after essentials and savings."
-      );
-      
-      // Original Monthly Net Cash Flow (Income - Total Expenses (not including savings))
-      // This is slightly different from "Overall Net Cash Flow" if savings are considered an "expense" in the latter.
-      // For clarity, let's rename the original "Monthly Net Cash Flow" to "Income vs Expenses (Avg Monthly)"
-      if (this.totals.income.average && this.totals.expenses.average) {
-        metricValues.push(["Income vs Expenses (Avg Monthly)"]);
-        metricFormulas.push([`=${incomeAvg}-${runningExpensesAvg}`]); // Income - (Essentials + Wants + Extra)
-        metricTargets.push([0]); // Target is positive cash flow before savings
-        metricDescriptions.push(["Avg monthly income minus avg monthly running expenses (Essentials, Wants, Extra). Positive is good."]);
-        metricBackgrounds.push([metricBgColor]);
-        const valueCell = this.analysisSheet.getRange(startRow + currentMetricRow, 2);
-        conditionalFormatRules.push({
-          row: startRow + currentMetricRow,
-          rule: SpreadsheetApp.newConditionalFormatRule().whenNumberLessThan(0).setBackground("#FFCDD2").setRanges([valueCell])
-        });
-         conditionalFormatRules.push({
-          row: startRow + currentMetricRow,
-          rule: SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThanOrEqualTo(0).setBackground("#C8E6C9").setRanges([valueCell])
-        });
-        currentMetricRow++;
-      }
-
-
-      // Write all data to the sheet in batches if we have metrics
-      if (currentMetricRow > 0) {
-        // Set metric names
-        if (metricValues.length > 0) {
-          this.analysisSheet.getRange(startRow, 1, metricValues.length, 1).setValues(metricValues);
-        }
-        
-        // Set formulas
-        if (metricFormulas.length > 0) {
-          this.analysisSheet.getRange(startRow, 2, metricFormulas.length, 1).setFormulas(metricFormulas);
-        }
-        
-        // Set targets
-        if (metricTargets.length > 0) {
-          this.analysisSheet.getRange(startRow, 3, metricTargets.length, 1).setValues(metricTargets);
-        }
-        
-        // Set descriptions
-        if (metricDescriptions.length > 0) {
-          this.analysisSheet.getRange(startRow, 4, metricDescriptions.length, 1).setValues(metricDescriptions);
-        }
-        
-        // Set backgrounds
-        if (metricBackgrounds.length > 0) {
-          this.analysisSheet.getRange(startRow, 1, metricBackgrounds.length, 4).setBackgrounds(
-            metricBackgrounds.map(bg => [bg[0], bg[0], bg[0], bg[0]])
-          );
-        }
-        
-        // Format percentage cells (Value and Target columns)
-        const percentageMetricNames = [
-          "Expenses/Income Ratio (Avg Monthly)", 
-          "Essentials Rate (Avg Monthly)", 
-          "Wants/Pleasure Rate (Avg Monthly)", 
-          "Extra Expenses Rate (Avg Monthly)",
-          "Savings Rate (Avg Monthly)"
-        ];
-        const percentageRows = metricValues.map((val, i) => ({ name: val[0], row: startRow + i }))
-          .filter(item => percentageMetricNames.includes(item.name))
-          .map(item => item.row);
-
-        if (percentageRows.length > 0) {
-          percentageRows.forEach(row => {
-            // Format both Value (column B) and Target (column C) as percentage
-            utils.formatAsPercentage(this.analysisSheet.getRange(row, 2, 1, 2)); 
-          });
-        }
-        
-        // Format currency cells (Value and Target columns)
-        const currencyMetricNames = [
-          "Net Income after Essentials (Avg Monthly)", "Net Income after Essentials (Period Total)",
-          "Net Income after Running Expenses (Avg Monthly)", "Net Income after Running Expenses (Period Total)",
-          "Overall Net Cash Flow (Avg Monthly)", "Overall Net Cash Flow (Period Total)",
-          "Discretionary Spending Power (Avg Monthly)", "Discretionary Spending Power (Period Total)",
-          "Income vs Expenses (Avg Monthly)"
-        ];
-        const currencyRows = metricValues.map((val, i) => ({ name: val[0], row: startRow + i }))
-          .filter(item => currencyMetricNames.includes(item.name))
-          .map(item => item.row);
-        
-        if (currencyRows.length > 0) {
-          const currencyFormat = this.currencyFormatDefault;
-          currencyRows.forEach(row => {
-            // Format both Value (column B) and Target (column C) as currency
-            utils.formatAsCurrency(this.analysisSheet.getRange(row, 2, 1, 2), currencyFormat);
-          });
-        }
-        // Apply conditional formatting rules
-        if (conditionalFormatRules.length > 0) {
-          const rules = this.analysisSheet.getConditionalFormatRules();
-          conditionalFormatRules.forEach(item => {
-            rules.push(item.rule);
-          });
-          this.analysisSheet.setConditionalFormatRules(rules);
-        }
-        
-        // Add a border around the metrics table
-        this.analysisSheet.getRange(metricsStartRow, 1, currentMetricRow, 4).setBorder(
-          true, true, true, true, true, true, 
-          "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
-        );
-        
-        // Add subtle shading to every other non-separator row for better readability
-        const nonSeparatorRows = metricValues.map((val, i) => ({
-          row: startRow + i,
-          isEmpty: val[0] === ""
-        })).filter(item => !item.isEmpty);
-        
-        nonSeparatorRows.forEach((item, index) => {
-          if (index % 2 === 1) {
-            this.analysisSheet.getRange(item.row, 1, 1, 4)
-              .setBackground("#F8F8F8"); // Very light gray for alternate rows
-          }
-        });
-      }
-      
-      return startRow + currentMetricRow;
-    }
-
-    /**
-     * Adds the 'Expense Categories' section to the analysis sheet.
-     * Lists major expense categories (excluding sub-categories), their average monthly amount,
-     * percentage of income, target percentage, and variance.
-     * Applies formatting and conditional formatting.
-     * @param {number} startRow - The 1-based row index where the section should start.
-     * @return {number} The next available row index after adding the section.
-     * @private
-     */
-    addExpenseCategoriesSection(startRow) {
-      // Add Expense Categories header
-      this.analysisSheet.getRange(startRow, 1).setValue("Expense Categories");
-      this.analysisSheet.getRange(startRow, 1, 1, 6)
-        .setBackground(this.config.COLORS.UI.HEADER_BG)
-        .setFontWeight("bold")
-        .setFontColor(this.config.COLORS.UI.HEADER_FONT)
-        .setHorizontalAlignment("center");
-      
-      startRow++;
-      
-      // Add headers
-      this.analysisSheet.getRange(startRow, 1, 1, 6)
-        .setValues([["Category", "Type", "Amount", "% of Income", "Target %", "Variance"]])
-        .setBackground("#F5F5F5")
-        .setFontWeight("bold")
-        .setHorizontalAlignment("center");
-      
-      startRow++;
-      
-      // Initialize arrays for batch processing
-      const categoryStartRow = startRow;
-      let currentCategoryRow = 0;
-      
-      // Arrays for batch processing
-      const categoryValues = [];
-      const typeValues = [];
-      const amountValues = [];
-      const percentFormulas = [];
-      const targetValues = [];
-      const varianceFormulas = [];
-      const backgroundColors = [];
-      const conditionalFormatRules = [];
-      
-      // Consistent background color
-      const categoryBgColor = this.config.COLORS.UI.METRICS_BG;
-      
-      // Add rows for each expense category
-      if (this.data.expenseCategories.length > 0) {
-        // Sort categories by amount (descending)
-        const sortedCategories = [...this.data.expenseCategories]
-          .filter(category => !category.subcategory) // Skip subcategories
-          .sort((a, b) => b.amount - a.amount);
-        
-        // Prepare data for batch processing
-        sortedCategories.forEach((category) => {
-          categoryValues.push([category.category]);
-          typeValues.push([category.type]);
-          amountValues.push([category.amount]);
-          
-          // Calculate percentage of income
-          if (this.totals.income.average > 0) {
-            percentFormulas.push([`=C${startRow + currentCategoryRow}/${this.totals.income.average}`]);
-          } else {
-            percentFormulas.push(["N/A"]); // Or 0, depending on desired display for no income
-          }
-          
-          // Set target rate based on expense type
-          let targetRate = this.config.TARGET_RATES.DEFAULT; // Default
-          if (category.type === "Essentials") {
-            targetRate = this.config.TARGET_RATES.ESSENTIALS;
-          } else if (category.type === "Wants/Pleasure") {
-            targetRate = this.config.TARGET_RATES.WANTS_PLEASURE;
-          } else if (category.type === "Extra") {
-            targetRate = this.config.TARGET_RATES.EXTRA;
-          }
-          
-          targetValues.push([targetRate]);
-          
-          // Calculate variance (actual % - target %)
-          varianceFormulas.push([`=D${startRow + currentCategoryRow}-E${startRow + currentCategoryRow}`]);
-          
-          // Set background color
-          backgroundColors.push([categoryBgColor, categoryBgColor, categoryBgColor, categoryBgColor, categoryBgColor, categoryBgColor]);
-          
-          // Add conditional formatting for the variance column
-          conditionalFormatRules.push({
-            row: startRow + currentCategoryRow,
-            rule: SpreadsheetApp.newConditionalFormatRule()
-              .whenFormulaSatisfied(`F${startRow + currentCategoryRow}>0`)
-              .setBackground("#FFCDD2") // Light red if over budget
-              .setRanges([this.analysisSheet.getRange(startRow + currentCategoryRow, 6)])
-          });
-          
-          currentCategoryRow++;
-        });
-        
-        // Add Total Expenses row
-        categoryValues.push(["Total Expenses"]);
-        typeValues.push(["All"]);
-        amountValues.push([this.totals.expenses.average]); // Show average total expenses here
-        
-        // Calculate percentage of income for total expenses (average)
-        if (this.totals.income.average > 0) {
-          percentFormulas.push([`=C${startRow + currentCategoryRow}/${this.totals.income.average}`]);
+        if (metricConf.totalFormula) {
+          annualValueCell.setFormula(metricConf.totalFormula)
+            .setFontSize(18).setFontColor('#008000')
+            .setHorizontalAlignment('center').setVerticalAlignment('middle');
+        } else if (metricConf.targetValue !== undefined) {
+          annualValueCell.setValue(metricConf.targetValue)
+            .setFontSize(18).setFontColor('#008000')
+            .setHorizontalAlignment('center').setVerticalAlignment('middle');
         } else {
-          percentFormulas.push(["N/A"]); // Or 0
+          annualValueCell.setValue('') // Blank if no total/target
+            .setHorizontalAlignment('center').setVerticalAlignment('middle');
         }
         
-        targetValues.push([0.8]); // Target 80%
-        varianceFormulas.push([`=D${startRow + currentCategoryRow}-E${startRow + currentCategoryRow}`]);
-        
-        // Set total row background
-        backgroundColors.push([
-          this.config.COLORS.UI.HEADER_BG, 
-          this.config.COLORS.UI.HEADER_BG, 
-          this.config.COLORS.UI.HEADER_BG, 
-          this.config.COLORS.UI.HEADER_BG, 
-          this.config.COLORS.UI.HEADER_BG, 
-          this.config.COLORS.UI.HEADER_BG
-        ]);
-        
-        currentCategoryRow++;
-        
-        // Write all data to the sheet in batches
-        if (currentCategoryRow > 0) {
-          // Set category names
-          if (categoryValues.length > 0) {
-            this.analysisSheet.getRange(startRow, 1, categoryValues.length, 1).setValues(categoryValues);
-          }
-          
-          // Set types
-          if (typeValues.length > 0) {
-            this.analysisSheet.getRange(startRow, 2, typeValues.length, 1).setValues(typeValues);
-          }
-          
-          // Set amounts
-          if (amountValues.length > 0) {
-            this.analysisSheet.getRange(startRow, 3, amountValues.length, 1).setValues(amountValues);
-          }
-          
-          // Set percentage formulas
-          if (percentFormulas.length > 0) {
-            this.analysisSheet.getRange(startRow, 4, percentFormulas.length, 1).setFormulas(percentFormulas);
-          }
-          
-          // Set target values
-          if (targetValues.length > 0) {
-            this.analysisSheet.getRange(startRow, 5, targetValues.length, 1).setValues(targetValues);
-          }
-          
-          // Set variance formulas
-          if (varianceFormulas.length > 0) {
-            this.analysisSheet.getRange(startRow, 6, varianceFormulas.length, 1).setFormulas(varianceFormulas);
-          }
-          
-          // Set backgrounds
-          if (backgroundColors.length > 0) {
-            this.analysisSheet.getRange(startRow, 1, backgroundColors.length, 6).setBackgrounds(backgroundColors);
-          }
-          
-          // Format currency cells (amount column)
-          const currencyFormat = this.currencyFormatDefault;
-          utils.formatAsCurrency(this.analysisSheet.getRange(startRow, 3, currentCategoryRow, 1), currencyFormat);
-          
-          // Format percentage cells (percentage columns)
-          utils.formatAsPercentage(this.analysisSheet.getRange(startRow, 4, currentCategoryRow, 3));
-          
-          // Apply conditional formatting rules
-          if (conditionalFormatRules.length > 0) {
-            const rules = this.analysisSheet.getConditionalFormatRules();
-            conditionalFormatRules.forEach(item => {
-              rules.push(item.rule);
-            });
-            this.analysisSheet.setConditionalFormatRules(rules);
-          }
-          
-          // Set font color for total row
-          this.analysisSheet.getRange(startRow + currentCategoryRow - 1, 1, 1, 6)
-            .setFontWeight("bold")
-            .setFontColor(this.config.COLORS.UI.HEADER_FONT);
-          
-          // Add borders to the expense table
-          this.analysisSheet.getRange(categoryStartRow, 1, currentCategoryRow, 6).setBorder(
-            true, true, true, true, true, true, 
-            "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID
-          );
-          
-          // Add subtle shading to every other row for better readability
-          for (let i = 0; i < currentCategoryRow - 1; i++) { // Skip total row
-            if (i % 2 === 1) {
-              this.analysisSheet.getRange(startRow + i, 1, 1, 6)
-                .setBackground("#F8F8F8"); // Very light gray for alternate rows
+        if (metricConf.valueType === 'currency') {
+          monthlyValueCell.setNumberFormat(serviceInstance.currencyFormatDefault);
+          if (metricConf.totalFormula) annualValueCell.setNumberFormat(serviceInstance.currencyFormatDefault);
+        } else if (metricConf.valueType === 'percentage') {
+          monthlyValueCell.setNumberFormat('0.00%');
+          if (metricConf.totalFormula || metricConf.targetValue !== undefined) {
+            if (typeof metricConf.targetValue === 'number') {
+                annualValueCell.setNumberFormat('0.00%');
             }
           }
         }
-      }
+
+        // 3. Sparkline Row
+        sheet.getRange(sparklineRow, startCardColumn, 1, cardWidth).merge()
+          .setValue(metricConf.sparklinePlaceholderText || `[Sparkline: ${metricConf.name}]`)
+          .setHorizontalAlignment('center').setVerticalAlignment('middle')
+          .setFontStyle('italic').setFontColor('#AAAAAA');
+
+        // 4. Labels Row
+        sheet.getRange(labelsRow, startCardColumn, 1, 1) // Col 1 of card
+          .setValue(metricConf.avgLabel || 'Monthly Avg.')
+          .setFontSize(9).setFontColor('#808080')
+          .setHorizontalAlignment('center').setVerticalAlignment('middle');
+        
+        sheet.getRange(labelsRow, startCardColumn + 1, 1, 1) // Col 2 of card
+          .setValue(metricConf.totalLabel || 'Annual Total')
+          .setFontSize(9).setFontColor('#808080')
+          .setHorizontalAlignment('center').setVerticalAlignment('middle');
+        
+        // Card Border
+        sheet.getRange(headerRow, startCardColumn, 4, cardWidth) // 4 rows, cardWidth columns
+          .setBorder(true, true, true, true, true, true, '#A9D18E', SpreadsheetApp.BorderStyle.SOLID_THIN);
+        
+        return cardEndRow + 1; 
+      };
+
+      const cashFlowMetricConfigs = [
+        {
+          name: 'Net Income (after Essentials)',
+          avgFormula: `=${totals.income.averageRef}-${totals.essentials.averageRef}`,
+          totalFormula: `=${totals.income.totalRef}-${totals.essentials.totalRef}`,
+          sparklinePlaceholderText: `[Trend: NI after Essentials]`,
+          valueType: 'currency',
+        },
+        {
+          name: 'Discretionary Spending Power',
+          avgFormula: `=${totals.income.averageRef}-${totals.essentials.averageRef}-${totals.savings.averageRef}`,
+          totalFormula: `=${totals.income.totalRef}-${totals.essentials.totalRef}-${totals.savings.totalRef}`,
+          sparklinePlaceholderText: `[Trend: Discretionary Spending]`,
+          valueType: 'currency',
+        },
+        {
+          name: 'Overall Net Cash Flow',
+          avgFormula: `=${totals.income.averageRef}-(${totals.essentials.averageRef}+${totals.wantsPleasure.averageRef}+${totals.extra.averageRef})`,
+          totalFormula: `=${totals.income.totalRef}-(${totals.essentials.totalRef}+${totals.wantsPleasure.totalRef}+${totals.extra.totalRef})`,
+          sparklinePlaceholderText: `[Trend: Net Cash Flow]`,
+          valueType: 'currency',
+        },
+        {
+          name: 'Net Income after Running Expenses',
+          avgFormula: `=(${totals.income.averageRef}-(${totals.essentials.averageRef}+${totals.wantsPleasure.averageRef}))`,
+          totalFormula: `=(${totals.income.totalRef}-(${totals.essentials.totalRef}+${totals.wantsPleasure.totalRef}))`,
+          sparklinePlaceholderText: `[Trend: NI after Running Exp.]`,
+          valueType: 'currency',
+        }
+      ];
+
+      const rateMetricConfigs = [
+        {
+          name: 'Savings Rate',
+          avgFormula: `=IFERROR(${totals.savings.averageRef}/${totals.income.averageRef},0)`,
+          targetValue: serviceInstance.config.TARGET_RATES.SAVINGS !== undefined ? serviceInstance.config.TARGET_RATES.SAVINGS : 'N/A',
+          sparklinePlaceholderText: `[Trend: Savings Rate]`,
+          valueType: 'percentage',
+          avgLabel: 'Avg Rate',
+          totalLabel: 'Target'
+        },
+        {
+          name: 'Essentials Rate',
+          avgFormula: `=IFERROR(${totals.essentials.averageRef}/${totals.income.averageRef},0)`,
+          targetValue: serviceInstance.config.TARGET_RATES.ESSENTIALS !== undefined ? serviceInstance.config.TARGET_RATES.ESSENTIALS : 'N/A',
+          sparklinePlaceholderText: `[Trend: Essentials Rate]`,
+          valueType: 'percentage',
+          avgLabel: 'Avg Rate',
+          totalLabel: 'Target'
+        },
+        {
+          name: 'Wants/Pleasure Rate',
+          avgFormula: `=IFERROR(${totals.wantsPleasure.averageRef}/${totals.income.averageRef},0)`,
+          targetValue: serviceInstance.config.TARGET_RATES.WANTS_PLEASURE !== undefined ? serviceInstance.config.TARGET_RATES.WANTS_PLEASURE : 'N/A',
+          sparklinePlaceholderText: `[Trend: Wants Rate]`,
+          valueType: 'percentage',
+          avgLabel: 'Avg Rate',
+          totalLabel: 'Target'
+        },
+        {
+          name: 'Extra Rate',
+          avgFormula: `=IFERROR(${totals.extra.averageRef}/${totals.income.averageRef},0)`,
+          targetValue: serviceInstance.config.TARGET_RATES.EXTRA !== undefined ? serviceInstance.config.TARGET_RATES.EXTRA : 'N/A',
+          sparklinePlaceholderText: `[Trend: Extra Rate]`,
+          valueType: 'percentage',
+          avgLabel: 'Avg Rate',
+          totalLabel: 'Target'
+        }
+      ];
+
+      // Add Key Metrics Title spanning B-F (or B-C and E-F separately if preferred)
+      sheet.getRange(startRow, 2, 1, 5).merge() // Merge B to F for the title "Key Financial Metrics"
+           .setValue("Key Financial Metrics")
+           .setFontWeight("bold").setFontSize(14)
+           .setHorizontalAlignment("center").setVerticalAlignment("middle")
+           .setBackground(this.config.COLORS.UI.HEADER_BG || '#D3D3D3') // Use a header-like background
+           .setFontColor(this.config.COLORS.UI.HEADER_FONT || '#000000');
+      sheet.setRowHeight(startRow, 30); // Height for the title row
       
+      let currentTitleRow = startRow + 1; // Actual cards start below this title
+      currentRowColB = currentTitleRow;
+      currentRowColE = currentTitleRow;
+
+
+      cashFlowMetricConfigs.forEach(conf => {
+        currentRowColB = createMetricCard(conf, currentRowColB, 2); // Start in Col B (2)
+        sheet.setRowHeight(currentRowColB, 15); // Spacing row
+        currentRowColB++;
+      });
+      
+      rateMetricConfigs.forEach(conf => {
+        currentRowColE = createMetricCard(conf, currentRowColE, 5); // Start in Col E (5)
+        sheet.setRowHeight(currentRowColE, 15); // Spacing row
+        currentRowColE++;
+      });
+      
+      return Math.max(currentRowColB, currentRowColE); // Return the greater of the two current rows
+    }
+
+    addExpenseCategoriesSection(startRow) {
+      this.analysisSheet.getRange(startRow, 1).setValue("Expense Categories");
+      this.analysisSheet.getRange(startRow, 1, 1, 6).setBackground(this.config.COLORS.UI.HEADER_BG).setFontWeight("bold").setFontColor(this.config.COLORS.UI.HEADER_FONT).setHorizontalAlignment("center");
+      startRow++;
+      this.analysisSheet.getRange(startRow, 1, 1, 6).setValues([["Category", "Type", "Amount", "% of Income", "Target %", "Variance"]]).setBackground("#F5F5F5").setFontWeight("bold").setHorizontalAlignment("center");
+      startRow++;
+      
+      const categoryStartRow = startRow;
+      let currentCategoryRow = 0;
+      const categoryData = [];
+      const conditionalFormatRules = [];
+      
+      if (this.data.expenseCategories && this.data.expenseCategories.length > 0) {
+        const sortedCategories = [...this.data.expenseCategories].filter(c => !c.subcategory).sort((a, b) => b.amount - a.amount);
+        
+        sortedCategories.forEach(cat => {
+          let targetRate = this.config.TARGET_RATES.DEFAULT;
+          if (cat.type === "Essentials") targetRate = this.config.TARGET_RATES.ESSENTIALS;
+          else if (cat.type === "Wants/Pleasure") targetRate = this.config.TARGET_RATES.WANTS_PLEASURE || this.config.TARGET_RATES.WANTS;
+          else if (cat.type === "Extra") targetRate = this.config.TARGET_RATES.EXTRA;
+          
+          categoryData.push([
+            cat.category, cat.type, cat.amount,
+            (this.totals.income.averageRef && this.totals.income.average > 0) ? `=C${startRow + currentCategoryRow}/${this.totals.income.averageRef}` : "N/A",
+            targetRate,
+            `=D${startRow + currentCategoryRow}-E${startRow + currentCategoryRow}`
+          ]);
+          conditionalFormatRules.push(SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(`=F${startRow + currentCategoryRow}>0`).setBackground("#FFCDD2").setRanges([this.analysisSheet.getRange(startRow + currentCategoryRow, 6)]).build());
+          currentCategoryRow++;
+        });
+        
+        categoryData.push([
+          "Total Expenses", "All", this.totals.expenses.average,
+          (this.totals.income.averageRef && this.totals.income.average > 0) ? `=C${startRow + currentCategoryRow}/${this.totals.income.averageRef}` : "N/A",
+          0.8, // Example target for total expenses
+          `=D${startRow + currentCategoryRow}-E${startRow + currentCategoryRow}`
+        ]);
+        currentCategoryRow++;
+        
+        if (categoryData.length > 0) {
+          const dataRange = this.analysisSheet.getRange(startRow, 1, categoryData.length, 6);
+          dataRange.setValues(categoryData).setBackground(null).setBorder(true, true, true, true, true, true, "#BDBDBD", SpreadsheetApp.BorderStyle.SOLID_THIN);
+          utils.formatAsCurrency(this.analysisSheet.getRange(startRow, 3, categoryData.length, 1), this.currencyFormatDefault);
+          utils.formatAsPercentage(this.analysisSheet.getRange(startRow, 4, categoryData.length, 3)); 
+          
+          const rules = this.analysisSheet.getConditionalFormatRules();
+          conditionalFormatRules.forEach(rule => rules.push(rule));
+          this.analysisSheet.setConditionalFormatRules(rules);
+          
+          this.analysisSheet.getRange(startRow + categoryData.length - 1, 1, 1, 6).setFontWeight("bold").setFontColor(this.config.COLORS.UI.HEADER_FONT).setBackground(this.config.COLORS.UI.HEADER_BG);
+        }
+      }
       return startRow + currentCategoryRow;
     }
 
-    /**
-     * Creates and inserts expenditure charts (Pie chart for breakdown, Column chart for rates vs. targets)
-     * into the analysis sheet.
-     * @param {number} startRow - The 1-based row index where the charts should be positioned.
-     * @return {void}
-     * @private
-     */
     createExpenditureCharts(startRow) {
-      // Only create charts if we have expense categories
-      if (this.data.expenseCategories.length === 0) return;
-      
-      // Find the rows containing category data in the analysis sheet
+      if (!this.data || !this.data.expenseCategories || this.data.expenseCategories.length === 0) return; 
       const analysisData = this.analysisSheet.getDataRange().getValues();
-      let categoryStartRow = -1;
-      let categoryEndRow = -1;
-      
+      let categoryStartRow = -1, categoryEndRow = -1;
       for (let i = 0; i < analysisData.length; i++) {
-        if (analysisData[i][0] === "Category" && analysisData[i][1] === "Type") {
-          categoryStartRow = i + 2; // Skip header row
-        } else if (analysisData[i][0] === "Total Expenses" && analysisData[i][1] === "All") {
-          categoryEndRow = i;
-          break;
-        }
+        if (analysisData[i][0] === "Category" && analysisData[i][1] === "Type") categoryStartRow = i + 2; // Data starts on the row after header
+        else if (analysisData[i][0] === "Total Expenses" && analysisData[i][1] === "All") { categoryEndRow = i; break; } // Data ends on the row before total
+      }
+
+      if (categoryStartRow === -1 || categoryEndRow === -1 || categoryEndRow < categoryStartRow) {
+        Logger.log("Expenditure chart: Category data range not found or invalid.");
+        return;
       }
       
-      if (categoryStartRow === -1 || categoryEndRow === -1) return;
+      // Pie chart for categories (excluding total)
+      const pieDataRange = this.analysisSheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 3); // Category name and Amount
+      const pieChart = this.analysisSheet.newChart().setChartType(Charts.ChartType.PIE).addRange(pieDataRange)
+        .setPosition(startRow, 1, 0, 0).setOption('title', 'Expenditure Breakdown by Category')
+        .setOption('titleTextStyle', { color: this.config.COLORS.CHART.TITLE, fontSize: 16, bold: true })
+        .setOption('pieSliceText', 'percentage').setOption('pieHole', 0.4)
+        .setOption('legend', { position: 'right', textStyle: { color: this.config.COLORS.CHART.TEXT, fontSize: 12 }})
+        .setOption('colors', this.config.COLORS.CHART.SERIES).setOption('width', 450).setOption('height', 300)
+        .setOption('is3D', false).setOption('pieSliceTextStyle', { color: '#FFFFFF', fontSize: 14, bold: true })
+        .setOption('tooltip', { showColorCode: true, textStyle: { fontSize: 12 }}).build();
+      this.analysisSheet.insertChart(pieChart);
+
+      // Column chart for rates vs targets (excluding total)
+      // Range: Category (col A), % of Income (col D), Target % (col E)
+      const columnChartDataRanges = [
+        this.analysisSheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 1), // Category names
+        this.analysisSheet.getRange(categoryStartRow, 4, categoryEndRow - categoryStartRow + 1, 1), // % of Income
+        this.analysisSheet.getRange(categoryStartRow, 5, categoryEndRow - categoryStartRow + 1, 1)  // Target %
+      ];
       
-      // Create a pie chart for expenditure breakdown
-      const pieChartBuilder = this.analysisSheet.newChart();
+      const columnChartBuilder = this.analysisSheet.newChart().setChartType(Charts.ChartType.COLUMN);
+      columnChartDataRanges.forEach(range => columnChartBuilder.addRange(range));
       
-      // Define chart data range (category name and amount)
-      const pieDataRange = this.analysisSheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow, 3);
-      
-      pieChartBuilder
-        .setChartType(Charts.ChartType.PIE)
-        .addRange(pieDataRange)
-        .setPosition(startRow, 1, 0, 0)
-        .setOption('title', 'Expenditure Breakdown')
-        .setOption('titleTextStyle', {
-          color: this.config.COLORS.CHART.TITLE,
-          fontSize: 16,
-          bold: true
-        })
-        .setOption('pieSliceText', 'percentage')
-        .setOption('pieHole', 0.4) // Create a donut chart for more modern look
-        .setOption('legend', { 
-          position: 'right',
-          textStyle: {
-            color: this.config.COLORS.CHART.TEXT,
-            fontSize: 12
-          }
-        })
-        .setOption('colors', this.config.COLORS.CHART.SERIES)
-        .setOption('width', 450)
-        .setOption('height', 300)
-        .setOption('is3D', false)
-        .setOption('pieSliceTextStyle', {
-          color: '#FFFFFF',
-          fontSize: 14,
-          bold: true
-        })
-        .setOption('tooltip', { 
-          showColorCode: true,
-          textStyle: { fontSize: 12 }
-        });
-      
-      // Add the pie chart to the sheet
-      this.analysisSheet.insertChart(pieChartBuilder.build());
-      
-      // Create a column chart showing expense categories vs target
-      const columnChartBuilder = this.analysisSheet.newChart();
-      
-      // Define data range for the column chart (category, actual %, target %)
-      const columnDataRange = this.analysisSheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow, 5);
-      
-      columnChartBuilder
-        .setChartType(Charts.ChartType.COLUMN)
-        .addRange(columnDataRange)
-        .setPosition(startRow, 8, 0, 0)
+      const columnChart = columnChartBuilder.setPosition(startRow, 5, 0, 0) // Positioned to the right of pie, adjust col index if needed
         .setOption('title', 'Expense Rates vs Targets')
-        .setOption('titleTextStyle', {
-          color: this.config.COLORS.CHART.TITLE,
-          fontSize: 16,
-          bold: true
-        })
-        .setOption('legend', { 
-          position: 'top',
-          textStyle: {
-            color: this.config.COLORS.CHART.TEXT,
-            fontSize: 12
-          }
-        })
-        .setOption('colors', [this.config.COLORS.UI.EXPENSE_FONT, this.config.COLORS.UI.INCOME_FONT]) // Red for actual, green for target
-        .setOption('width', 450)
-        .setOption('height', 300)
-        .setOption('hAxis', {
-          title: 'Category',
-          titleTextStyle: {color: this.config.COLORS.CHART.TEXT},
-          textStyle: {color: this.config.COLORS.CHART.TEXT, fontSize: 10}
-        })
-        .setOption('vAxis', {
-          title: 'Rate (% of Income)',
-          titleTextStyle: {color: this.config.COLORS.CHART.TEXT},
-          textStyle: {color: this.config.COLORS.CHART.TEXT},
-          format: 'percent'
-        })
-        .setOption('bar', {groupWidth: '75%'})
-        .setOption('isStacked', false);
-      
-      // Add the column chart to the sheet
-      this.analysisSheet.insertChart(columnChartBuilder.build());
+        .setOption('titleTextStyle', { color: this.config.COLORS.CHART.TITLE, fontSize: 16, bold: true })
+        .setOption('legend', { position: 'top', textStyle: { color: this.config.COLORS.CHART.TEXT, fontSize: 12 }})
+        .setOption('colors', [this.config.COLORS.UI.EXPENSE_FONT || "#FF0000", this.config.COLORS.UI.INCOME_FONT || "#008000"])
+        .setOption('width', 450).setOption('height', 300)
+        .setOption('hAxis', { title: 'Category', titleTextStyle: {color: this.config.COLORS.CHART.TEXT}, textStyle: {color: this.config.COLORS.CHART.TEXT, fontSize: 10}})
+        .setOption('vAxis', { title: 'Rate (% of Income)', titleTextStyle: {color: this.config.COLORS.CHART.TEXT}, textStyle: {color: this.config.COLORS.CHART.TEXT}, format: 'percent' })
+        .setOption('bar', {groupWidth: '75%'}).setOption('isStacked', false).build();
+      this.analysisSheet.insertChart(columnChart);
     }
 
-    /**
-     * Placeholder method for suggesting savings opportunities. Currently shows an alert.
-     * @return {void}
-     * @public
-     */
-    suggestSavingsOpportunities() {
-      // TODO: Implement savings opportunities suggestion
-      SpreadsheetApp.getUi().alert('Savings Opportunities - Coming Soon!');
-    }
-
-    /**
-     * Placeholder method for detecting spending anomalies. Currently shows an alert.
-     * @return {void}
-     * @public
-     */
-    detectSpendingAnomalies() {
-      // TODO: Implement spending anomaly detection
-      SpreadsheetApp.getUi().alert('Spending Anomalies Detection - Coming Soon!');
-    }
-
-    /**
-     * Placeholder method for analyzing fixed vs. variable expenses. Currently shows an alert.
-     * @return {void}
-     * @public
-     */
-    analyzeFixedVsVariableExpenses() {
-      // TODO: Implement fixed vs variable expenses analysis
-      SpreadsheetApp.getUi().alert('Fixed vs Variable Expenses Analysis - Coming Soon!');
-    }
-
-    /**
-     * Placeholder method for generating a cash flow forecast. Currently shows an alert.
-     * @return {void}
-     * @public
-     */
-    generateCashFlowForecast() {
-      // TODO: Implement cash flow forecast
-      SpreadsheetApp.getUi().alert('Cash Flow Forecast - Coming Soon!');
-    }
+    suggestSavingsOpportunities() { uiService.showInfoNotification("Info", "suggestSavingsOpportunities called."); }
+    detectSpendingAnomalies() { uiService.showInfoNotification("Info", "detectSpendingAnomalies called."); }
+    analyzeFixedVsVariableExpenses() { uiService.showInfoNotification("Info", "analyzeFixedVsVariableExpenses called."); }
+    generateCashFlowForecast() { uiService.showInfoNotification("Info", "generateCashFlowForecast called."); }
   }
   
-  // ============================================================================
   // PUBLIC API
-  // ============================================================================
-  
   return {
-    /**
-     * Creates an instance of the internal `FinancialAnalysisService` class, initializes it,
-     * and runs the analysis workflow. This is the primary entry point for generating the analysis.
-     * Provides UI feedback during the process.
-     * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The active spreadsheet object.
-     * @param {GoogleAppsScript.Spreadsheet.Sheet} overviewSheet - The sheet object containing the generated financial overview data.
-     * @return {FinancialAnalysisService} An initialized instance of the internal `FinancialAnalysisService` class,
-     *         which contains the analysis results and methods for further interaction (though currently limited).
-     * @throws {Error} Re-throws any error encountered during analysis after logging and notifying the user.
-     * @public
-     * @example
-     * // Typically called internally by other services or controllers
-     * const analysisService = FinancialPlanner.FinancialAnalysisService.analyze(ss, overviewSheet);
-     */
     analyze: function(spreadsheet, overviewSheet) {
       try {
         uiService.showLoadingSpinner("Analyzing financial data...");
-        
-        const analysisConfig = {
-          ...config.get(),
-          // Add any additional config needed
-          TARGET_RATES: {
-            ...config.getSection('TARGET_RATES'),
-            WANTS_PLEASURE: config.getSection('TARGET_RATES').WANTS // Map WANTS to WANTS_PLEASURE for compatibility
-          }
-        };
-        
-        const service = new FinancialAnalysisService(
-          spreadsheet,
-          overviewSheet,
-          analysisConfig
-        );
-        
-        service.initialize();
-        service.analyze();
-        
+        const analysisConfig = { ...config.get(), TARGET_RATES: { ...config.getSection('TARGET_RATES'), WANTS_PLEASURE: config.getSection('TARGET_RATES').WANTS } };
+        const service = new FinancialAnalysisService(spreadsheet, overviewSheet, analysisConfig);
+        service.initialize(); 
+        service.analyze();    
         uiService.hideLoadingSpinner();
-        
-        return service;
+        return service; 
       } catch (error) {
         uiService.hideLoadingSpinner();
-        errorService.handle(error, "Error analyzing financial data");
+        errorService.handle(error, "Error in financial analysis service");
         throw error;
       }
     },
-    
-    /**
-     * Public method to trigger the generation and display of the key metrics analysis.
-     * It ensures the overview sheet exists, calls the internal `analyze` method,
-     * activates the analysis sheet, and shows a success notification.
-     * @return {void}
-     * @public
-     * @example
-     * // Called from a menu item or controller:
-     * FinancialPlanner.FinancialAnalysisService.showKeyMetrics();
-     */
     showKeyMetrics: function() {
       try {
         const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
         const overviewSheet = spreadsheet.getSheetByName(config.getSection('SHEETS').OVERVIEW);
-        
         if (!overviewSheet) {
-          uiService.showErrorNotification("Error", 
-            "Overview sheet not found. Please generate the financial overview first.");
+          uiService.showErrorNotification("Error", "Overview sheet not found. Please generate the financial overview first.");
           return;
         }
-        
-        // Analyze the data by calling the module's analyze function
-        // which correctly instantiates the service
-        FinancialPlanner.FinancialAnalysisService.analyze(spreadsheet, overviewSheet);
-        
-        // Activate the Analysis sheet to show it to the user
+        FinancialPlanner.FinancialAnalysisService.analyze(spreadsheet, overviewSheet); 
         const analysisSheet = spreadsheet.getSheetByName(config.getSection('SHEETS').ANALYSIS);
-        analysisSheet.activate();
-        
-        uiService.showSuccessNotification("Key metrics have been generated in the Analysis sheet.");
+        if (analysisSheet) { 
+            analysisSheet.activate();
+        }
+        uiService.showSuccessNotification("Financial analysis complete.");
       } catch (error) {
-        errorService.handle(error, "Failed to generate key metrics");
+        errorService.handle(error, "Failed to show key metrics");
       }
     },
-    
-    /**
-     * Public method to trigger the suggestion of savings opportunities.
-     * Ensures the overview sheet exists, runs the analysis, and calls the internal placeholder method.
-     * @return {void}
-     * @public
-     * @example
-     * // Called from a menu item or controller:
-     * FinancialPlanner.FinancialAnalysisService.suggestSavingsOpportunities();
-     */
-    suggestSavingsOpportunities: function() {
-      try {
-        const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-        const overviewSheet = spreadsheet.getSheetByName(config.getSection('SHEETS').OVERVIEW);
-        
-        if (!overviewSheet) {
-          uiService.showErrorNotification("Error", 
-            "Overview sheet not found. Please generate the financial overview first.");
-          return;
-        }
-        
-        // Create and use the service
-        const service = this.analyze(spreadsheet, overviewSheet);
-        service.suggestSavingsOpportunities();
-      } catch (error) {
-        errorService.handle(error, "Failed to suggest savings opportunities");
-      }
-    },
-    
-    /**
-     * Public method to trigger the detection of spending anomalies.
-     * Ensures the overview sheet exists, runs the analysis, and calls the internal placeholder method.
-     * @return {void}
-     * @public
-     * @example
-     * // Called from a menu item or controller:
-     * FinancialPlanner.FinancialAnalysisService.detectSpendingAnomalies();
-     */
-    detectSpendingAnomalies: function() {
-      try {
-        const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-        const overviewSheet = spreadsheet.getSheetByName(config.getSection('SHEETS').OVERVIEW);
-        
-        if (!overviewSheet) {
-          uiService.showErrorNotification("Error", 
-            "Overview sheet not found. Please generate the financial overview first.");
-          return;
-        }
-        
-        // Create and use the service
-        const service = this.analyze(spreadsheet, overviewSheet);
-        service.detectSpendingAnomalies();
-      } catch (error) {
-        errorService.handle(error, "Failed to detect spending anomalies");
-      }
-    }
+    suggestSavingsOpportunities: function() { uiService.showInfoNotification("Info", "Suggest Savings Opportunities feature called."); },
+    detectSpendingAnomalies: function() { uiService.showInfoNotification("Info", "Detect Spending Anomalies feature called."); }
   };
 })(FinancialPlanner.Utils, FinancialPlanner.UIService, FinancialPlanner.ErrorService, FinancialPlanner.Config);
 
-// ============================================================================
-// BACKWARD COMPATIBILITY LAYER
-// ============================================================================
-
-/**
- * Shows the key metrics section in the Analysis sheet.
- * Maintained for backward compatibility with older triggers or direct calls.
- * Delegates to `FinancialPlanner.FinancialAnalysisService.showKeyMetrics()`.
- * @return {void}
- * @global
- */
 function showKeyMetrics() {
   if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.FinancialAnalysisService && FinancialPlanner.FinancialAnalysisService.showKeyMetrics) {
     FinancialPlanner.FinancialAnalysisService.showKeyMetrics();
   } else {
      Logger.log("Global showKeyMetrics: FinancialPlanner.FinancialAnalysisService not available.");
-     // Optionally show an error to the user if appropriate for a direct call scenario
-     // SpreadsheetApp.getUi().alert("Error: Financial Analysis module not loaded.");
   }
 }
