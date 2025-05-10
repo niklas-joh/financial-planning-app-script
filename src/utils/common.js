@@ -73,20 +73,18 @@ FinancialPlanner.Utils = (function() {
     },
 
     /**
-     * Formats a given cell range as currency using a specific Google Sheets number format string.
-     * Allows customization of the currency symbol and locale identifier used in the format.
+     * Formats a given cell range as currency using a provided Google Sheets number format string.
      * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to format.
-     * @param {string} [currencySymbol='€'] - The currency symbol to display (e.g., '$', '£').
-     * @param {string} [locale='2'] - The locale identifier used in the format string (e.g., '1' for USD, '2' for EUR).
-     *                                Note: This is specific to the Google Sheets format string structure.
+     * @param {string} numberFormatString - The complete number format string to apply.
      * @return {GoogleAppsScript.Spreadsheet.Range} The same range object, allowing for method chaining.
      * @example
      * const amountRange = sheet.getRange("C2:C10");
-     * FinancialPlanner.Utils.formatAsCurrency(amountRange, '$', '1');
+     * const formatStr = FinancialPlanner.Config.getLocale().NUMBER_FORMATS.CURRENCY_DEFAULT;
+     * FinancialPlanner.Utils.formatAsCurrency(amountRange, formatStr);
      */
-    formatAsCurrency: function(range, currencySymbol = '€', locale = '2') {
-      // Using the specified Google Sheets format for currency
-      range.setNumberFormat(`_-[$${currencySymbol}-${locale}]\\ * #,##0_-;\\-[$${currencySymbol}-${locale}]\\ * #,##0_-;_-[$${currencySymbol}-${locale}]\\ * "-"??_-;_-@`);
+    formatAsCurrency: function(range, numberFormatString) {
+      // Using the provided Google Sheets format for currency
+      range.setNumberFormat(numberFormatString);
       return range; // Return for chaining
     },
 
@@ -169,18 +167,21 @@ function getOrCreateSheet(spreadsheet, sheetName) {
 }
 
 /**
- * Formats a range as currency. Delegates to `FinancialPlanner.Utils.formatAsCurrency`.
+ * Formats a range as currency using the default currency format from config. Delegates to `FinancialPlanner.Utils.formatAsCurrency`.
  * @param {GoogleAppsScript.Spreadsheet.Range} range - The range to format.
- * @param {string} [currencySymbol='€'] - The currency symbol.
- * @param {string} [locale='2'] - The locale identifier.
  * @return {GoogleAppsScript.Spreadsheet.Range | undefined} The range object or undefined if the service isn't loaded.
  * @global
  */
-function formatAsCurrency(range, currencySymbol = '€', locale = '2') {
-  if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.Utils && FinancialPlanner.Utils.formatAsCurrency) {
-    return FinancialPlanner.Utils.formatAsCurrency(range, currencySymbol, locale);
+function formatAsCurrency(range) {
+  if (typeof FinancialPlanner !== 'undefined' && 
+      FinancialPlanner.Utils && 
+      FinancialPlanner.Utils.formatAsCurrency &&
+      FinancialPlanner.Config &&
+      FinancialPlanner.Config.getLocale) {
+    const defaultFormat = FinancialPlanner.Config.getLocale().NUMBER_FORMATS.CURRENCY_DEFAULT;
+    return FinancialPlanner.Utils.formatAsCurrency(range, defaultFormat);
   }
-   Logger.log("Global formatAsCurrency: FinancialPlanner.Utils not available.");
+   Logger.log("Global formatAsCurrency: FinancialPlanner.Utils or FinancialPlanner.Config not available.");
 }
 
 /**
