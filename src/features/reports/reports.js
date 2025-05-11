@@ -1,26 +1,29 @@
 /**
- * Financial Planning Tools - Report Service
- * 
- * This file provides report generation functionality for the Financial Planning Tools project.
- * It follows the namespace pattern and uses dependency injection for better maintainability.
+ * @fileoverview Report Service for Financial Planning Tools.
+ * This module is intended to provide functionality for generating various financial reports
+ * beyond the main overview, such as yearly summaries, category breakdowns, and savings analyses.
+ * It follows the namespace pattern and uses dependency injection.
+ * Currently, most report generation functions are placeholders.
+ * @module features/reports/report-service
  */
 
 /**
  * @namespace FinancialPlanner.ReportService
- * @description Service responsible for generating various financial reports beyond the main overview.
- * Currently contains placeholders for future report implementations.
- * @param {FinancialPlanner.Utils} utils - The utility service.
- * @param {FinancialPlanner.UIService} uiService - The UI service for notifications and alerts.
- * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
- * @param {FinancialPlanner.Config} config - The global configuration service.
+ * @description Service responsible for generating various financial reports.
+ * This service currently contains placeholders for future report implementations like
+ * yearly summaries, category breakdowns, and savings analyses.
+ * @param {UtilsModule} utils - Instance of the Utils module.
+ * @param {UIServiceModule} uiService - Instance of the UI Service module for notifications and alerts.
+ * @param {ErrorServiceModule} errorService - Instance of the Error Service module for error handling.
+ * @param {ConfigModule} config - Instance of the Config module for global configurations.
  */
 FinancialPlanner.ReportService = (function(utils, uiService, errorService, config) {
   // Private variables and functions
   
   /**
    * Placeholder function for generating a yearly summary report.
-   * @todo Implement the logic for yearly summary generation.
-   * @return {void} Currently shows an info alert.
+   * Displays a "Coming Soon!" message.
+   * @todo Implement the actual logic for yearly summary report generation.
    * @private
    */
   function createYearlySummary() {
@@ -30,8 +33,8 @@ FinancialPlanner.ReportService = (function(utils, uiService, errorService, confi
   
   /**
    * Placeholder function for generating a category breakdown report.
-   * @todo Implement the logic for category breakdown report generation.
-   * @return {void} Currently shows an info alert.
+   * Displays a "Coming Soon!" message.
+   * @todo Implement the actual logic for category breakdown report generation.
    * @private
    */
   function createCategoryBreakdown() {
@@ -41,8 +44,8 @@ FinancialPlanner.ReportService = (function(utils, uiService, errorService, confi
   
   /**
    * Placeholder function for generating a savings analysis report.
-   * @todo Implement the logic for savings analysis report generation.
-   * @return {void} Currently shows an info alert.
+   * Displays a "Coming Soon!" message.
+   * @todo Implement the actual logic for savings analysis report generation.
    * @private
    */
   function createSavingsAnalysis() {
@@ -54,11 +57,12 @@ FinancialPlanner.ReportService = (function(utils, uiService, errorService, confi
   return {
     /**
      * Public method to trigger the generation of the yearly summary report.
-     * Currently calls the placeholder `createYearlySummary` function.
-     * Wraps the call with UI feedback and error handling.
-     * @return {GoogleAppsScript.Spreadsheet.Sheet | null} Currently returns null as the report is not implemented.
-     *         Should return the generated sheet object upon implementation.
-     * @public
+     * This currently calls the placeholder `createYearlySummary` function.
+     * It includes UI feedback (loading spinner) and error handling.
+     * @returns {GoogleAppsScript.Spreadsheet.Sheet | null} Currently returns `null` as the report
+     *   functionality is not yet implemented. Upon implementation, it should return the
+     *   generated Google Apps Script `Sheet` object.
+     * @memberof FinancialPlanner.ReportService
      * @example
      * FinancialPlanner.ReportService.generateYearlySummary();
      */
@@ -77,11 +81,11 @@ FinancialPlanner.ReportService = (function(utils, uiService, errorService, confi
     
     /**
      * Public method to trigger the generation of the category breakdown report.
-     * Currently calls the placeholder `createCategoryBreakdown` function.
-     * Wraps the call with UI feedback and error handling.
-     * @return {GoogleAppsScript.Spreadsheet.Sheet | null} Currently returns null as the report is not implemented.
-     *         Should return the generated sheet object upon implementation.
-     * @public
+     * This currently calls the placeholder `createCategoryBreakdown` function.
+     * It includes UI feedback and error handling.
+     * @returns {GoogleAppsScript.Spreadsheet.Sheet | null} Currently returns `null`.
+     *   Should return the generated `Sheet` object upon implementation.
+     * @memberof FinancialPlanner.ReportService
      * @example
      * FinancialPlanner.ReportService.generateCategoryBreakdown();
      */
@@ -100,11 +104,11 @@ FinancialPlanner.ReportService = (function(utils, uiService, errorService, confi
     
     /**
      * Public method to trigger the generation of the savings analysis report.
-     * Currently calls the placeholder `createSavingsAnalysis` function.
-     * Wraps the call with UI feedback and error handling.
-     * @return {GoogleAppsScript.Spreadsheet.Sheet | null} Currently returns null as the report is not implemented.
-     *         Should return the generated sheet object upon implementation.
-     * @public
+     * This currently calls the placeholder `createSavingsAnalysis` function.
+     * It includes UI feedback and error handling.
+     * @returns {GoogleAppsScript.Spreadsheet.Sheet | null} Currently returns `null`.
+     *   Should return the generated `Sheet` object upon implementation.
+     * @memberof FinancialPlanner.ReportService
      * @example
      * FinancialPlanner.ReportService.generateSavingsAnalysis();
      */
@@ -127,8 +131,10 @@ FinancialPlanner.ReportService = (function(utils, uiService, errorService, confi
 
 /**
  * Generates the yearly summary report.
- * Maintained for backward compatibility. Delegates to `FinancialPlanner.ReportService.generateYearlySummary()`.
- * @return {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} Result from the service call.
+ * This global function is maintained for backward compatibility.
+ * It delegates its execution to `FinancialPlanner.ReportService.generateYearlySummary()`.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} The result from the service call,
+ *   which is currently `null` or `undefined` if the service is not loaded.
  * @global
  */
 function generateYearlySummary() {
@@ -140,8 +146,9 @@ function generateYearlySummary() {
 
 /**
  * Generates the category breakdown report.
- * Maintained for backward compatibility. Delegates to `FinancialPlanner.ReportService.generateCategoryBreakdown()`.
- * @return {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} Result from the service call.
+ * This global function is maintained for backward compatibility.
+ * It delegates its execution to `FinancialPlanner.ReportService.generateCategoryBreakdown()`.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} The result from the service call.
  * @global
  */
 function generateCategoryBreakdown() {
@@ -153,8 +160,9 @@ function generateCategoryBreakdown() {
 
 /**
  * Generates the savings analysis report.
- * Maintained for backward compatibility. Delegates to `FinancialPlanner.ReportService.generateSavingsAnalysis()`.
- * @return {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} Result from the service call.
+ * This global function is maintained for backward compatibility.
+ * It delegates its execution to `FinancialPlanner.ReportService.generateSavingsAnalysis()`.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} The result from the service call.
  * @global
  */
 function generateSavingsAnalysis() {

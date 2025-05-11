@@ -1,14 +1,23 @@
 /**
- * Financial Planning Tools - Index
- * 
- * This file serves as the main entry point for the Financial Planning Tools
- * Google Apps Script project. It imports all the necessary files and exposes
- * the public functions that can be called from the Google Sheets UI.
- * 
- * The file structure follows the namespace pattern to prevent global namespace
- * pollution and improve code organization.
+ * @fileoverview Main entry point for the Financial Planning Tools Google Apps Script project.
+ * This script handles the final initialization steps after all modules are loaded.
+ * It ensures that the application's core components are ready and logs the
+ * application version. It's designed to be one of the last scripts executed
+ * as per the `appsscript.json` file order.
+ * @module core/index
  */
 
+/**
+ * Initializes the Financial Planning Tools application.
+ * This function logs the start of the initialization process, verifies that the
+ * global `FinancialPlanner` namespace and its version are available (indicating
+ * that `00_module_loader.js` has run), and then logs a success message along
+ * with the application version.
+ * It is called automatically when this script is loaded, provided the
+ * `FinancialPlanner.Controllers` module is detected.
+ * @memberof module:core/index
+ * @private
+ */
 // Initialize the application
 function initialize() {
   // Log initialization start

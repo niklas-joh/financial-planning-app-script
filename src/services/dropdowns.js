@@ -3,20 +3,25 @@
  *
  * This file provides dynamic dependent dropdown functionality for the Transactions sheet.
  * It follows the namespace pattern and uses dependency injection for better maintainability.
+ * @module services/dropdowns
  */
 
 /**
  * @namespace FinancialPlanner.DropdownService
  * @description Service for managing dynamic dependent dropdowns in the 'Transactions' sheet.
- * It reads dropdown configurations from a 'Dropdowns' sheet and applies data validation rules.
- * @param {FinancialPlanner.Utils} utils - The utility service.
- * @param {FinancialPlanner.UIService} uiService - The UI service for notifications.
- * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
- * @param {FinancialPlanner.Config} config - The global configuration service.
+ * It reads dropdown configurations from a 'Dropdowns' sheet, caches them, and applies
+ * data validation rules to relevant cells based on user edits.
+ * This service is designed as an IIFE and is attached to the `FinancialPlanner` global namespace.
+ * @param {object} utils - The utility service, expected to be `FinancialPlanner.Utils`.
+ * @param {object} uiService - The UI service for notifications, expected to be `FinancialPlanner.UIService`.
+ * @param {object} errorService - The error handling service, expected to be `FinancialPlanner.ErrorService`.
+ * @param {object} config - The global configuration service, expected to be `FinancialPlanner.Config`.
  */
 FinancialPlanner.DropdownService = (function(utils, uiService, errorService, config) {
   /**
+   * Configuration constants for the DropdownService.
    * @private
+   * @readonly
    * @const {object} DROPDOWN_CONFIG
    * @property {number} CACHE_EXPIRY_SECONDS - Expiry time for the script cache.
    * @property {string} CACHE_KEY - Key used for storing dropdown data in script cache.
@@ -52,12 +57,20 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   };
 
   // Private cache (in-memory for the current session, script cache for longer persistence)
+  /**
+   * In-memory cache for the dropdown data structure.
+   * Loaded from ScriptCache or built from the 'Dropdowns' sheet.
+   * Structure: `{ typeToCategories: object, typeCategoryToSubCategories: object }`
+   * @private
+   * @type {null|{typeToCategories: object, typeCategoryToSubCategories: object}}
+   */
   let dropdownCache = null;
 
   /**
-   * Converts Set values within an object to Arrays.
-   * @param {object} obj - The input object where property values might be Sets.
-   * @return {object} A new object where Set values have been converted to Arrays.
+   * Converts Set values within an object to Arrays. This is used when preparing
+   * data from `buildDropdownCache` for JSON stringification and storage in ScriptCache.
+   * @param {Object<string, Set<string>>} obj - The input object where property values are Sets.
+   * @return {Object<string, Array<string>>} A new object where Set values have been converted to Arrays.
    * @private
    */
   function mapSetsToArrays(obj) {
@@ -71,11 +84,14 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   }
 
   /**
-   * Builds or retrieves the dropdown cache from the 'Dropdowns' sheet or Google Apps Script's `CacheService`.
-   * The cache contains mappings for Type -> Categories and (Type+Category) -> SubCategories.
-   * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The active spreadsheet object.
-   * @return {{typeToCategories: object, typeCategoryToSubCategories: object}} An object containing the dropdown mappings.
-   *                                                                         Returns empty mappings if an error occurs.
+   * Builds or retrieves the dropdown cache.
+   * It first attempts to load from Google Apps Script's `CacheService`. If not found or expired,
+   * it reads data from the 'Dropdowns' sheet, processes it into a structured format
+   * (Type -> Categories, and Type+Category -> SubCategories), and stores it in the ScriptCache.
+   * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The active spreadsheet object
+   *   from which to read the 'Dropdowns' sheet if the cache is not populated.
+   * @return {{typeToCategories: Object<string, Array<string>>, typeCategoryToSubCategories: Object<string, Array<string>>}}
+   *   An object containing the dropdown mappings. Returns empty mappings if an error occurs.
    * @private
    */
   function buildDropdownCache(spreadsheet) {
@@ -144,10 +160,10 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
 
   /**
    * Sets a data validation rule (dropdown list) for a given cell range.
-   * Includes a placeholder text as the first option.
-   * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to apply the validation to.
-   * @param {string[]} options - An array of strings representing the dropdown options.
-   * @return {void}
+   * The dropdown list will include `DROPDOWN_CONFIG.UI.PLACEHOLDER_TEXT` as the first option.
+   * If `options` is empty or null, any existing validation on the range is cleared.
+   * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to apply the data validation to.
+   * @param {Array<string>} options - An array of strings representing the dropdown options.
    * @private
    */
   function setDropdownValidation(range, options) {
@@ -163,9 +179,8 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   }
 
   /**
-   * Clears the content of a cell if it currently holds the placeholder text.
-   * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to check and clear.
-   * @return {void}
+   * Clears the content of a cell if its current value is the `DROPDOWN_CONFIG.UI.PLACEHOLDER_TEXT`.
+   * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to check and potentially clear.
    * @private
    */
   function clearPlaceholderIfNeeded(range) {
@@ -175,9 +190,9 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   }
 
   /**
-   * Applies a background highlight to a cell, typically to indicate that a selection is pending.
+   * Applies a background highlight (using `DROPDOWN_CONFIG.UI.PENDING_BACKGROUND`) to a cell,
+   * typically to indicate that a selection is pending or required.
    * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to highlight.
-   * @return {void}
    * @private
    */
   function highlightPending(range) {
@@ -185,9 +200,8 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   }
 
   /**
-   * Removes any background highlighting from a cell.
-   * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to clear highlighting from.
-   * @return {void}
+   * Removes any background highlighting from a cell by setting its background to null.
+   * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range from which to clear highlighting.
    * @private
    */
   function clearHighlight(range) {
@@ -195,12 +209,13 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   }
 
   /**
-   * Handles edits made to the 'Type' column in the Transactions sheet.
-   * Updates the 'Category' dropdown based on the selected 'Type'.
-   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The Transactions sheet object.
-   * @param {number} row - The 1-based row number that was edited.
-   * @param {object} typeToCategories - The mapping of types to their available categories.
-   * @return {void}
+   * Handles edits made to the 'Type' column in the 'Transactions' sheet.
+   * It updates the 'Category' dropdown options based on the newly selected 'Type',
+   * clears dependent 'Sub-Category' if 'Category' becomes invalid, and manages UI highlights.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The 'Transactions' sheet object.
+   * @param {number} row - The 1-based row number of the cell that was edited.
+   * @param {Object<string, Array<string>>} typeToCategories - The mapping of types to their available categories,
+   *   obtained from the dropdown cache.
    * @private
    */
   function handleTypeEdit(sheet, row, typeToCategories) {
@@ -230,12 +245,13 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   }
 
   /**
-   * Handles edits made to the 'Category' column in the Transactions sheet.
-   * Updates the 'Sub-Category' dropdown based on the selected 'Type' and 'Category'.
-   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The Transactions sheet object.
-   * @param {number} row - The 1-based row number that was edited.
-   * @param {object} typeCategoryToSubCategories - The mapping of (Type+Category) composite keys to their sub-categories.
-   * @return {void}
+   * Handles edits made to the 'Category' column in the 'Transactions' sheet.
+   * It updates the 'Sub-Category' dropdown options based on the selected 'Type' and 'Category',
+   * and manages UI highlights.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The 'Transactions' sheet object.
+   * @param {number} row - The 1-based row number of the cell that was edited.
+   * @param {Object<string, Array<string>>} typeCategoryToSubCategories - The mapping of (Type+Category)
+   *   composite keys to their available sub-categories, obtained from the dropdown cache.
    * @private
    */
   function handleCategoryEdit(sheet, row, typeCategoryToSubCategories) {
@@ -271,11 +287,10 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   }
 
   /**
-   * Handles edits made to the 'Sub-Category' column in the Transactions sheet.
-   * Clears placeholder text and any pending highlight.
-   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The Transactions sheet object.
-   * @param {number} row - The 1-based row number that was edited.
-   * @return {void}
+   * Handles edits made to the 'Sub-Category' column in the 'Transactions' sheet.
+   * Primarily clears any placeholder text from the cell and removes pending highlights.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The 'Transactions' sheet object.
+   * @param {number} row - The 1-based row number of the cell that was edited.
    * @private
    */
   function handleSubCategoryEdit(sheet, row) {
@@ -290,8 +305,10 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
     /**
      * Handles edit events on the spreadsheet, specifically for the 'Transactions' sheet.
      * This function is intended to be called by an `onEdit` trigger.
-     * It updates dependent dropdowns for 'Category' and 'Sub-Category' based on the edited cell.
+     * It updates dependent dropdowns for 'Category' and 'Sub-Category' based on the edited cell
+     * in the 'Transactions' sheet. It handles single cell edits and multi-cell pastes.
      * @param {GoogleAppsScript.Events.SheetsOnEdit} e - The edit event object provided by Google Apps Script.
+     * @memberof FinancialPlanner.DropdownService
      * @return {void}
      *
      * @example
@@ -350,9 +367,10 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
     },
 
     /**
-     * Forces a refresh of the dropdown cache by clearing it from Google Apps Script's `CacheService`
-     * and then rebuilding the in-memory `dropdownCache`.
-     * Provides UI feedback during the process.
+     * Forces a refresh of the dropdown cache. It clears the relevant key from Google Apps Script's
+     * `CacheService` and then rebuilds the in-memory `dropdownCache` by reading from the
+     * 'Dropdowns' sheet. Provides UI feedback (loading spinner, success/error notifications).
+     * @memberof FinancialPlanner.DropdownService
      * @return {void}
      *
      * @example
@@ -376,9 +394,10 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
     },
 
     /**
-     * Initializes the in-memory `dropdownCache` if it's not already loaded.
-     * This can be useful for pre-loading the cache in scenarios where `handleEdit`
-     * might not be the first function to require it (e.g., onOpen setup).
+     * Initializes the in-memory `dropdownCache` by calling `buildDropdownCache` if it's not already loaded.
+     * This can be useful for pre-loading the cache (e.g., during an `onOpen` event)
+     * in scenarios where `handleEdit` might not be the first function to require it.
+     * @memberof FinancialPlanner.DropdownService
      * @return {void}
      *
      * @example
@@ -398,11 +417,10 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
 /**
  * Global `onEdit` trigger function for Google Apps Script.
  * This version primarily delegates to `FinancialPlanner.DropdownService.handleEdit(e)`
- * if the edit occurs on the 'Transactions' sheet.
- * For a more robust solution with multiple modules needing `onEdit`, a central event dispatcher
- * (e.g., `FinancialPlanner.Controllers.onEdit` or a dedicated `FinancialPlanner.EventHandlers.onEdit`)
- * should be used to route the event to all relevant services.
- * @param {GoogleAppsScript.Events.SheetsOnEdit} e The edit event object from Google Apps Script.
+ * if the edit occurs on the configured 'Transactions' sheet.
+ * For a more robust solution with multiple modules needing `onEdit` handling, a central event dispatcher
+ * (e.g., `FinancialPlanner.Controllers.onEdit`) should be used to route the event.
+ * @param {GoogleAppsScript.Events.SheetsOnEdit} e The edit event object provided by Google Apps Script.
  * @global
  */
 function onEdit(e) {
@@ -432,9 +450,9 @@ function onEdit(e) {
 
 /**
  * Global function to manually refresh the dropdown cache.
- * Delegates to `FinancialPlanner.DropdownService.refreshCache()`.
+ * This function delegates to `FinancialPlanner.DropdownService.refreshCache()`.
+ * It can be called from the Google Sheets UI (e.g., via a custom menu).
  * @global
- * @return {void}
  */
 function refreshCache() {
   if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.DropdownService && FinancialPlanner.DropdownService.refreshCache) {

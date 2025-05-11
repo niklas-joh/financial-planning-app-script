@@ -1,25 +1,55 @@
 /**
  * @fileoverview Settings Service Module for Financial Planning Tools.
- * Manages user preferences and application settings.
- * This module is designed to be instantiated by 00_module_loader.js.
+ * Manages user preferences and application settings by storing them in a dedicated,
+ * hidden sheet within the spreadsheet. Provides methods to get, set, and manage various types of settings.
+ * This module is designed to be instantiated by `00_module_loader.js`.
+ * @module services/settings-service
  */
 
+/**
+ * IIFE to encapsulate the SettingsServiceModule logic.
+ * @returns {function} The SettingsServiceModule constructor.
+ */
 // eslint-disable-next-line no-unused-vars
 const SettingsServiceModule = (function() {
   /**
    * Constructor for the SettingsServiceModule.
-   * @param {object} configInstance - An instance of ConfigModule.
-   * @param {object} uiServiceInstance - An instance of UIServiceModule.
-   * @param {object} errorServiceInstance - An instance of ErrorServiceModule.
+   * @param {ConfigModule} configInstance - An instance of ConfigModule.
+   * @param {UIServiceModule} uiServiceInstance - An instance of UIServiceModule.
+   * @param {ErrorServiceModule} errorServiceInstance - An instance of ErrorServiceModule.
    * @constructor
+   * @alias SettingsServiceModule
+   * @memberof module:services/settings-service
    */
   function SettingsServiceModuleConstructor(configInstance, uiServiceInstance, errorServiceInstance) {
+    /**
+     * Instance of ConfigModule.
+     * @type {ConfigModule}
+     * @private
+     */
     this.config = configInstance;
+    /**
+     * Instance of UIServiceModule.
+     * @type {UIServiceModule}
+     * @private
+     */
     this.uiService = uiServiceInstance;
+    /**
+     * Instance of ErrorServiceModule.
+     * @type {ErrorServiceModule}
+     * @private
+     */
     this.errorService = errorServiceInstance;
     // FinancialPlanner.Utils is assumed to be globally available or refactored separately.
   }
 
+  /**
+   * Retrieves or creates the settings sheet.
+   * The sheet is hidden by default if created.
+   * @returns {GoogleAppsScript.Spreadsheet.Sheet} The settings sheet object.
+   * @private
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype._getSettingsSheet = function() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheetName = this.config.getSheetNames().SETTINGS;
@@ -33,6 +63,14 @@ const SettingsServiceModule = (function() {
     return sheet;
   };
 
+  /**
+   * Finds a preference row and its value in the settings sheet.
+   * @param {string} key - The preference key to find.
+   * @returns {{row: number, value: *}|null} An object containing the 1-based row number
+   *   and the value of the preference, or null if the key is not found.
+   * @private
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype._findPreference = function(key) {
     const sheet = this._getSettingsSheet();
     const data = sheet.getDataRange().getValues();
@@ -44,6 +82,13 @@ const SettingsServiceModule = (function() {
     return null;
   };
 
+  /**
+   * Retrieves the value of a preference by its key.
+   * @param {string} key - The key of the preference to retrieve.
+   * @param {*} [defaultValue] - The value to return if the key is not found.
+   * @returns {*} The stored value of the preference, or the `defaultValue` if not found or an error occurs.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.getValue = function(key, defaultValue) {
     try {
       const preference = this._findPreference(key);
@@ -54,6 +99,13 @@ const SettingsServiceModule = (function() {
     }
   };
 
+  /**
+   * Sets the value of a preference. If the key exists, it updates the value.
+   * If the key does not exist, it adds a new row for the preference.
+   * @param {string} key - The key of the preference to set.
+   * @param {*} value - The value to store for the preference.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.setValue = function(key, value) {
     try {
       const sheet = this._getSettingsSheet();
@@ -69,6 +121,14 @@ const SettingsServiceModule = (function() {
     }
   };
 
+  /**
+   * Retrieves a preference value and coerces it to a boolean.
+   * Handles 'true'/'false' strings and 0/1 numbers.
+   * @param {string} key - The key of the preference.
+   * @param {boolean} [defaultValue=false] - The default boolean value if the key is not found or cannot be coerced.
+   * @returns {boolean} The boolean value of the preference.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.getBooleanValue = function(key, defaultValue = false) {
     const value = this.getValue(key, defaultValue);
     if (typeof value === 'boolean') return value;
@@ -77,6 +137,13 @@ const SettingsServiceModule = (function() {
     return !!defaultValue;
   };
 
+  /**
+   * Retrieves a preference value and coerces it to a number.
+   * @param {string} key - The key of the preference.
+   * @param {number} [defaultValue=0] - The default numeric value if the key is not found or cannot be parsed.
+   * @returns {number} The numeric value of the preference.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.getNumericValue = function(key, defaultValue = 0) {
     const value = this.getValue(key, defaultValue);
     if (typeof value === 'number') return value;
@@ -84,6 +151,14 @@ const SettingsServiceModule = (function() {
     return isNaN(parsed) ? (typeof defaultValue === 'number' ? defaultValue : 0) : parsed;
   };
 
+  /**
+   * Toggles a boolean preference value.
+   * Retrieves the current boolean value, inverts it, and saves the new value.
+   * @param {string} key - The key of the boolean preference to toggle.
+   * @param {boolean} [defaultValue=false] - The default value to assume if the preference is not yet set.
+   * @returns {boolean} The new boolean value after toggling.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.toggleBooleanValue = function(key, defaultValue = false) {
     const currentValue = this.getBooleanValue(key, defaultValue);
     const newValue = !currentValue;
@@ -91,18 +166,41 @@ const SettingsServiceModule = (function() {
     return newValue;
   };
 
+  /**
+   * Toggles the 'ShowSubCategories' preference.
+   * Defaults to true if not set.
+   * @returns {boolean} The new value of the 'ShowSubCategories' preference.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.toggleShowSubCategories = function() {
     return this.toggleBooleanValue('ShowSubCategories', true);
   };
 
+  /**
+   * Gets the current value of the 'ShowSubCategories' preference.
+   * Defaults to true if not set.
+   * @returns {boolean} The current boolean value of the 'ShowSubCategories' preference.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.getShowSubCategories = function() {
     return this.getBooleanValue('ShowSubCategories', true);
   };
 
+  /**
+   * Sets the value of the 'ShowSubCategories' preference.
+   * @param {boolean} value - The boolean value to set for 'ShowSubCategories'.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.setShowSubCategories = function(value) {
     this.setValue('ShowSubCategories', typeof value === 'boolean' ? value : true);
   };
 
+  /**
+   * Retrieves all preferences stored in the settings sheet as an object.
+   * @returns {Object<string, *>} An object where keys are preference names and values are their stored values.
+   *   Returns an empty object if an error occurs.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.getAllPreferences = function() {
     try {
       const sheet = this._getSettingsSheet();
@@ -120,6 +218,11 @@ const SettingsServiceModule = (function() {
     }
   };
 
+  /**
+   * Clears all preferences from the settings sheet, effectively resetting them.
+   * The header row is preserved. Shows a success notification via UIService.
+   * @memberof SettingsServiceModule
+   */
   SettingsServiceModuleConstructor.prototype.resetAllPreferences = function() {
     try {
       const sheet = this._getSettingsSheet();

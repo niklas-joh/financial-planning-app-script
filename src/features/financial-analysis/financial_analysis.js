@@ -1,26 +1,62 @@
 /**
- * Financial Planning Tools - Financial Analysis Service
+ * @fileoverview Financial Analysis Service for the Financial Planning Tools.
+ * This module provides functionality to generate a financial analysis sheet,
+ * including key metrics, expense breakdowns, and charts, based on data
+ * from an overview sheet. It utilizes various other services for data extraction,
+ * sheet building, and calculations.
  * Version: 3.0.0
- * 
- * This module provides analytics functionality for financial data.
- * Refactored to use new services for better maintainability.
+ * @module features/financial-analysis
  */
 
+/**
+ * @namespace FinancialPlanner.FinancialAnalysisService
+ * @description Service for performing and displaying financial analysis.
+ * This IIFE sets up the service with its dependencies.
+ * @param {UtilsModule} utils - Instance of the Utils module.
+ * @param {UIServiceModule} uiService - Instance of the UI Service module.
+ * @param {ErrorServiceModule} errorService - Instance of the Error Service module.
+ * @param {ConfigModule} config - Instance of the Config module.
+ * @param {SheetBuilderModule} sheetBuilder - Instance of the Sheet Builder module (factory).
+ * @param {MetricsCalculatorModule} metricsCalculator - Instance of the Metrics Calculator module.
+ * @param {FormulaBuilderModule} formulaBuilder - Instance of the Formula Builder module.
+ */
 FinancialPlanner.FinancialAnalysisService = (function(
   utils, uiService, errorService, config, 
   sheetBuilder, metricsCalculator, formulaBuilder
 ) {
   
   /**
-   * Data extractor for overview sheet
+   * @classdesc Extracts structured financial metrics and category data from a financial overview sheet.
+   * @class DataExtractor
+   * @private
    */
   class DataExtractor {
+    /**
+     * Creates an instance of DataExtractor.
+     * @param {GoogleAppsScript.Spreadsheet.Sheet} overviewSheet - The sheet object for the financial overview.
+     */
     constructor(overviewSheet) {
+      /** @type {GoogleAppsScript.Spreadsheet.Sheet} */
       this.sheet = overviewSheet;
+      /** @type {Array<Array<*>>} */
       this.data = this.sheet.getDataRange().getValues();
+      /** @type {string} Sheet name quoted for use in formulas. */
       this.overviewSheetName = `'${config.getSection('SHEETS').OVERVIEW}'`;
     }
     
+    /**
+     * Extracts key financial metrics from the overview sheet data.
+     * @returns {{
+     *   income: ReturnType<DataExtractor['findTotalRow']>,
+     *   expenses: ReturnType<DataExtractor['findExpenseRows']>,
+     *   savings: ReturnType<DataExtractor['findTotalRow']>,
+     *   categories: ReturnType<DataExtractor['extractCategories']>,
+     *   essentials: ReturnType<DataExtractor['findTotalRow']>,
+     *   wantsPleasure: ReturnType<DataExtractor['findTotalRow']>,
+     *   extra: ReturnType<DataExtractor['findTotalRow']>
+     * }} An object containing extracted metrics.
+     * @memberof DataExtractor
+     */
     extractMetrics() {
       const metrics = {
         income: this.findTotalRow('Total Income'),
@@ -37,6 +73,13 @@ FinancialPlanner.FinancialAnalysisService = (function(
       return metrics;
     }
     
+    /**
+     * Finds a row by its label in the first column and extracts total, average, and cell references.
+     * @param {string} label - The label to search for in the first column.
+     * @returns {{row: number, total: number, average: number, totalRef: string, averageRef: string, monthlyValuesRangeRef: string}|null}
+     *   An object with row data or null if label not found.
+     * @memberof DataExtractor
+     */
     findTotalRow(label) {
       const totalColLetter = utils.columnToLetter(17);
       const averageColLetter = utils.columnToLetter(18);
@@ -59,8 +102,14 @@ FinancialPlanner.FinancialAnalysisService = (function(
       return null;
     }
     
+    /**
+     * Finds the 'Total Expenses' row and extracts its data.
+     * @returns {{row: number, total: number, average: number, totalRef: string, averageRef: string, monthlyValuesRangeRef: string}}
+     *   An object with total expenses data. Returns a default object if not found.
+     * @memberof DataExtractor
+     */
     findExpenseRows() {
-      let totalExpenses = { row: -1, total: 0, average: 0 };
+      let totalExpenses = { row: -1, total: 0, average: 0, totalRef: '', averageRef: '', monthlyValuesRangeRef: '' };
       
       for (let i = 0; i < this.data.length; i++) {
         if (this.data[i][0] === 'Total Expenses') {
@@ -80,6 +129,15 @@ FinancialPlanner.FinancialAnalysisService = (function(
       return totalExpenses;
     }
     
+    /**
+     * Extracts and categorizes income, expense, and savings items from the overview data.
+     * @returns {{
+     *   income: Array<{type: string, category: string, subcategory: string, amount: number, row: number}>,
+     *   expenses: Array<{type: string, category: string, subcategory: string, amount: number, row: number}>,
+     *   savings: Array<{type: string, category: string, subcategory: string, amount: number, row: number}>
+     * }} An object containing arrays of categorized financial items.
+     * @memberof DataExtractor
+     */
     extractCategories() {
       const categories = {
         income: [],
@@ -87,6 +145,7 @@ FinancialPlanner.FinancialAnalysisService = (function(
         savings: []
       };
       
+      // Iterate through all rows in the overview sheet data
       for (let i = 0; i < this.data.length; i++) {
         const row = this.data[i];
         const type = row[0];
@@ -108,7 +167,7 @@ FinancialPlanner.FinancialAnalysisService = (function(
           categories.income.push(categoryData);
         } else if (type === 'Savings') {
           categories.savings.push(categoryData);
-        } else if (config.getSection('EXPENSE_TYPES').includes(type)) {
+        } else if (config.getSection('EXPENSE_TYPES').includes(type)) { // Check if the type is a known expense type from config
           categories.expenses.push(categoryData);
         }
       }
@@ -118,15 +177,32 @@ FinancialPlanner.FinancialAnalysisService = (function(
   }
   
   /**
-   * Metric card builder
+   * @classdesc Builds metric cards on a sheet using a SheetBuilder instance.
+   * @class MetricCardBuilder
+   * @private
    */
   class MetricCardBuilder {
+    /**
+     * Creates an instance of MetricCardBuilder.
+     * @param {SheetBuilder} builder - An instance of the SheetBuilder service.
+     * @param {ConfigModule} config - An instance of the Config module.
+     * @param {MetricsCalculatorModule} calculator - An instance of the MetricsCalculator module.
+     */
     constructor(builder, config, calculator) {
+      /** @type {SheetBuilder} */
       this.builder = builder;
+      /** @type {ConfigModule} */
       this.config = config;
+      /** @type {MetricsCalculatorModule} */
       this.calculator = calculator;
     }
     
+    /**
+     * Creates a grid of metric card pairs.
+     * @param {Array<{cashFlow: object, rate: object}>} metrics - An array of metric pair configurations.
+     * @param {number} startRow - The starting row on the sheet to build the card grid.
+     * @memberof MetricCardBuilder
+     */
     createCardGrid(metrics, startRow) {
       this.builder.setCurrentRow(startRow);
       
@@ -138,6 +214,12 @@ FinancialPlanner.FinancialAnalysisService = (function(
       });
     }
     
+    /**
+     * Creates a pair of metric cards (one cash flow, one rate) side-by-side.
+     * @param {object} cashFlowMetric - Configuration for the cash flow metric card.
+     * @param {object} rateMetric - Configuration for the rate metric card.
+     * @memberof MetricCardBuilder
+     */
     createCardPair(cashFlowMetric, rateMetric) {
       const currentRow = this.builder.getCurrentRow();
       
@@ -150,34 +232,51 @@ FinancialPlanner.FinancialAnalysisService = (function(
       this.builder.setCurrentRow(currentRow + 5);
     }
     
+    /**
+     * Creates a single metric card with a specific layout and formatting.
+     * @param {{
+     *   name: string,
+     *   avgFormula?: string,
+     *   totalFormula?: string,
+     *   targetValue?: number,
+     *   sparklinePlaceholderText?: string,
+     *   valueType: 'currency'|'percentage',
+     *   description?: string,
+     *   avgLabel?: string,
+     *   totalLabel?: string
+     * }} metric - Configuration object for the metric card.
+     * @param {number} startRow - The starting row for this card.
+     * @param {number} startColumn - The starting column for this card.
+     * @memberof MetricCardBuilder
+     */
     createCard(metric, startRow, startColumn) {
       const sheet = this.builder.sheet;
       
-      // Set row heights for card structure
-      sheet.setRowHeight(startRow, 25);      // Header
-      sheet.setRowHeight(startRow + 1, 35);  // Values
-      sheet.setRowHeight(startRow + 2, 30);  // Sparkline
-      sheet.setRowHeight(startRow + 3, 20);  // Labels
-      sheet.setRowHeight(startRow + 4, 35);  // Description
+      // Define standard row heights for consistent card appearance
+      sheet.setRowHeight(startRow, 25);      // Card Header row
+      sheet.setRowHeight(startRow + 1, 35);  // Main values (monthly/annual) row
+      sheet.setRowHeight(startRow + 2, 30);  // Sparkline or trend indicator row
+      sheet.setRowHeight(startRow + 3, 20);  // Labels for values row
+      sheet.setRowHeight(startRow + 4, 35);  // Description text row
       
-      // Header
+      // Card Header: Merged cells with title and specific styling
       sheet.getRange(startRow, startColumn, 1, 2).merge()
         .setValue(metric.name)
-        .setBackground('#E2EFDA')
+        .setBackground('#E2EFDA') // Light green background for header
         .setFontWeight('bold')
         .setFontColor('black')
         .setHorizontalAlignment('center')
         .setVerticalAlignment('middle');
       
-      // Monthly value
+      // Monthly Value Display: Formula-driven, large font, green color
       const monthlyValueCell = sheet.getRange(startRow + 1, startColumn);
       monthlyValueCell.setFormula(metric.avgFormula)
         .setFontSize(18)
-        .setFontColor('#008000')
+        .setFontColor('#008000') // Green color for positive financial figures
         .setHorizontalAlignment('center')
         .setVerticalAlignment('middle');
       
-      // Annual/Target value
+      // Annual/Target Value Display: Formula or direct value, similar styling
       const annualValueCell = sheet.getRange(startRow + 1, startColumn + 1);
       if (metric.totalFormula) {
         annualValueCell.setFormula(metric.totalFormula);
@@ -185,90 +284,108 @@ FinancialPlanner.FinancialAnalysisService = (function(
         annualValueCell.setValue(metric.targetValue);
       }
       annualValueCell.setFontSize(18)
-        .setFontColor('#008000')
+        .setFontColor('#008000') // Green color
         .setHorizontalAlignment('center')
         .setVerticalAlignment('middle');
       
-      // Apply number formatting
+      // Apply Number Formatting based on metric type (currency or percentage)
       if (metric.valueType === 'currency') {
         const currencyFormat = this.config.getLocale().NUMBER_FORMATS.CURRENCY_DEFAULT;
         monthlyValueCell.setNumberFormat(currencyFormat);
-        if (metric.totalFormula) annualValueCell.setNumberFormat(currencyFormat);
+        if (metric.totalFormula || typeof metric.targetValue === 'number') annualValueCell.setNumberFormat(currencyFormat);
       } else if (metric.valueType === 'percentage') {
         monthlyValueCell.setNumberFormat('0.00%');
-        if (typeof metric.targetValue === 'number') {
+        if (metric.totalFormula || typeof metric.targetValue === 'number') { // Check if targetValue is a number for formatting
           annualValueCell.setNumberFormat('0.00%');
         }
       }
       
-      // Sparkline placeholder
+      // Sparkline Placeholder: Merged cells with placeholder text
       sheet.getRange(startRow + 2, startColumn, 1, 2).merge()
         .setValue(metric.sparklinePlaceholderText || `[Sparkline: ${metric.name}]`)
         .setHorizontalAlignment('center')
         .setVerticalAlignment('middle')
         .setFontStyle('italic')
-        .setFontColor('#AAAAAA');
+        .setFontColor('#AAAAAA'); // Grey color for placeholder
       
-      // Labels
+      // Value Labels: Small text for "Monthly Avg.", "Target", etc.
       sheet.getRange(startRow + 3, startColumn)
         .setValue(metric.avgLabel || 'Monthly Avg.')
         .setFontSize(9)
-        .setFontColor('#808080')
+        .setFontColor('#808080') // Grey color for labels
         .setHorizontalAlignment('center')
         .setVerticalAlignment('middle');
       
       sheet.getRange(startRow + 3, startColumn + 1)
         .setValue(metric.totalLabel || (metric.targetValue !== undefined ? 'Target' : 'Annual Total'))
         .setFontSize(9)
-        .setFontColor('#808080')
+        .setFontColor('#808080') // Grey color for labels
         .setHorizontalAlignment('center')
         .setVerticalAlignment('middle');
       
-      // Description
+      // Description Area: Merged cells for a brief explanation of the metric
       sheet.getRange(startRow + 4, startColumn, 1, 2).merge()
         .setValue(metric.description || '')
         .setFontSize(9)
-        .setFontColor('#595959')
+        .setFontColor('#595959') // Darker grey for description text
         .setHorizontalAlignment('center')
         .setVerticalAlignment('top')
         .setWrap(true);
       
-      // Border for the entire card
+      // Card Border: Apply a thin solid border around the entire card
       sheet.getRange(startRow, startColumn, 5, 2)
-        .setBorder(true, true, true, true, true, true, '#A9D18E', SpreadsheetApp.BorderStyle.SOLID_THIN);
+        .setBorder(true, true, true, true, true, true, '#A9D18E', SpreadsheetApp.BorderStyle.SOLID_THIN); // Light green border
     }
   }
   
   /**
-   * Chart builder
+   * @classdesc Builds charts (e.g., pie, column) on a sheet.
+   * @class ChartBuilder
+   * @private
    */
   class ChartBuilder {
+    /**
+     * Creates an instance of ChartBuilder.
+     * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet where charts will be inserted.
+     * @param {ConfigModule} config - An instance of the Config module for chart styling.
+     */
     constructor(sheet, config) {
+      /** @type {GoogleAppsScript.Spreadsheet.Sheet} */
       this.sheet = sheet;
+      /** @type {ConfigModule} */
       this.config = config;
     }
     
+    /**
+     * Creates and inserts expense breakdown charts (pie and column) onto the sheet.
+     * @param {Array<object>} categoryData - Data for expense categories (not directly used, reads from sheet).
+     * @param {number} startRow - The target row for positioning the top-left corner of the charts.
+     * @memberof ChartBuilder
+     */
     createExpenseCharts(categoryData, startRow) {
-      // Find the expense category data range
+      // Dynamically find the data range for expense categories in the analysis sheet.
+      // This relies on specific header text ("Category", "Type") and a total row ("Total Expenses", "All")
+      // to define the boundaries of the category data used for charting.
       const analysisData = this.sheet.getDataRange().getValues();
-      let categoryStartRow = -1;
-      let categoryEndRow = -1;
-      
+      let categoryStartRow = -1; // 1-based row index in sheet, after header
+      let categoryEndRow = -1;   // 1-based row index in sheet, for last category item
+
       for (let i = 0; i < analysisData.length; i++) {
-        if (analysisData[i][0] === "Category" && analysisData[i][1] === "Type") {
-          categoryStartRow = i + 2;
-        } else if (analysisData[i][0] === "Total Expenses" && analysisData[i][1] === "All") {
-          categoryEndRow = i;
+        if (analysisData[i][0] === "Category" && analysisData[i][1] === "Type") { // Header row for category table
+          categoryStartRow = i + 2; // Data starts two rows below this header (i is 0-based, sheet is 1-based)
+        } else if (analysisData[i][0] === "Total Expenses" && analysisData[i][1] === "All") { // Row after last category
+          categoryEndRow = i; // This is the row index (0-based) of "Total Expenses", so data ends row above
           break;
         }
       }
       
       if (categoryStartRow === -1 || categoryEndRow === -1 || categoryEndRow < categoryStartRow) {
-        Logger.log("Chart data range not found");
-        return;
+        Logger.log("ChartBuilder: Expense category data range for charts not found in analysis sheet.");
+        return; // Cannot create charts if data range is not identified
       }
       
-      // Create pie chart
+      // Create Pie Chart for Expenditure Breakdown by Category
+      // Uses Category (Column A), Type (Column B), Amount (Column C) from the identified range
       const pieDataRange = this.sheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 3);
       const pieChart = this.sheet.newChart()
         .setChartType(Charts.ChartType.PIE)
@@ -289,26 +406,27 @@ FinancialPlanner.FinancialAnalysisService = (function(
             fontSize: 12 
           }
         })
-        .setOption('colors', this.config.getColors().CHART.SERIES)
+        .setOption('colors', this.config.getColors().CHART.SERIES) // Use predefined chart series colors from config
         .setOption('width', 450)
         .setOption('height', 300)
         .build();
       
       this.sheet.insertChart(pieChart);
       
-      // Create column chart
+      // Create Column Chart for Expense Rates vs Targets
+      // Uses Category (Col A), % of Income (Col D), Target % (Col E)
       const columnChartDataRanges = [
-        this.sheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 1), // Categories
-        this.sheet.getRange(categoryStartRow, 4, categoryEndRow - categoryStartRow + 1, 1), // % of Income
-        this.sheet.getRange(categoryStartRow, 5, categoryEndRow - categoryStartRow + 1, 1)  // Target %
+        this.sheet.getRange(categoryStartRow, 1, categoryEndRow - categoryStartRow + 1, 1), // Categories (X-axis labels)
+        this.sheet.getRange(categoryStartRow, 4, categoryEndRow - categoryStartRow + 1, 1), // Actual % of Income (Series 1)
+        this.sheet.getRange(categoryStartRow, 5, categoryEndRow - categoryStartRow + 1, 1)  // Target % (Series 2)
       ];
       
       const columnChartBuilder = this.sheet.newChart();
       columnChartDataRanges.forEach(range => columnChartBuilder.addRange(range));
       
       const columnChart = columnChartBuilder
-        .setChartType(Charts.ChartType.COLUMN)
-        .setPosition(startRow, 5, 0, 0)
+        .setChartType(Charts.ChartType.COLUMN) // Column chart type
+        .setPosition(startRow, 5, 0, 0) // Positioned to the right of the pie chart
         .setOption('title', 'Expense Rates vs Targets')
         .setOption('titleTextStyle', { 
           color: this.config.getColors().CHART.TITLE, 
@@ -322,9 +440,9 @@ FinancialPlanner.FinancialAnalysisService = (function(
             fontSize: 12 
           }
         })
-        .setOption('colors', [
-          this.config.getColors().UI.EXPENSE_FONT || "#FF0000",
-          this.config.getColors().UI.INCOME_FONT || "#008000"
+        .setOption('colors', [ // Specific colors for actual vs target bars
+          this.config.getColors().UI.EXPENSE_FONT || "#FF0000", // Color for actual expense rate bar
+          this.config.getColors().UI.INCOME_FONT || "#008000"  // Color for target rate bar (using income font as placeholder)
         ])
         .setOption('width', 450)
         .setOption('height', 300)
@@ -347,41 +465,61 @@ FinancialPlanner.FinancialAnalysisService = (function(
   }
   
   /**
-   * Main analysis service
+   * @classdesc Orchestrates the financial analysis process, using DataExtractor,
+   * MetricCardBuilder, and ChartBuilder to generate the analysis sheet.
+   * @class FinancialAnalysisService
+   * @private
    */
   class FinancialAnalysisService {
+    /**
+     * Creates an instance of the main FinancialAnalysisService.
+     * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The active spreadsheet.
+     * @param {GoogleAppsScript.Spreadsheet.Sheet} overviewSheet - The sheet containing overview data.
+     */
     constructor(spreadsheet, overviewSheet) {
+      /** @type {GoogleAppsScript.Spreadsheet.Spreadsheet} */
       this.spreadsheet = spreadsheet;
+      /** @type {GoogleAppsScript.Spreadsheet.Sheet} */
       this.overviewSheet = overviewSheet;
+      /** @type {GoogleAppsScript.Spreadsheet.Sheet} */
       this.analysisSheet = utils.getOrCreateSheet(spreadsheet, config.getSection('SHEETS').ANALYSIS);
+      /** @type {DataExtractor} */
       this.dataExtractor = new DataExtractor(overviewSheet);
+      /** @type {SheetBuilder} */
       this.builder = sheetBuilder.create(this.analysisSheet);
+      /** @type {MetricsCalculatorModule} */
       this.metricsCalculator = metricsCalculator;
+      /** @type {FormulaBuilderModule} */
       this.formulaBuilder = formulaBuilder;
     }
     
+    /**
+     * Performs the complete financial analysis, building the analysis sheet.
+     * @returns {{sheet: GoogleAppsScript.Spreadsheet.Sheet, lastRow: number}} Result from SheetBuilder's finalize.
+     * @memberof FinancialAnalysisService
+     */
     analyze() {
       const metrics = this.dataExtractor.extractMetrics();
       
       this.builder
         .clear()
-        .addHeaderRow(['Financial Analysis'], {
-          merge: 6,
+        .addHeaderRow(['Financial Analysis'], { // Main title row
+          merge: 6, // Merge across 6 columns (A-F)
           background: config.getSection('COLORS').UI.HEADER_BG,
           fontWeight: 'bold',
           fontColor: config.getSection('COLORS').UI.HEADER_FONT,
           horizontalAlignment: 'center'
         })
-        .freezeRows(1);
+        .freezeRows(1); // Freeze the header row
       
-      // Set column widths
+      // Define column widths for the analysis sheet layout
       this.builder.setColumnWidths({
-        1: 20,   // Narrow left margin
-        2: 120,  // Card column
-        3: 120,  // Card column
-        4: 20,   // Spacer
-        5: 120,  // Card column
-        6: 120   // Card column
+        1: 20,   // Column A: Narrow left margin/spacer
+        2: 120,  // Column B: First metric card column
+        3: 120,  // Column C: First metric card column
+        4: 20,   // Column D: Spacer column between card pairs
+        5: 120,  // Column E: Second metric card column
+        6: 120   // Column F: Second metric card column
       });
       
       this.buildKeyMetricsSection(metrics);
@@ -391,11 +529,27 @@ FinancialPlanner.FinancialAnalysisService = (function(
       return this.builder.finalize();
     }
     
+    /**
+     * Builds the key financial metrics section on the analysis sheet.
+     * This section displays a series of paired metric cards (e.g., an absolute cash flow value and a related rate/percentage).
+     * @param {{
+     *   income: ({row: number, total: number, average: number, totalRef: string, averageRef: string, monthlyValuesRangeRef: string}|null),
+     *   expenses: ({row: number, total: number, average: number, totalRef: string, averageRef: string, monthlyValuesRangeRef: string}),
+     *   savings: ({row: number, total: number, average: number, totalRef: string, averageRef: string, monthlyValuesRangeRef: string}|null),
+     *   categories: {income: Array<object>, expenses: Array<object>, savings: Array<object>},
+     *   essentials: ({row: number, total: number, average: number, totalRef: string, averageRef: string, monthlyValuesRangeRef: string}|null),
+     *   wantsPleasure: ({row: number, total: number, average: number, totalRef: string, averageRef: string, monthlyValuesRangeRef: string}|null),
+     *   extra: ({row: number, total: number, average: number, totalRef: string, averageRef: string, monthlyValuesRangeRef: string}|null)
+     * }} metrics - An object containing various financial metrics extracted by `DataExtractor`.
+     *   Key properties (e.g., `income`, `essentials`) hold objects with `totalRef` and `averageRef`
+     *   (cell references from the overview sheet) and other details, or null if not found.
+     * @memberof FinancialAnalysisService
+     */
     buildKeyMetricsSection(metrics) {
       const totals = metrics;
       const targetRates = config.getSection('TARGET_RATES');
 
-      // Helper to safely get refs
+      // Helper function to safely access properties of metric objects (which might be null)
       const getRef = (metric, refType) => metric && metric[refType] ? metric[refType] : null;
 
       const incomeAvgRef = getRef(totals.income, 'averageRef');
@@ -411,20 +565,26 @@ FinancialPlanner.FinancialAnalysisService = (function(
       const expensesAvgRef = getRef(totals.expenses, 'averageRef');
       const expensesTotalRef = getRef(totals.expenses, 'totalRef');
       
+      // Define configurations for pairs of metric cards.
+      // Each object in this array represents a row of two cards on the analysis sheet:
+      // - 'cashFlow': Configuration for the left card, typically displaying absolute monetary values.
+      // - 'rate': Configuration for the right card, typically displaying a related percentage or rate.
+      // Formulas use cell references (e.g., incomeAvgRef) extracted from the overview sheet.
+      // IFERROR is used in formulas to gracefully handle cases where references might be invalid or data missing, displaying "N/A" or 0.
       const pairedMetrics = [
-        {
+        { // Pair 1: Gross Income & Overall Savings Rate
           cashFlow: {
             name: 'Total Gross Income',
-            avgFormula: incomeAvgRef ? `=IFERROR(${incomeAvgRef}, "N/A")` : `="N/A"`,
-            totalFormula: incomeTotalRef ? `=IFERROR(${incomeTotalRef}, "N/A")` : `="N/A"`,
+            avgFormula: incomeAvgRef ? `=IFERROR(${incomeAvgRef}, "N/A")` : `="N/A"`, 
+            totalFormula: incomeTotalRef ? `=IFERROR(${incomeTotalRef}, "N/A")` : `="N/A"`, 
             sparklinePlaceholderText: `[Trend: Gross Income]`,
             valueType: 'currency',
             description: "Total income from all sources before any deductions or allocations."
           },
-          rate: {
+          rate: { // Corresponding rate card
             name: 'Overall Savings Rate',
-            avgFormula: (savingsAvgRef && incomeAvgRef) ? `=IFERROR(${savingsAvgRef}/${incomeAvgRef},0)` : `=0`,
-            targetValue: targetRates.SAVINGS || 0.2,
+            avgFormula: (savingsAvgRef && incomeAvgRef) ? `=IFERROR(${savingsAvgRef}/${incomeAvgRef},0)` : `=0`, 
+            targetValue: targetRates.SAVINGS || 0.2, 
             sparklinePlaceholderText: `[Trend: Savings Rate]`,
             valueType: 'percentage',
             avgLabel: 'Avg Rate',
@@ -525,127 +685,145 @@ FinancialPlanner.FinancialAnalysisService = (function(
           horizontalAlignment: 'center',
           verticalAlignment: 'middle'
         })
-        .setRowHeights({ [this.builder.getCurrentRow() - 1]: 30 });
+        .setRowHeights({ [this.builder.getCurrentRow() - 1]: 30 }); // Set height for the section header row
       
+      // Instantiate MetricCardBuilder and command it to create the grid of cards
       const cardBuilder = new MetricCardBuilder(this.builder, config, this.metricsCalculator);
       cardBuilder.createCardGrid(pairedMetrics, this.builder.getCurrentRow());
     }
     
+    /**
+     * Builds the expense analysis table on the analysis sheet.
+     * @param {ReturnType<DataExtractor['extractMetrics']>} metrics - Extracted metrics from DataExtractor.
+     * @memberof FinancialAnalysisService
+     */
     buildExpenseAnalysis(metrics) {
+      // Filter out subcategories from expenses and sort by average amount (descending) for display
       const categories = metrics.categories.expenses
-        .filter(c => !c.subcategory)
-        .sort((a, b) => b.amount - a.amount);
+        .filter(c => !c.subcategory) // We only want main categories for this table
+        .sort((a, b) => b.amount - a.amount); // Sort by average amount, highest first
       
       this.builder
-        .addSectionHeader('Expense Categories', {
+        .addSectionHeader('Expense Categories', { // Section title
           merge: 6,
           background: config.getSection('COLORS').UI.HEADER_BG,
           fontWeight: 'bold',
           fontColor: config.getSection('COLORS').UI.HEADER_FONT,
           horizontalAlignment: 'center'
         })
-        .addHeaderRow(['Category', 'Type', 'Amount', '% of Income', 'Target %', 'Variance'], {
-          background: '#F5F5F5',
+        .addHeaderRow(['Category', 'Type', 'Amount', '% of Income', 'Target %', 'Variance'], { // Table headers
+          background: '#F5F5F5', // Light grey for table header
           fontWeight: 'bold',
           horizontalAlignment: 'center'
         });
       
-      const categoryData = [];
-      const varianceFormulas = [];
+      const categoryData = []; // To hold data rows for batch writing
+      const varianceFormulas = []; // To hold formula configurations for batch application
       
+      // Process each expense category
       categories.forEach((cat, index) => {
-        let targetRate = config.getSection('TARGET_RATES').DEFAULT;
+        // Determine the target rate for this category based on its type (Essentials, Wants, etc.)
+        let targetRate = config.getSection('TARGET_RATES').DEFAULT; // Default target rate
         if (cat.type === "Essentials") targetRate = config.getSection('TARGET_RATES').ESSENTIALS;
         else if (cat.type === "Wants/Pleasure") targetRate = config.getSection('TARGET_RATES').WANTS;
         else if (cat.type === "Extra") targetRate = config.getSection('TARGET_RATES').EXTRA;
         
-        const currentRow = this.builder.getCurrentRow() + index;
+        const currentRow = this.builder.getCurrentRow() + index; // Calculate sheet row number for formulas
         
+        // Prepare the data array for this category row
         categoryData.push([
           cat.category,
           cat.type,
-          cat.amount,
-          '', // Will be replaced by formula
-          targetRate,
-          ''  // Will be replaced by formula
+          cat.amount, // Average monthly amount from overview
+          '',         // Placeholder for '% of Income' formula
+          targetRate, // Target rate for this category type
+          ''          // Placeholder for 'Variance' formula
         ]);
         
+        // Store formula configurations to be applied after data is written
         varianceFormulas.push({
           row: currentRow,
-          percentFormula: `=IFERROR(C${currentRow}/${metrics.income.averageRef},0)`,
-          varianceFormula: `=D${currentRow}-E${currentRow}`
+          percentFormula: `=IFERROR(C${currentRow}/${metrics.income.averageRef},0)`, // Calculate % of income
+          varianceFormula: `=D${currentRow}-E${currentRow}` // Calculate variance: Actual % - Target %
         });
       });
       
-      // Add total row
+      // Add a 'Total Expenses' summary row to the category data
       const totalRow = this.builder.getCurrentRow() + categoryData.length;
       categoryData.push([
-        'Total Expenses',
-        'All',
-        metrics.expenses.average,
-        '', // Will be replaced by formula
-        0.8,
-        ''  // Will be replaced by formula
+        'Total Expenses', // Label
+        'All',            // Type
+        metrics.expenses.average, // Average total expenses from overview
+        '',               // Placeholder for '% of Income' formula
+        config.getSection('TARGET_RATES').TOTAL_EXPENSES || 0.8, // Target total expense rate (e.g., 80%)
+        ''                // Placeholder for 'Variance' formula
       ]);
       
+      // Add formula configuration for the total expenses row
       varianceFormulas.push({
         row: totalRow,
         percentFormula: `=IFERROR(C${totalRow}/${metrics.income.averageRef},0)`,
         varianceFormula: `=D${totalRow}-E${totalRow}`
       });
       
-      // Add the data
+      // Batch write all category data rows to the sheet
       this.builder.addDataRows(categoryData);
       
-      // Apply formulas
+      // Batch apply the percentage and variance formulas
       varianceFormulas.forEach(vf => {
-        this.builder.sheet.getRange(vf.row, 4).setFormula(vf.percentFormula);
-        this.builder.sheet.getRange(vf.row, 6).setFormula(vf.varianceFormula);
+        this.builder.sheet.getRange(vf.row, 4).setFormula(vf.percentFormula); // Column D for % of Income
+        this.builder.sheet.getRange(vf.row, 6).setFormula(vf.varianceFormula); // Column F for Variance
       });
       
-      // Format the ranges
+      // Get the range of the newly added data for formatting
       const dataRange = this.builder.sheet.getRange(
-        this.builder.getCurrentRow() - categoryData.length,
-        1,
-        categoryData.length,
-        6
+        this.builder.getCurrentRow() - categoryData.length, // Start row of the category data
+        1, // Start column
+        categoryData.length, // Number of rows
+        6  // Number of columns (A-F)
       );
       
-      // Apply currency format to amount column
+      // Apply currency formatting to the 'Amount' column (Column C)
       utils.formatAsCurrency(
-        dataRange.offset(0, 2, categoryData.length, 1),
+        dataRange.offset(0, 2, categoryData.length, 1), // Offset to Column C
         config.getLocale().NUMBER_FORMATS.CURRENCY_DEFAULT
       );
       
-      // Apply percentage format to columns D, E, F
+      // Apply percentage formatting to '% of Income', 'Target %', and 'Variance' columns (D, E, F)
       utils.formatAsPercentage(
-        dataRange.offset(0, 3, categoryData.length, 3)
+        dataRange.offset(0, 3, categoryData.length, 3) // Offset to Column D, 3 columns wide
       );
       
-      // Add conditional formatting for variance
+      // Add conditional formatting to highlight positive (over-budget) variance in red
       const rules = [];
       for (let i = 0; i < categoryData.length; i++) {
         const row = this.builder.getCurrentRow() - categoryData.length + i;
+        // Rule: If variance (Column F) is greater than 0 (meaning actual % > target %)
         const rule = SpreadsheetApp.newConditionalFormatRule()
-          .whenFormulaSatisfied(`=F${row}>0`)
-          .setBackground("#FFCDD2")
-          .setRanges([this.builder.sheet.getRange(row, 6)])
+          .whenFormulaSatisfied(`=F${row}>0`) // Condition for positive variance
+          .setBackground("#FFCDD2") // Light red background
+          .setRanges([this.builder.sheet.getRange(row, 6)]) // Apply to the variance cell
           .build();
         rules.push(rule);
       }
-      this.builder.sheet.setConditionalFormatRules(rules);
+      this.builder.sheet.setConditionalFormatRules(rules); // Apply all conditional formatting rules
       
-      // Style the total row
+      // Style the 'Total Expenses' row for emphasis
       const totalRange = this.builder.sheet.getRange(totalRow, 1, 1, 6);
       totalRange
         .setFontWeight('bold')
-        .setBackground(config.getSection('COLORS').UI.HEADER_BG)
-        .setFontColor(config.getSection('COLORS').UI.HEADER_FONT);
+        .setBackground(config.getSection('COLORS').UI.HEADER_BG) // Use header background color
+        .setFontColor(config.getSection('COLORS').UI.HEADER_FONT); // Use header font color
       
-      // Add border
-      dataRange.setBorder(true, true, true, true, true, true);
+      // Add a border around the entire expense analysis table
+      dataRange.setBorder(true, true, true, true, true, true); // All borders, internal and external
     }
     
+    /**
+     * Creates and inserts charts into the analysis sheet.
+     * @param {ReturnType<DataExtractor['extractMetrics']>} metrics - Extracted metrics from DataExtractor.
+     * @memberof FinancialAnalysisService
+     */
     createCharts(metrics) {
       const chartBuilder = new ChartBuilder(this.builder.sheet, config);
       chartBuilder.createExpenseCharts(
@@ -657,6 +835,14 @@ FinancialPlanner.FinancialAnalysisService = (function(
   
   // Public API
   return {
+    /**
+     * Analyzes financial data from the overview sheet and generates an analysis report.
+     * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The active spreadsheet.
+     * @param {GoogleAppsScript.Spreadsheet.Sheet} overviewSheet - The sheet containing the financial overview data.
+     * @returns {{sheet: GoogleAppsScript.Spreadsheet.Sheet, lastRow: number}|undefined}
+     *   The result from the SheetBuilder's finalize method, or undefined if an error occurs.
+     * @memberof FinancialPlanner.FinancialAnalysisService
+     */
     analyze: function(spreadsheet, overviewSheet) {
       try {
         uiService.showLoadingSpinner("Analyzing financial data...");
@@ -667,10 +853,15 @@ FinancialPlanner.FinancialAnalysisService = (function(
       } catch (error) {
         uiService.hideLoadingSpinner();
         errorService.handle(error, "Error in financial analysis");
-        throw error;
+        throw error; // Re-throw to allow caller to handle if necessary
       }
     },
     
+    /**
+     * Public method to trigger the financial analysis and display the key metrics sheet.
+     * Handles UI notifications and error reporting.
+     * @memberof FinancialPlanner.FinancialAnalysisService
+     */
     showKeyMetrics: function() {
       try {
         const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -708,6 +899,11 @@ FinancialPlanner.FinancialAnalysisService = (function(
 );
 
 // Backward compatibility
+/**
+ * Global function to trigger and show the key financial metrics analysis.
+ * Delegates to `FinancialPlanner.FinancialAnalysisService.showKeyMetrics()`.
+ * @global
+ */
 function showKeyMetrics() {
   if (typeof FinancialPlanner !== 'undefined' && 
       FinancialPlanner.FinancialAnalysisService && 

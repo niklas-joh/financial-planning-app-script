@@ -1,14 +1,26 @@
 /**
- * Financial Planning Tools - Financial Overview Generator
+ * @fileoverview Financial Overview Generator for the Financial Planning Tools.
+ * This module is responsible for creating and managing the main financial overview sheet,
+ * which summarizes income, expenses, and savings based on transaction data.
+ * It leverages various services for data processing, sheet construction, and UI interactions.
  * Version: 3.0.0
- * 
- * This module creates a comprehensive financial overview sheet based on transaction data.
- * Refactored to use new services for better maintainability.
+ * @module features/financial-overview
  */
 
 /**
  * @namespace FinancialPlanner.FinanceOverview
- * @description Service responsible for generating a comprehensive financial overview sheet.
+ * @description Service responsible for generating and managing the comprehensive financial overview sheet.
+ * This IIFE sets up the service with its numerous dependencies.
+ * @param {UtilsModule} utils - Instance of the Utils module.
+ * @param {UIServiceModule} uiService - Instance of the UI Service module.
+ * @param {CacheServiceModule} cacheService - Instance of the Cache Service module.
+ * @param {ErrorServiceModule} errorService - Instance of the Error Service module.
+ * @param {ConfigModule} config - Instance of the Config module.
+ * @param {SettingsServiceModule} settingsService - Instance of the Settings Service module.
+ * @param {SheetBuilderModule} sheetBuilder - Instance of the Sheet Builder module (factory).
+ * @param {FormulaBuilderModule} formulaBuilder - Instance of the Formula Builder module.
+ * @param {DataProcessorModule} dataProcessor - Instance of the Data Processor module.
+ * @param {FinancialPlanner.FinancialAnalysisService} analysisService - Instance of the Financial Analysis service.
  */
 FinancialPlanner.FinanceOverview = (function(
   utils, uiService, cacheService, errorService, config, settingsService, 
@@ -16,18 +28,38 @@ FinancialPlanner.FinanceOverview = (function(
 ) {
   
   /**
-   * Main overview builder class
+   * @classdesc Main builder class for constructing the financial overview sheet.
+   * It orchestrates data fetching, processing, and sheet layout using various helper services.
+   * @class FinancialOverviewBuilder
+   * @private
    */
   class FinancialOverviewBuilder {
+    /**
+     * Creates an instance of FinancialOverviewBuilder.
+     * Initializes properties that will be set during the `initialize` phase.
+     */
     constructor() {
+      /** @type {GoogleAppsScript.Spreadsheet.Spreadsheet} */
       this.spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+      /** @type {boolean} */
       this.showSubCategories = settingsService.getShowSubCategories();
+      /** @type {SheetBuilder|null} */
       this.builder = null;
+      /** @type {DataProcessor|null} */
       this.processor = null;
+      /** @type {object|null} Processed and grouped transaction data. */
       this.groupedData = null;
+      /** @type {object|null} Column indices from the transaction sheet. */
       this.columnIndices = null;
     }
     
+    /**
+     * Initializes the builder by setting up sheet references, data processor,
+     * and fetching/processing necessary data (categories, grouped data).
+     * @returns {FinancialOverviewBuilder} The builder instance for chaining.
+     * @throws {Error} If the transactions sheet is not found or data structure is invalid.
+     * @memberof FinancialOverviewBuilder
+     */
     initialize() {
       const sheetNames = config.getSection('SHEETS');
       const overviewSheet = utils.getOrCreateSheet(this.spreadsheet, sheetNames.OVERVIEW);
@@ -59,6 +91,14 @@ FinancialPlanner.FinanceOverview = (function(
       return this;
     }
     
+    /**
+     * Builds the entire financial overview sheet structure, including headers,
+     * UI controls, data sections (income, expenses, savings), net calculations,
+     * and applies final formatting like column widths.
+     * @returns {{sheet: GoogleAppsScript.Spreadsheet.Sheet, lastRow: number}}
+     *   The result from the SheetBuilder's finalize method, containing the built sheet and last row.
+     * @memberof FinancialOverviewBuilder
+     */
     build() {
       this.builder
         .clear()
@@ -104,6 +144,10 @@ FinancialPlanner.FinanceOverview = (function(
       return this.builder.finalize();
     }
     
+    /**
+     * Sets up UI controls on the overview sheet, such as the "Show Sub-Categories" checkbox.
+     * @memberof FinancialOverviewBuilder
+     */
     setupUIControls() {
       const uiConfig = config.getSection('UI').SUBCATEGORY_TOGGLE;
       const sheet = this.builder.sheet;
@@ -118,6 +162,10 @@ FinancialPlanner.FinanceOverview = (function(
         .setNote(uiConfig.NOTE_TEXT);
     }
     
+    /**
+     * Builds the income section of the overview sheet, including category rows and totals.
+     * @memberof FinancialOverviewBuilder
+     */
     buildIncomeSection() {
       const transactionTypes = config.getSection('TRANSACTION_TYPES');
       const incomeData = this.groupedData[transactionTypes.INCOME];
@@ -159,6 +207,11 @@ FinancialPlanner.FinanceOverview = (function(
       this.builder.addBlankRow();
     }
     
+    /**
+     * Builds the expense section of the overview sheet.
+     * Iterates through configured expense types, adds category rows, and calculates totals.
+     * @memberof FinancialOverviewBuilder
+     */
     buildExpenseSection() {
       const expenseTypes = config.getSection('EXPENSE_TYPES');
       const colors = config.getSection('COLORS');
@@ -223,6 +276,10 @@ FinancialPlanner.FinanceOverview = (function(
       }
     }
     
+    /**
+     * Builds the savings section of the overview sheet, including category rows and totals.
+     * @memberof FinancialOverviewBuilder
+     */
     buildSavingsSection() {
       const transactionTypes = config.getSection('TRANSACTION_TYPES');
       const savingsData = this.groupedData[transactionTypes.SAVINGS];
@@ -259,6 +316,11 @@ FinancialPlanner.FinanceOverview = (function(
       this.builder.addBlankRow();
     }
     
+    /**
+     * Builds the net calculations section at the bottom of the overview sheet,
+     * summarizing key differences (e.g., Income - Expenses).
+     * @memberof FinancialOverviewBuilder
+     */
     buildNetCalculations() {
       const sheet = this.builder.sheet;
       const data = sheet.getDataRange().getValues();
@@ -320,6 +382,14 @@ FinancialPlanner.FinanceOverview = (function(
     }
     
     // Helper methods
+    /**
+     * Generates an array of formula configurations for a set of category/subcategory rows.
+     * This includes monthly totals, overall total, and average for each row.
+     * @param {Array<{type: string, category: string, subcategory: string}>} combinations - Array of category combination objects.
+     * @param {number} startRow - The starting row number (1-based) in the sheet for these combinations.
+     * @returns {Array<object>} An array of formula configuration objects suitable for `SheetBuilder.addDataRows`.
+     * @memberof FinancialOverviewBuilder
+     */
     generateRowFormulas(combinations, startRow) {
       const sheetNames = config.getSection('SHEETS');
       const formulas = [];
@@ -385,6 +455,13 @@ FinancialPlanner.FinanceOverview = (function(
       return formulas;
     }
     
+    /**
+     * Adds a row for a transaction type (e.g., "Income", "Essentials") that includes
+     * embedded formulas for monthly totals, overall total, and average for that type.
+     * @param {string} type - The transaction type name.
+     * @param {number} row - The row number (1-based) where this type summary should be placed.
+     * @memberof FinancialOverviewBuilder
+     */
     addTypeRowWithEmbeddedTotals(type, row) {
       const colors = config.getSection('COLORS');
       const sheetNames = config.getSection('SHEETS');
@@ -439,6 +516,14 @@ FinancialPlanner.FinanceOverview = (function(
       this.builder.setCurrentRow(row + 1);
     }
     
+    /**
+     * Adds a total row for a specific transaction type (e.g., "Total Income")
+     * by summing up its constituent category rows.
+     * @param {string} type - The transaction type name (e.g., "Income").
+     * @param {number} startRow - The starting row number (1-based) of the categories for this type.
+     * @param {number} rowCount - The number of category rows for this type.
+     * @memberof FinancialOverviewBuilder
+     */
     addTypeTotal(type, startRow, rowCount) {
       const typeColors = this.getTypeColors(type);
       
@@ -453,6 +538,11 @@ FinancialPlanner.FinanceOverview = (function(
       );
     }
     
+    /**
+     * Adds a "Total Expenses" row by summing up the totals of individual expense type rows.
+     * @param {Array<number>} expenseTypeRows - An array of row numbers where individual expense type totals are located.
+     * @memberof FinancialOverviewBuilder
+     */
     addTotalExpensesRow(expenseTypeRows) {
       const formulas = [];
       
@@ -477,6 +567,15 @@ FinancialPlanner.FinanceOverview = (function(
       });
     }
     
+    /**
+     * Adds a row for a net calculation (e.g., "Net Income").
+     * Formulas for monthly values, total, and average are generated based on the provided components.
+     * @param {string} label - The label for this net calculation row.
+     * @param {Array<{reference: string, operation: 'add'|'subtract'}>} components - An array of objects defining
+     *   the parts of the net calculation. Each component has a `reference` (e.g., "E5" for the first month's value)
+     *   and an `operation`.
+     * @memberof FinancialOverviewBuilder
+     */
     addNetCalculationRow(label, components) {
       const formulas = [];
       
@@ -504,6 +603,14 @@ FinancialPlanner.FinanceOverview = (function(
       });
     }
     
+    /**
+     * Generates formula configurations for a total row that sums a range of preceding rows.
+     * Used for `addTypeTotal`.
+     * @param {number} startRow - The starting row number (1-based) of the range to sum.
+     * @param {number} rowCount - The number of rows in the range to sum.
+     * @returns {Array<{column: number, value: string}>} An array of formula objects for `SheetBuilder.addSummaryRow`.
+     * @memberof FinancialOverviewBuilder
+     */
     generateTotalFormulas(startRow, rowCount) {
       const formulas = [];
       const endRow = startRow + rowCount - 1;
@@ -519,6 +626,20 @@ FinancialPlanner.FinanceOverview = (function(
       return formulas;
     }
     
+    /**
+     * Finds the row numbers for various key total lines (Income, Expenses, Savings, etc.)
+     * by searching the first column of the provided 2D data array.
+     * @param {Array<Array<*>>} data - The 2D array of sheet data to search.
+     * @returns {{
+     *   incomeRow: number|null,
+     *   expensesRow: number|null,
+     *   savingsRow: number|null,
+     *   essentialsRow: number|null,
+     *   wantsPleasureRow: number|null,
+     *   extraRow: number|null
+     * }} An object mapping total labels to their 1-based row numbers, or null if not found.
+     * @memberof FinancialOverviewBuilder
+     */
     findTotalRows(data) {
       const totals = {
         incomeRow: null,
@@ -543,6 +664,14 @@ FinancialPlanner.FinanceOverview = (function(
       return totals;
     }
     
+    /**
+     * Retrieves predefined background and font colors for a given transaction type string.
+     * Used for styling type headers and total rows.
+     * @param {string} type - The transaction type string (e.g., "Income", "Essentials").
+     * @returns {{BG: string, FONT: string}} An object with `BG` (background) and `FONT` color hex codes.
+     *   Returns default colors if the specific type is not found in the configuration.
+     * @memberof FinancialOverviewBuilder
+     */
     getTypeColors(type) {
       const typeHeaders = config.getSection('COLORS').TYPE_HEADERS;
       const transactionTypes = config.getSection('TRANSACTION_TYPES');
@@ -567,15 +696,24 @@ FinancialPlanner.FinanceOverview = (function(
   
   // Public API
   return {
+    /**
+     * Creates or recreates the entire financial overview sheet.
+     * This involves initializing data, building all sections, and applying formatting.
+     * It also triggers a financial analysis if the service is available.
+     * @returns {{sheet: GoogleAppsScript.Spreadsheet.Sheet, lastRow: number}|undefined}
+     *   The result from the SheetBuilder's finalize method, or undefined if an error occurs.
+     * @memberof FinancialPlanner.FinanceOverview
+     * @throws {Error} Propagates errors from underlying services if generation fails.
+     */
     create: function() {
       try {
         uiService.showLoadingSpinner("Generating financial overview...");
-        cacheService.invalidateAll();
+        cacheService.invalidateAll(); // Ensure fresh data for category combinations
         
         const builder = new FinancialOverviewBuilder();
-        const result = builder.initialize().build();
+        const result = builder.initialize().build(); // Initialize and build the sheet
         
-        // Add financial analysis if available
+        // Optionally, trigger financial analysis if the analysis service is integrated
         if (analysisService && analysisService.analyze) {
           analysisService.analyze(builder.spreadsheet, result.sheet);
         }
@@ -586,10 +724,16 @@ FinancialPlanner.FinanceOverview = (function(
       } catch (error) {
         uiService.hideLoadingSpinner();
         errorService.handle(error, "Failed to generate financial overview");
-        throw error;
+        throw error; // Re-throw to allow caller (e.g., a menu function) to know it failed
       }
     },
     
+    /**
+     * Handles edit events on the overview sheet, specifically for the subcategory toggle checkbox.
+     * If the checkbox state changes, it regenerates the overview.
+     * @param {GoogleAppsScript.Events.SheetsOnEdit} e - The edit event object.
+     * @memberof FinancialPlanner.FinanceOverview
+     */
     handleEdit: function(e) {
       try {
         if (e.range.getSheet().getName() !== config.getSection('SHEETS').OVERVIEW) return;
@@ -620,9 +764,16 @@ FinancialPlanner.FinanceOverview = (function(
 );
 
 // Backward compatibility
+/**
+ * Global function to trigger the creation of the financial overview sheet.
+ * Delegates to `FinancialPlanner.FinanceOverview.create()`.
+ * @global
+ * @returns {({sheet: GoogleAppsScript.Spreadsheet.Sheet, lastRow: number}|undefined)} Result of overview creation or undefined on error.
+ */
 function createFinancialOverview() {
   if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.FinanceOverview && FinancialPlanner.FinanceOverview.create) {
     return FinancialPlanner.FinanceOverview.create();
   }
-  Logger.log("Global createFinancialOverview: FinancialPlanner.FinanceOverview not available.");
+  Logger.log("Global createFinancialOverview: FinancialPlanner.FinanceOverview or its create method is not available.");
+  // Consider a UI alert here if critical and no error handling from caller
 }

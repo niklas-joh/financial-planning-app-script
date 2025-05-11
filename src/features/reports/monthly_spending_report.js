@@ -1,8 +1,9 @@
 /**
- * Financial Planning Tools - Monthly Spending Report Module
- * 
- * This file provides functionality for generating monthly spending reports.
+ * @fileoverview Monthly Spending Report Module for Financial Planning Tools.
+ * This module provides functionality for generating detailed monthly spending reports,
+ * including categorization, trend analysis, and visualizations.
  * It follows the namespace pattern and uses dependency injection for better maintainability.
+ * @module features/reports/monthly-spending-report
  */
 
 /**
@@ -10,20 +11,21 @@
  * @description Service for generating a detailed monthly spending report sheet.
  * It analyzes transactions for the current month, categorizes expenses, calculates averages,
  * identifies trends, and adds visualizations.
- * @param {FinancialPlanner.Utils} utils - The utility service.
- * @param {FinancialPlanner.UIService} uiService - The UI service for notifications.
- * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
- * @param {FinancialPlanner.Config} config - The global configuration service.
+ * @param {UtilsModule} utils - Instance of the Utils module.
+ * @param {UIServiceModule} uiService - Instance of the UI Service module.
+ * @param {ErrorServiceModule} errorService - Instance of the Error Service module.
+ * @param {ConfigModule} config - Instance of the Config module.
  */
 FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorService, config) {
   // Private variables and functions
   
   /**
-   * Adds relevant charts (e.g., pie chart for expense breakdown) to the monthly report sheet.
+   * Adds relevant charts (e.g., a pie chart for expense breakdown by category)
+   * to the monthly report sheet.
    * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet object where the report is generated.
-   * @param {object<string, object<string, number>>} categoryData - Processed data grouped by category and sub-category with summed amounts.
-   * @param {number} totalExpenses - The total expense amount for the month.
-   * @return {void}
+   * @param {Object<string, Object<string, number>>} categoryData - Processed data where keys are categories,
+   *   and values are objects mapping subcategories to their summed amounts for the current month.
+   * @param {number} totalExpenses - The total expense amount for the current month.
    * @private
    */
   function addMonthlyReportCharts(sheet, categoryData, totalExpenses) {
@@ -66,27 +68,27 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
   
   /**
    * Calculates the average monthly spending for a specific category and sub-category
-   * over a defined number of previous months.
-   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The transaction sheet object (currently unused but passed).
-   * @param {Array<Array<any>>} data - The raw transaction data (2D array).
+   * over a defined number of previous months from the provided transaction data.
+   * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The transaction sheet object (passed but currently unused within this function).
+   * @param {Array<Array<*>>} data - The raw transaction data (2D array, including headers).
    * @param {string} category - The category to filter by.
-   * @param {string} subcategory - The sub-category to filter by (use "(None)" if no sub-category).
-   * @param {number} dateColIndex - 0-based index of the 'Date' column.
-   * @param {number} typeColIndex - 0-based index of the 'Type' column.
+   * @param {string} subcategory - The sub-category to filter by. Should be "(None)" if no sub-category.
+   * @param {number} dateColIndex - 0-based index of the 'Date' column in the `data` array.
+   * @param {number} typeColIndex - 0-based index of the 'Type' column (unused in current logic but kept for signature consistency).
    * @param {number} categoryColIndex - 0-based index of the 'Category' column.
    * @param {number} subcategoryColIndex - 0-based index of the 'Sub-Category' column.
    * @param {number} amountColIndex - 0-based index of the 'Amount' column.
-   * @param {number} monthsToLookBack - The number of previous months to include in the average calculation.
-   * @return {number} The calculated average monthly spending for the specified criteria, or 0 if no data found.
+   * @param {number} monthsToLookBack - The number of previous full months to include in the average calculation.
+   * @returns {number} The calculated average monthly spending for the specified criteria, or 0 if no relevant data is found.
    * @private
    */
   function calculatePreviousMonthsAverage(
-    sheet, 
+    sheet, // Parameter 'sheet' is not used in the function body.
     data, 
     category, 
     subcategory, 
     dateColIndex, 
-    typeColIndex, 
+    typeColIndex, // Parameter 'typeColIndex' is not used in the function body.
     categoryColIndex, 
     subcategoryColIndex,
     amountColIndex, 
@@ -139,11 +141,13 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
   }
   
   /**
-   * Core function to generate the monthly spending report sheet.
-   * It fetches transaction data, filters for the current month's expenses,
-   * groups data, calculates totals and averages, formats the sheet, and adds charts.
-   * @return {GoogleAppsScript.Spreadsheet.Sheet} The generated or updated report sheet object.
-   * @throws {FinancialPlannerError} If the 'Transactions' sheet or required columns are not found.
+   * Core private function to generate the monthly spending report sheet.
+   * This function fetches transaction data, filters it for the current month's expenses,
+   * groups data by category and sub-category, calculates totals and averages (including a 3-month lookback),
+   * formats the report sheet, and adds summary charts.
+   * @returns {GoogleAppsScript.Spreadsheet.Sheet} The generated or updated report sheet object.
+   * @throws {Error} If the 'Transactions' sheet or required columns (Date, Type, Category, Amount) are not found.
+   *   The error is created via `errorService.create`.
    * @private
    */
   function createMonthlySpendingReport() {
@@ -324,11 +328,13 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
   return {
     /**
      * Public method to generate the monthly spending report.
-     * Wraps the private `createMonthlySpendingReport` function with UI feedback and error handling.
-     * @return {GoogleAppsScript.Spreadsheet.Sheet | null} The generated report sheet object, or null if an error occurred.
-     * @public
+     * It wraps the private `createMonthlySpendingReport` function, providing UI feedback
+     * (loading spinner, success/error notifications) and centralized error handling.
+     * @returns {GoogleAppsScript.Spreadsheet.Sheet | null} The generated report sheet object,
+     *   or `null` if an error occurred during generation.
+     * @memberof FinancialPlanner.MonthlySpendingReport
      * @example
-     * // Called from a menu item or controller:
+     * // Can be called from a custom menu item or another part of the application:
      * FinancialPlanner.MonthlySpendingReport.generate();
      */
     generate: function() {
@@ -350,10 +356,11 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
 // Backward compatibility layer for existing global functions
 /**
  * Generates the monthly spending report.
- * Maintained for backward compatibility with older triggers or direct calls.
- * Delegates to `FinancialPlanner.MonthlySpendingReport.generate()`.
- * @return {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} The report sheet object, null if an error occurred during generation,
- *         or undefined if the service isn't loaded.
+ * This global function is maintained for backward compatibility with older triggers or direct script calls.
+ * It delegates its execution to `FinancialPlanner.MonthlySpendingReport.generate()`.
+ * @returns {GoogleAppsScript.Spreadsheet.Sheet | null | undefined} The generated report sheet object,
+ *   `null` if an error occurred during the report generation process within the service,
+ *   or `undefined` if the `FinancialPlanner.MonthlySpendingReport` service or its `generate` method is not available.
  * @global
  */
 function generateMonthlySpendingReport() {

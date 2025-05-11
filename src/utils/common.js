@@ -1,17 +1,22 @@
 /**
- * Financial Planning Tools - Common Utilities
- * 
- * This file contains utility functions that are used across multiple features
- * of the Financial Planning Tools project. These utilities are encapsulated
- * within the FinancialPlanner.Utils namespace to prevent global namespace pollution.
+ * @fileoverview Common Utility Functions for Financial Planning Tools.
+ * This file contains a collection of utility functions that are broadly used across
+ * various modules and features of the Financial Planning Tools project.
+ * These utilities are encapsulated within the `FinancialPlanner.Utils` namespace.
+ * @module utils/common
  */
 
 /**
  * @namespace FinancialPlanner.Utils
- * @description Provides common utility functions used across the Financial Planning Tools application.
+ * @description Provides common utility functions used across the Financial Planning Tools application,
+ * such as column letter conversion, date formatting, sheet manipulation, and cell formatting.
  */
 FinancialPlanner.Utils = (function() {
-  // Private variables and functions can be defined here
+  /**
+   * Array of English month names, used by `getMonthName`.
+   * @private
+   * @const {Array<string>}
+   */
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 
                   'July', 'August', 'September', 'October', 'November', 'December'];
   
@@ -19,8 +24,9 @@ FinancialPlanner.Utils = (function() {
   return {
     /**
      * Converts a 1-based column index into its corresponding letter representation (e.g., 1 -> 'A', 27 -> 'AA').
-     * @param {number} column - The 1-based column index.
-     * @return {string} The column letter(s). Returns an empty string for non-positive indices.
+     * @param {number} column - The 1-based column index. Must be a positive integer.
+     * @return {string} The column letter(s). Returns an empty string if the input is not a positive number.
+     * @memberof FinancialPlanner.Utils
      * @example
      * const colLetter = FinancialPlanner.Utils.columnToLetter(3); // Returns 'C'
      * const colLetter2 = FinancialPlanner.Utils.columnToLetter(28); // Returns 'AB'
@@ -38,7 +44,8 @@ FinancialPlanner.Utils = (function() {
     /**
      * Gets the full English name of a month from its 0-based index.
      * @param {number} monthIndex - The month index (0 for January, 1 for February, etc.).
-     * @return {string} The full name of the month (e.g., "January"). Returns undefined for invalid indices.
+     * @return {string | undefined} The full name of the month (e.g., "January"), or `undefined` for invalid indices.
+     * @memberof FinancialPlanner.Utils
      * @example
      * const month = FinancialPlanner.Utils.getMonthName(0); // Returns 'January'
      */
@@ -47,11 +54,13 @@ FinancialPlanner.Utils = (function() {
     },
 
     /**
-     * Retrieves a sheet by its name within the given spreadsheet. If the sheet doesn't exist,
-     * it creates a new one with that name. If the sheet *does* exist, its content (but not formatting) is cleared.
+     * Retrieves a sheet by its name within the given spreadsheet.
+     * If the sheet doesn't exist, it creates a new one with that name.
+     * If the sheet *does* exist, its content (but not formatting or protected ranges) is cleared.
      * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet - The spreadsheet object to operate on.
      * @param {string} sheetName - The desired name of the sheet.
      * @return {GoogleAppsScript.Spreadsheet.Sheet} The existing or newly created sheet object.
+     * @memberof FinancialPlanner.Utils
      * @example
      * const ss = SpreadsheetApp.getActiveSpreadsheet();
      * const reportSheet = FinancialPlanner.Utils.getOrCreateSheet(ss, "Monthly Report");
@@ -75,8 +84,9 @@ FinancialPlanner.Utils = (function() {
     /**
      * Formats a given cell range as currency using a provided Google Sheets number format string.
      * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to format.
-     * @param {string} numberFormatString - The complete number format string to apply.
+     * @param {string} numberFormatString - The complete number format string to apply (e.g., "$#,##0.00;($#,##0.00)").
      * @return {GoogleAppsScript.Spreadsheet.Range} The same range object, allowing for method chaining.
+     * @memberof FinancialPlanner.Utils
      * @example
      * const amountRange = sheet.getRange("C2:C10");
      * const formatStr = FinancialPlanner.Config.getLocale().NUMBER_FORMATS.CURRENCY_DEFAULT;
@@ -91,8 +101,9 @@ FinancialPlanner.Utils = (function() {
     /**
      * Formats a given cell range as a percentage with a specified number of decimal places.
      * @param {GoogleAppsScript.Spreadsheet.Range} range - The cell range to format.
-     * @param {number} [decimalPlaces=1] - The number of decimal places to display after the percentage point.
+     * @param {number} [decimalPlaces=1] - The number of decimal places to display (e.g., 1 for "0.0%", 2 for "0.00%").
      * @return {GoogleAppsScript.Spreadsheet.Range} The same range object, allowing for method chaining.
+     * @memberof FinancialPlanner.Utils
      * @example
      * const rateRange = sheet.getRange("D2:D10");
      * FinancialPlanner.Utils.formatAsPercentage(rateRange, 2); // Format as 0.00%
@@ -105,12 +116,14 @@ FinancialPlanner.Utils = (function() {
 
     /**
      * Applies a background color to alternating rows within a specified range for improved readability (banding).
-     * Starts applying the color from `startRow` and continues every other row up to `endRow`.
+     * Starts applying the color from `startRow` and continues every other row up to `endRow`,
+     * across all columns that have content in the sheet.
      * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet object to format.
-     * @param {number} startRow - The 1-based starting row index for applying the color.
-     * @param {number} endRow - The 1-based ending row index for applying the color.
-     * @param {string} [color='#f9f9f9'] - The background color to apply (hex code or color name).
+     * @param {number} startRow - The 1-based starting row index for applying the alternating color.
+     * @param {number} endRow - The 1-based ending row index for applying the alternating color.
+     * @param {string} [color='#f9f9f9'] - The background color to apply (hex code or standard color name).
      * @return {GoogleAppsScript.Spreadsheet.Sheet} The same sheet object, allowing for method chaining.
+     * @memberof FinancialPlanner.Utils
      * @example
      * FinancialPlanner.Utils.setAlternatingRowColors(reportSheet, 2, 20, '#eeeeee');
      */

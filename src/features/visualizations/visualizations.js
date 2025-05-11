@@ -1,18 +1,21 @@
 /**
- * Financial Planning Tools - Visualization Service
- *
- * This file provides chart generation functionality for the Financial Planning Tools project.
- * It follows the namespace pattern and uses dependency injection for better maintainability.
+ * @fileoverview Visualization Service for Financial Planning Tools.
+ * This module is intended to provide functionality for generating various charts and
+ * visualizations to help users understand their financial data.
+ * It follows the namespace pattern and uses dependency injection.
+ * Currently, most chart generation functions are placeholders.
+ * @module features/visualizations/visualization-service
  */
 
 /**
  * @namespace FinancialPlanner.VisualizationService
  * @description Service responsible for generating various charts and visualizations based on financial data.
- * Currently contains placeholders for future chart implementations.
- * @param {FinancialPlanner.Utils} utils - The utility service.
- * @param {FinancialPlanner.UIService} uiService - The UI service for notifications and alerts.
- * @param {FinancialPlanner.ErrorService} errorService - The error handling service.
- * @param {FinancialPlanner.Config} config - The global configuration service.
+ * This service currently contains placeholders for future chart implementations such as
+ * spending trends, budget vs. actual, income vs. expenses, and category breakdowns.
+ * @param {UtilsModule} utils - Instance of the Utils module.
+ * @param {UIServiceModule} uiService - Instance of the UI Service module for notifications and alerts.
+ * @param {ErrorServiceModule} errorService - Instance of the Error Service module for error handling.
+ * @param {ConfigModule} config - Instance of the Config module for global configurations.
  */
 FinancialPlanner.VisualizationService = (function(utils, uiService, errorService, config) {
   // Private variables and functions (if any in the future)
@@ -21,9 +24,10 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
   return {
     /**
      * Placeholder function to create a spending trends chart.
-     * @todo Implement spending trends chart generation logic.
-     * @return {void} Currently shows an info alert.
-     * @public
+     * Displays a "Coming Soon!" message.
+     * @todo Implement the actual logic for spending trends chart generation.
+     * @memberof FinancialPlanner.VisualizationService
+     * @returns {void} Currently shows an info alert and does not return a chart object.
      * @example
      * FinancialPlanner.VisualizationService.createSpendingTrendsChart();
      */
@@ -41,9 +45,10 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
 
     /**
      * Placeholder function to create a budget vs. actual spending chart.
-     * @todo Implement budget vs. actual chart generation logic.
-     * @return {void} Currently shows an info alert.
-     * @public
+     * Displays a "Coming Soon!" message.
+     * @todo Implement the actual logic for budget vs. actual chart generation.
+     * @memberof FinancialPlanner.VisualizationService
+     * @returns {void} Currently shows an info alert and does not return a chart object.
      * @example
      * FinancialPlanner.VisualizationService.createBudgetVsActualChart();
      */
@@ -61,9 +66,10 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
 
     /**
      * Placeholder function to create an income vs. expenses chart.
-     * @todo Implement income vs. expenses chart generation logic.
-     * @return {void} Currently shows an info alert.
-     * @public
+     * Displays a "Coming Soon!" message.
+     * @todo Implement the actual logic for income vs. expenses chart generation.
+     * @memberof FinancialPlanner.VisualizationService
+     * @returns {void} Currently shows an info alert and does not return a chart object.
      * @example
      * FinancialPlanner.VisualizationService.createIncomeVsExpensesChart();
      */
@@ -81,9 +87,10 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
 
     /**
      * Placeholder function to create a category breakdown pie chart.
-     * @todo Implement category pie chart generation logic.
-     * @return {void} Currently shows an info alert.
-     * @public
+     * Displays a "Coming Soon!" message.
+     * @todo Implement the actual logic for category pie chart generation.
+     * @memberof FinancialPlanner.VisualizationService
+     * @returns {void} Currently shows an info alert and does not return a chart object.
      * @example
      * FinancialPlanner.VisualizationService.createCategoryPieChart();
      */
@@ -105,8 +112,9 @@ FinancialPlanner.VisualizationService = (function(utils, uiService, errorService
 
 /**
  * Creates a spending trends chart.
- * Maintained for backward compatibility. Delegates to `FinancialPlanner.VisualizationService.createSpendingTrendsChart()`.
- * @return {void | undefined} Result from the service call (currently undefined).
+ * This global function is maintained for backward compatibility.
+ * It delegates its execution to `FinancialPlanner.VisualizationService.createSpendingTrendsChart()`.
+ * @returns {void | undefined} Currently returns `undefined` as the underlying service method is a placeholder.
  * @global
  */
 function createSpendingTrendsChart() {
@@ -118,8 +126,9 @@ function createSpendingTrendsChart() {
 
 /**
  * Creates a budget vs actual chart.
- * Maintained for backward compatibility. Delegates to `FinancialPlanner.VisualizationService.createBudgetVsActualChart()`.
- * @return {void | undefined} Result from the service call (currently undefined).
+ * This global function is maintained for backward compatibility.
+ * It delegates its execution to `FinancialPlanner.VisualizationService.createBudgetVsActualChart()`.
+ * @returns {void | undefined} Currently returns `undefined`.
  * @global
  */
 function createBudgetVsActualChart() {
@@ -131,8 +140,9 @@ function createBudgetVsActualChart() {
 
 /**
  * Creates an income vs expenses chart.
- * Maintained for backward compatibility. Delegates to `FinancialPlanner.VisualizationService.createIncomeVsExpensesChart()`.
- * @return {void | undefined} Result from the service call (currently undefined).
+ * This global function is maintained for backward compatibility.
+ * It delegates its execution to `FinancialPlanner.VisualizationService.createIncomeVsExpensesChart()`.
+ * @returns {void | undefined} Currently returns `undefined`.
  * @global
  */
 function createIncomeVsExpensesChart() {
@@ -144,8 +154,9 @@ function createIncomeVsExpensesChart() {
 
 /**
  * Creates a category pie chart.
- * Maintained for backward compatibility. Delegates to `FinancialPlanner.VisualizationService.createCategoryPieChart()`.
- * @return {void | undefined} Result from the service call (currently undefined).
+ * This global function is maintained for backward compatibility.
+ * It delegates its execution to `FinancialPlanner.VisualizationService.createCategoryPieChart()`.
+ * @returns {void | undefined} Currently returns `undefined`.
  * @global
  */
 function createCategoryPieChart() {
