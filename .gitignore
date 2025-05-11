@@ -7,3 +7,6 @@ cline/
 
 // exclude .idea folder
 .idea/
+
+// exclude .codebuddy folder
+.codebuddy/
