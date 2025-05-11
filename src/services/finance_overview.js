@@ -289,11 +289,36 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   function addNetCalculations(sheet, startRow) {
     const data = sheet.getDataRange().getValues(); const headers = config.getSection('HEADERS');
     const uiColors = config.getSection('COLORS').UI; const totals = findTotalRows(data);
-    const { incomeRow, expensesRow, savingsRow } = totals;
-    if (!incomeRow || !expensesRow) return startRow;
+    // Destructure all needed row numbers, including new ones for Essentials and Wants/Pleasure
+    const { incomeRow, expensesRow, savingsRow, essentialsRow, wantsPleasureRow } = totals; 
+
+    // Check if all required rows for calculations are found
+    if (!incomeRow || !expensesRow) { // Basic check, expensesRow might not be needed for the new first calc but good to keep
+      Logger.log("AddNetCalculations: Missing incomeRow or expensesRow. Aborting net calculations.");
+      return startRow;
+    }
+
     sheet.getRange(startRow, 1).setValue("Net Calculations");
     sheet.getRange(startRow, 1, 1, headers.length).setBackground(uiColors.NET_BG).setFontWeight("bold").setFontColor(uiColors.NET_FONT);
     startRow++;
+
+    // New Calculation: Net (Income - Expenses before Extra)
+    // This is Total Income + Essentials + Wants/Pleasure (since expenses are negative)
+    if (incomeRow && essentialsRow && wantsPleasureRow) {
+      sheet.getRange(startRow, 1).setValue("Net (Income - Expenses before Extra)");
+      sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
+      let formulasArr_new = [];
+      for (let col = 5; col <= 18; col++) {
+        formulasArr_new.push(`=SUM(${utils.columnToLetter(col)}${incomeRow},${utils.columnToLetter(col)}${essentialsRow},${utils.columnToLetter(col)}${wantsPleasureRow})`);
+      }
+      let numericRange_new = sheet.getRange(startRow, 5, 1, 14);
+      numericRange_new.setFormulas([formulasArr_new]).setFontColor("#000000"); formatRangeAsCurrency(numericRange_new, true);
+      startRow++;
+    } else {
+      Logger.log("AddNetCalculations: Missing incomeRow, essentialsRow, or wantsPleasureRow for 'Net (Income - Expenses before Extra)'. Skipping this calculation.");
+    }
+
+    // Existing Calculation: Net (Total Income - Expenses)
     sheet.getRange(startRow, 1).setValue("Net (Total Income - Expenses)");
     sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
     let formulasArr = [];
@@ -321,13 +346,34 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   function findTotalRows(data) {
-    const totals = { incomeRow: null, expensesRow: null, savingsRow: null };
+    // Initialize all row finders
+    const totals = { 
+      incomeRow: null, 
+      expensesRow: null, 
+      savingsRow: null,
+      essentialsRow: null, // For "Essentials" type total row
+      wantsPleasureRow: null // For "Wants/Pleasure" type total row
+    };
     const transactionTypes = config.getSection('TRANSACTION_TYPES');
+    // Assuming 'Essentials' and 'Wants/Pleasure' are the exact strings used for these type totals in column A.
+    // These strings would typically come from config.getSection('EXPENSE_TYPES') or similar.
+    // For now, hardcoding based on common usage. If these are configurable, this needs adjustment.
+    const essentialsTypeString = "Essentials"; // Placeholder, ideally from config
+    const wantsPleasureTypeString = "Wants/Pleasure"; // Placeholder, ideally from config
+
     for (let i = 0; i < data.length; i++) {
-      if (data[i][0] === "Total Income") totals.incomeRow = i + 1;
-      if (data[i][0] === "Total Expenses") totals.expensesRow = i + 1;
-      if (data[i][0] === transactionTypes.SAVINGS) totals.savingsRow = i + 1; // Find "Savings" row for its totals
+      const cellValue = data[i][0] ? data[i][0].toString() : "";
+      if (cellValue === "Total Income") totals.incomeRow = i + 1;
+      if (cellValue === "Total Expenses") totals.expensesRow = i + 1;
+      if (cellValue === transactionTypes.SAVINGS) totals.savingsRow = i + 1;
+      if (cellValue === essentialsTypeString) totals.essentialsRow = i + 1;
+      if (cellValue === wantsPleasureTypeString) totals.wantsPleasureRow = i + 1;
     }
+    
+    // Log if any of the specific expense type rows were not found, for debugging
+    if (!totals.essentialsRow) Logger.log("findTotalRows: 'Essentials' total row not found.");
+    if (!totals.wantsPleasureRow) Logger.log("findTotalRows: 'Wants/Pleasure' total row not found.");
+
     return totals;
   }
   
