@@ -1,1 +1,0 @@
-{"chunk":0,"numChunks":31,"fileHash":"p7QjnH7owYj6gI9sV03tmQN28z3j87qqpbMEZWUm4gw=","filePath":"cline/clasp-pull/src/tests/dropdowns.test.js","content":"/**\n * Financial Planning Tools - Dropdown Service Tests\n *\n * This file contains tests for the FinancialPlanner.DropdownService module.\n * It includes mocking SpreadsheetApp, CacheService, and other dependencies.\n */"}

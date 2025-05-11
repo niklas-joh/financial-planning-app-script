@@ -1,1 +1,0 @@
-{"chunk":16,"numChunks":20,"fileHash":"o9TH+WxWjuhYMssoSmFWfKxIkklvisnvxWTURfiVSIQ=","filePath":"src/services/monthly_spending_report.js","content":"/**\nFinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorService, config) {\n  function createMonthlySpendingReport() {\n    Object.keys(categoryData).sort().forEach(category => {"}

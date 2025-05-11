@@ -1,1 +1,0 @@
-{"chunk":19,"numChunks":25,"fileHash":"f+DVHertk8Vofto68USweVqQ1XJB474SC9cN3OV7d2s=","filePath":"src/features/financial-overview/finance_overview.js","content":"/**\nFinancialPlanner.FinanceOverview = (function(\n) {\n  class FinancialOverviewBuilder {\n    addTypeRowWithEmbeddedTotals(type, row) {"}

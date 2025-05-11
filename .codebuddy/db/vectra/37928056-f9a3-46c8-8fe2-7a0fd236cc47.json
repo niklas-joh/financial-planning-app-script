@@ -1,1 +1,0 @@
-{"chunk":14,"numChunks":20,"fileHash":"o9TH+WxWjuhYMssoSmFWfKxIkklvisnvxWTURfiVSIQ=","filePath":"cline/clasp-verify/src/services/monthly_spending_report.js","content":"/**\nFinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorService, config) {\n  function createMonthlySpendingReport() {\n    let currentRowIndex = 4; // Start after headers"}

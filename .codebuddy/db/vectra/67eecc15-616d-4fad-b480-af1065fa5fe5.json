@@ -1,1 +1,0 @@
-{"chunk":30,"numChunks":53,"fileHash":"sZNtFtlzBgOlJ3052pxcb3tYBWiJBgfxmxjkXMyDhtg=","filePath":"cline/clasp-verify/src/services/finance_overview.js","content":"13).setFormulas([totalNetFormulas]);\n      formatRangeAsCurrency(sheet.getRange(startRow, 5, 1, 13));\n    }\n    // Add a bottom border to the last row"}

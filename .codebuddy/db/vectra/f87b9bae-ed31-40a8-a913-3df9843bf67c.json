@@ -1,1 +1,0 @@
-{"chunk":6,"numChunks":12,"fileHash":"p8d89h9/WHPQmS67+JYs3cvSw5/Ads0379y44Zi09Rg=","filePath":"src/core/config.js","content":"/**\nconst ConfigModule = (function() {\n  const DEFAULT_CONFIG = {"}

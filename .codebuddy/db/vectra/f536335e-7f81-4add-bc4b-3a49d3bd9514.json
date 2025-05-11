@@ -1,1 +1,0 @@
-{"chunk":6,"numChunks":31,"fileHash":"p7QjnH7owYj6gI9sV03tmQN28z3j87qqpbMEZWUm4gw=","filePath":"src/tests/dropdowns.test.js","content":"/**\n(function() {\n   const mockRange = {\n    _sheetName: null, _row: 0, _col: 0, _numRows: 1, _numCols: 1, _sheetDataRef: null,"}

@@ -1,1 +1,0 @@
-{"chunk":23,"numChunks":36,"fileHash":"5PxeaT4n9kgvALpAj5B1jgQlallPIdU12UlI5e4vOJw=","filePath":"src/services/finance_overview.js","content":"5, 1, 14);\n    numericRange.setFormulas([formulasArr]).setFontColor(\"#000000\"); formatRangeAsCurrency(numericRange, true);"}

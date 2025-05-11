@@ -1,1 +1,0 @@
-{"chunk":42,"numChunks":54,"fileHash":"vN+W2tDiA59Daq+vJZZ4NvNU8baK6mDpzqFA2kTr3NY=","filePath":"cline/clasp-verify/src/services/financial_analysis.js","content":" 1));\n          // Format percentage cells (percentage columns)\n          utils.formatAsPercentage(this.analysisSheet.getRange(startRow, 4, currentCategoryRow, 3));\n          // Apply conditional formatting rules"}

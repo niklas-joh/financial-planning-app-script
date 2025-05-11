@@ -1,1 +1,0 @@
-{"chunk":20,"numChunks":31,"fileHash":"p7QjnH7owYj6gI9sV03tmQN28z3j87qqpbMEZWUm4gw=","filePath":"src/tests/dropdowns.test.js","content":"/**\n(function() {\n   })(mockUtils, mockUiService, mockErrorService, mockConfig); // Pass mocks\n  // --- Helper to reset state before each test ---"}
