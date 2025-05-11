@@ -17,7 +17,7 @@ const FormulaBuilderModule = (function() {
 
   // Private helper methods
   FormulaBuilderModuleConstructor.prototype._buildCriteriaString = function(criteriaRange, criteriaValue) {
-    return `${criteriaRange},"${criteriaValue}"`;
+    return `${criteriaRange},${criteriaValue}`;
   };
 
   FormulaBuilderModuleConstructor.prototype._buildDateCriteriaString = function(dateRange, operator, dateValue) {
@@ -25,7 +25,7 @@ const FormulaBuilderModule = (function() {
   };
 
   FormulaBuilderModuleConstructor.prototype._buildCriteriaOperatorString = function(criteriaRange, operator, criteriaValue) {
-    return `${criteriaRange},"${operator}${criteriaValue}"`;
+    return `${criteriaRange},${operator}${criteriaValue}`;
   };
 
   // Public API methods
