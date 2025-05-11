@@ -297,7 +297,7 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     sheet.getRange(startRow, 1).setValue("Net (Total Income - Expenses)");
     sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
     let formulasArr = [];
-    for (let col = 5; col <= 18; col++) formulasArr.push(`=${utils.columnToLetter(col)}${incomeRow}-${utils.columnToLetter(col)}${expensesRow}`);
+    for (let col = 5; col <= 18; col++) formulasArr.push(`=${utils.columnToLetter(col)}${incomeRow}+${utils.columnToLetter(col)}${expensesRow}`);
     let numericRange = sheet.getRange(startRow, 5, 1, 14);
     numericRange.setFormulas([formulasArr]).setFontColor("#000000"); formatRangeAsCurrency(numericRange, true);
     startRow++;
@@ -312,7 +312,7 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       sheet.getRange(startRow, 1).setValue("Net (Total Income - Expenses - Savings)");
       sheet.getRange(startRow, 1, 1, 4).setBackground("#F5F5F5").setFontWeight("bold");
       formulasArr = [];
-      for (let col = 5; col <= 18; col++) formulasArr.push(`=${utils.columnToLetter(col)}${incomeRow}-${utils.columnToLetter(col)}${expensesRow}-${utils.columnToLetter(col)}${savingsRow}`);
+      for (let col = 5; col <= 18; col++) formulasArr.push(`=${utils.columnToLetter(col)}${incomeRow}+${utils.columnToLetter(col)}${expensesRow}+${utils.columnToLetter(col)}${savingsRow}`);
       numericRange = sheet.getRange(startRow, 5, 1, 14);
       numericRange.setFormulas([formulasArr]).setFontColor("#000000"); formatRangeAsCurrency(numericRange, true);
     }
