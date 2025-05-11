@@ -65,7 +65,14 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
   }
   
   function buildMonthlySumFormula(params, overviewSheetCurrentRow) {
-    const { type, category, subcategory, monthDate, sheetName, typeCol, categoryCol, subcategoryCol, dateCol, amountCol } = params;
+    const { 
+      monthDate, 
+      sheetName, // Name of the Transactions sheet
+      typeCol, categoryCol, subcategoryCol, dateCol, amountCol, // Column indices for Transactions sheet
+      overviewSheetName, // Name of the Overview sheet
+      showSubCategories // Boolean: whether subcategories are currently shown/relevant
+    } = params;
+
     const month = monthDate.getMonth() + 1;
     const year = monthDate.getFullYear();
     const startDate = new Date(year, month - 1, 1);
@@ -74,22 +81,28 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     const endDateFormatted = formatDate(endDate);
     const sumRange = `${sheetName}!${utils.columnToLetter(amountCol)}:${utils.columnToLetter(amountCol)}`;
     
+    // Base criteria: Always filter by Type (referencing Overview sheet Col A) and Date Range
     const baseCriteria = [
-      `${sheetName}!${utils.columnToLetter(typeCol)}:${utils.columnToLetter(typeCol)}, "${type}"`,
-      `${sheetName}!${utils.columnToLetter(dateCol)}:${utils.columnToLetter(dateCol)}, ">=${startDateFormatted}"`,
-      `${sheetName}!${utils.columnToLetter(dateCol)}:${utils.columnToLetter(dateCol)}, "<=${endDateFormatted}"`
+      `${sheetName}!${utils.columnToLetter(typeCol)}:${utils.columnToLetter(typeCol)},${overviewSheetName}!$A${overviewSheetCurrentRow}`,
+      `${sheetName}!${utils.columnToLetter(dateCol)}:${utils.columnToLetter(dateCol)},">=${startDateFormatted}"`,
+      `${sheetName}!${utils.columnToLetter(dateCol)}:${utils.columnToLetter(dateCol)},"<=${endDateFormatted}"`
     ];
 
-    if (category) {
-      baseCriteria.push(`${sheetName}!${utils.columnToLetter(categoryCol)}:${utils.columnToLetter(categoryCol)}, "${category}"`);
-      if (subcategory) {
-        baseCriteria.push(`${sheetName}!${utils.columnToLetter(subcategoryCol)}:${utils.columnToLetter(subcategoryCol)}, "${subcategory}"`);
+    // Conditionally add Category criteria (referencing Overview sheet Col B)
+    // params.category will contain the actual category name if this row is for a specific category
+    if (params.category) {
+      baseCriteria.push(`${sheetName}!${utils.columnToLetter(categoryCol)}:${utils.columnToLetter(categoryCol)},${overviewSheetName}!$B${overviewSheetCurrentRow}`);
+      
+      // Conditionally add SubCategory criteria (referencing Overview sheet Col C)
+      // params.subcategory will contain the actual subcategory name if this row is for a specific subcategory
+      if (params.subcategory && showSubCategories) {
+        baseCriteria.push(`${sheetName}!${utils.columnToLetter(subcategoryCol)}:${utils.columnToLetter(subcategoryCol)},${overviewSheetName}!$C${overviewSheetCurrentRow}`);
       }
     }
     
-    const sumifsFormula = `SUMIFS(${sumRange}, ${baseCriteria.join(", ")})`;
+    const sumifsFormula = `SUMIFS(${sumRange},${baseCriteria.join(",")})`;
     const expenseTypes = config.getSection('EXPENSE_TYPES');
-    if (category && expenseTypes.includes(type)) {
+    if (params.category && expenseTypes.includes(params.type)) {
       const divisorFormula = `IF(D${overviewSheetCurrentRow}=TRUE, 2, 1)`;
       return `(${sumifsFormula}) / ${divisorFormula}`;
     }
@@ -142,7 +155,7 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     return rowIndex + 1;
   }
 
-  function addTypeRowWithEmbeddedTotals(sheet, type, rowIndex, columnIndices) {
+  function addTypeRowWithEmbeddedTotals(sheet, type, rowIndex, columnIndices, showSubCategories) {
     const headers = config.getSection('HEADERS');
     const sheetNames = config.getSection('SHEETS');
     const uiColors = config.getSection('COLORS').UI;
@@ -160,7 +173,24 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     const formulas = [];
     for (let monthCol = 5; monthCol <= 16; monthCol++) {
       const monthDate = new Date(2024, monthCol - 5, 1);
-      const formulaParams = { type, monthDate, sheetName: sheetNames.TRANSACTIONS, ...columnIndices, typeCol: columnIndices.type +1, categoryCol: columnIndices.category + 1, subcategoryCol: columnIndices.subcategory + 1, dateCol: columnIndices.date+1, amountCol: columnIndices.amount+1 };
+      const formulaParams = {
+        // Spread columnIndices to get typeCol, categoryCol, etc.
+        ...columnIndices,
+        // Explicitly define the criteria values for buildMonthlySumFormula
+        type: type,         // The actual type string, e.g., "Essentials"
+        category: null,     // Explicitly null for type total rows
+        subcategory: null,  // Explicitly null for type total rows
+        monthDate,
+        sheetName: sheetNames.TRANSACTIONS,
+        // Ensure correct column indices are passed for letter conversion
+        typeCol: columnIndices.type + 1,
+        categoryCol: columnIndices.category + 1,
+        subcategoryCol: columnIndices.subcategory + 1,
+        dateCol: columnIndices.date + 1,
+        amountCol: columnIndices.amount + 1,
+        overviewSheetName: sheetNames.OVERVIEW,
+        showSubCategories: showSubCategories
+      };
       formulas.push(buildMonthlySumFormula(formulaParams, rowIndex));
     }
     formulas.push(`=SUM(${utils.columnToLetter(5)}${rowIndex}:${utils.columnToLetter(16)}${rowIndex})`);
@@ -172,7 +202,7 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
     return rowIndex + 1;
   }
   
-  function addCategoryRows(sheet, combinations, rowIndex, type, columnIndices) {
+  function addCategoryRows(sheet, combinations, rowIndex, type, columnIndices, showSubCategories) {
     if (combinations.length === 0) return rowIndex;
     const expenseTypes = config.getSection('EXPENSE_TYPES');
     const colors = config.getSection('COLORS').UI;
@@ -188,7 +218,22 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       const combo = combinations[i]; const currentRow = startRow + i; const rowFormulas = [];
       for (let monthCol = 5; monthCol <= 16; monthCol++) {
         const monthDate = new Date(2024, monthCol - 5, 1);
-        const formulaParams = { ...combo, monthDate, sheetName: sheetNames.TRANSACTIONS, ...columnIndices, typeCol: columnIndices.type +1, categoryCol: columnIndices.category + 1, subcategoryCol: columnIndices.subcategory + 1, dateCol: columnIndices.date+1, amountCol: columnIndices.amount+1, sharedCol: columnIndices.shared+1 };
+        const formulaParams = { 
+          type: combo.type, 
+          category: combo.category, 
+          subcategory: combo.subcategory, 
+          monthDate, 
+          sheetName: sheetNames.TRANSACTIONS, 
+          ...columnIndices, 
+          typeCol: columnIndices.type + 1, 
+          categoryCol: columnIndices.category + 1, 
+          subcategoryCol: columnIndices.subcategory + 1, 
+          dateCol: columnIndices.date + 1, 
+          amountCol: columnIndices.amount + 1, 
+          sharedCol: columnIndices.shared + 1,
+          overviewSheetName: sheetNames.OVERVIEW,
+          showSubCategories: showSubCategories
+        };
         rowFormulas.push(buildMonthlySumFormula(formulaParams, currentRow));
       }
       if (config.getSection('PERFORMANCE').USE_BATCH_OPERATIONS) sheet.getRange(currentRow, 5, 1, 12).setFormulas([rowFormulas]);
@@ -365,7 +410,7 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       if (incomeTypeString && this.groupedCombinations[incomeTypeString]) {
         rowIndex = addMajorSectionHeader(this.overviewSheet, incomeTypeString, rowIndex);
         rowIndex = _addSimpleTypeLabelRow(this.overviewSheet, incomeTypeString, rowIndex);
-        rowIndex = addCategoryRows(this.overviewSheet, this.groupedCombinations[incomeTypeString], rowIndex, incomeTypeString, this.columnIndices);
+        rowIndex = addCategoryRows(this.overviewSheet, this.groupedCombinations[incomeTypeString], rowIndex, incomeTypeString, this.columnIndices, this.showSubCategories);
         rowIndex = addTypeSubtotalRow(this.overviewSheet, incomeTypeString, rowIndex, this.groupedCombinations[incomeTypeString].length);
         rowIndex += 1; 
       }
@@ -378,9 +423,9 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
           const expenseTypeString = typeKey; 
           if (this.groupedCombinations[expenseTypeString] && this.groupedCombinations[expenseTypeString].length > 0) {
             const typeTotalRowIndex = rowIndex;
-            rowIndex = addTypeRowWithEmbeddedTotals(this.overviewSheet, expenseTypeString, rowIndex, this.columnIndices);
+            rowIndex = addTypeRowWithEmbeddedTotals(this.overviewSheet, expenseTypeString, rowIndex, this.columnIndices, this.showSubCategories);
             expenseTypeTotalRowIndices.push(typeTotalRowIndex); 
-            rowIndex = addCategoryRows(this.overviewSheet, this.groupedCombinations[expenseTypeString], rowIndex, expenseTypeString, this.columnIndices);
+            rowIndex = addCategoryRows(this.overviewSheet, this.groupedCombinations[expenseTypeString], rowIndex, expenseTypeString, this.columnIndices, this.showSubCategories);
             rowIndex += 1; 
           }
         });
@@ -393,8 +438,8 @@ FinancialPlanner.FinanceOverview = (function(utils, uiService, cacheService, err
       const savingsTypeString = transactionTypes.SAVINGS; 
       if (savingsTypeString && this.groupedCombinations[savingsTypeString]) {
         rowIndex = addMajorSectionHeader(this.overviewSheet, savingsTypeString, rowIndex);
-        rowIndex = addTypeRowWithEmbeddedTotals(this.overviewSheet, savingsTypeString, rowIndex, this.columnIndices); 
-        rowIndex = addCategoryRows(this.overviewSheet, this.groupedCombinations[savingsTypeString], rowIndex, savingsTypeString, this.columnIndices);
+        rowIndex = addTypeRowWithEmbeddedTotals(this.overviewSheet, savingsTypeString, rowIndex, this.columnIndices, this.showSubCategories); 
+        rowIndex = addCategoryRows(this.overviewSheet, this.groupedCombinations[savingsTypeString], rowIndex, savingsTypeString, this.columnIndices, this.showSubCategories);
         rowIndex += 1; 
       }
       
