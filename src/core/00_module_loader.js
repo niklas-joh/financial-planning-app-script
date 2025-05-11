@@ -17,7 +17,7 @@ var FinancialPlanner = FinancialPlanner || {};
  * @type {string}
  * @const
  */
-FinancialPlanner.VERSION = '1.0.0';
+FinancialPlanner.VERSION = '3.0.0';
 
 /**
  * Metadata about the Financial Planning Tools application.
@@ -33,17 +33,24 @@ FinancialPlanner.META = {
   name: 'Financial Planning Tools',
   description: 'Google Apps Script project for financial planning and analysis',
   author: 'Financial Planning Team',
-  lastUpdated: '2025-05-07' // Note: This date might need updating if significant changes are made.
+  lastUpdated: '2025-05-11'
 };
 
 // Instantiate core modules in the correct dependency order.
 FinancialPlanner.Config = new ConfigModule();
-FinancialPlanner.UIService = new UIServiceModule(); // Instantiate UIService
-FinancialPlanner.ErrorService = new ErrorServiceModule(FinancialPlanner.Config, FinancialPlanner.UIService); // Now UIService is defined
+FinancialPlanner.UIService = new UIServiceModule();
+FinancialPlanner.ErrorService = new ErrorServiceModule(FinancialPlanner.Config, FinancialPlanner.UIService);
 FinancialPlanner.CacheService = new CacheServiceModule(FinancialPlanner.Config, FinancialPlanner.ErrorService);
 FinancialPlanner.SettingsService = new SettingsServiceModule(FinancialPlanner.Config, FinancialPlanner.UIService, FinancialPlanner.ErrorService);
+
+// Instantiate new services for refactoring
+FinancialPlanner.FormulaBuilder = new FormulaBuilderModule(FinancialPlanner.Config);
+FinancialPlanner.SheetBuilder = new SheetBuilderModule(FinancialPlanner.Config, FinancialPlanner.Utils);
+FinancialPlanner.MetricsCalculator = new MetricsCalculatorModule(FinancialPlanner.Config);
+FinancialPlanner.DataProcessor = new DataProcessorModule(FinancialPlanner.Config, FinancialPlanner.ErrorService);
+
+// Instantiate controllers last as they depend on services
 FinancialPlanner.Controllers = new ControllersModule(FinancialPlanner.Config, FinancialPlanner.UIService, FinancialPlanner.ErrorService);
 
-// Module instantiation will be added here as modules are refactored.
-// For example:
-// ... and so on for other core services like UIService, SettingsService, Controllers.
+// Log successful initialization
+Logger.log(`FinancialPlanner modules loaded successfully. Version: ${FinancialPlanner.VERSION}`);
