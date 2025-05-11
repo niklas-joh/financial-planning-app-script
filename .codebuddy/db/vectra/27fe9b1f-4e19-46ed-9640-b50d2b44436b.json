@@ -1,0 +1,1 @@
+{"chunk":25,"numChunks":36,"fileHash":"5PxeaT4n9kgvALpAj5B1jgQlallPIdU12UlI5e4vOJw=","filePath":"src/services/finance_overview.js","content":", headers.length).setBorder(null, null, true, null, null, null, uiColors.BORDER, SpreadsheetApp.BorderStyle.SOLID_MEDIUM);\n    return startRow + 2;"}

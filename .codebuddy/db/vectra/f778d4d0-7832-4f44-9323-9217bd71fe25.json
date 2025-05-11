@@ -1,0 +1,1 @@
+{"chunk":0,"numChunks":25,"fileHash":"kS6Otb0ktf7SNGRgDc+bn8H5lrkmK9GeXCt+rLvCNP0=","filePath":"src/tests/settings-service.test.js","content":"/**\n * Financial Planning Tools - Settings Service Tests\n *\n * This file contains tests for the FinancialPlanner.SettingsService module.\n * It includes mocking SpreadsheetApp interactions.\n */"}

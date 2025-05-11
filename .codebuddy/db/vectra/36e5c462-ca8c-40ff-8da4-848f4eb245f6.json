@@ -1,0 +1,1 @@
+{"chunk":6,"numChunks":34,"fileHash":"T/csnKZ9ifEIVTqGo1Q4UaU7vyWah1cMM07aoFVML48=","filePath":"cline/clasp-pull/src/tests/finance_overview.test.js","content":"/**\n(function() {\n   const mockRange = {\n    _sheetName: null, _row: 0, _col: 0, _numRows: 1, _numCols: 1, _sheetDataRef: null,"}

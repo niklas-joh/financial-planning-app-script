@@ -1,0 +1,1 @@
+{"chunk":6,"numChunks":12,"fileHash":"wOxdP/KdhRlqVhqR1qynAh8Mc6EDPjH2xoG2aXwD9E0=","filePath":"gh/refactoring-plan.md","content":" menu items\n        )\n        // More submenus\n        .addToUi();\n    }\n"}

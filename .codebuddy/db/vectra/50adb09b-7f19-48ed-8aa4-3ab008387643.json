@@ -1,0 +1,1 @@
+{"chunk":1,"numChunks":20,"fileHash":"o9TH+WxWjuhYMssoSmFWfKxIkklvisnvxWTURfiVSIQ=","filePath":"src/features/reports/monthly_spending_report.js","content":"/**\nFinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorService, config) {"}

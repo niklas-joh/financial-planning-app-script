@@ -1,0 +1,1 @@
+{"chunk":6,"numChunks":30,"fileHash":"+K7Wn3694Zo7CvqWeZ2iy4UDcUumZZ0a1vWhvg0ddkM=","filePath":"cline/clasp-pull/src/tests/financial_analysis.test.js","content":"/**\n(function() {\n   const mockRange = {\n    _sheetName: null, _row: 0, _col: 0, _numRows: 1, _numCols: 1, _sheetDataRef: null,"}

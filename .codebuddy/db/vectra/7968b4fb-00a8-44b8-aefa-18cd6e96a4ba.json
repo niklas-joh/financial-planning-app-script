@@ -1,0 +1,1 @@
+{"chunk":24,"numChunks":53,"fileHash":"sZNtFtlzBgOlJ3052pxcb3tYBWiJBgfxmxjkXMyDhtg=","filePath":"cline/clasp-pull/src/services/finance_overview.js","content":" performance\n    sheet.getRange(rowIndex, 5, 1, 13).setFormulas([formulas]);\n    \n    return rowIndex + 1;\n  }"}

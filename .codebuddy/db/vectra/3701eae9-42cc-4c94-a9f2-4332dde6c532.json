@@ -1,0 +1,1 @@
+{"chunk":22,"numChunks":32,"fileHash":"EGim/Ynj/8ex+ANaWj1uKBWsGdoONzQU8Kj/M33Ydzo=","filePath":"src/tests/monthly_spending_report.test.js","content":"/**\n(function() {\n   })(mockUtils, mockUiService, mockErrorService, mockConfig); // Pass mocks\n  // --- Helper to reset state before each test ---"}

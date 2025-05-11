@@ -1,0 +1,1 @@
+{"chunk":15,"numChunks":53,"fileHash":"sZNtFtlzBgOlJ3052pxcb3tYBWiJBgfxmxjkXMyDhtg=","filePath":"cline/clasp-pull/src/services/finance_overview.js","content":" rowIndex - The 1-based row index where this type header should be inserted.\n   * @return {number} The next available row index after inserting the type header.\n   * @private\n   */"}
