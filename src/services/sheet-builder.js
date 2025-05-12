@@ -235,7 +235,7 @@ const SheetBuilderModule = (function() {
      * @returns {SheetBuilder} The `SheetBuilder` instance for chaining.
      */
     addBlankRow(height) {
-      const effectiveHeight = height === undefined ? this.sheet.getDefaultRowHeight() : height;
+      const effectiveHeight = height === undefined ? this.sheet.getParent().getDefaultRowHeight() : height;
       this.sheet.setRowHeight(this.currentRow, effectiveHeight);
       this.currentRow++;
       return this;
