@@ -63,34 +63,31 @@
 
   T.registerTest("ReportService", "generateYearlySummary should show 'Coming Soon' alert", function() {
     resetMocks();
+    T.assertEquals(null, lastAlert, "lastAlert should be reset before calling the service.");
     const result = TestReportService.generateYearlySummary();
 
     T.assertTrue(result === undefined || result === null, "Placeholder function should return null or undefined."); // Placeholder returns void, wrapper returns null on error or result (which is undefined)
-    T.assertNotNull(lastAlert, "uiService.showInfoAlert should have been called.");
-    T.assertEquals("Yearly Summary", lastAlert.title, "Alert title should be correct.");
-    T.assertEquals("Coming Soon!", lastAlert.message, "Alert message should be 'Coming Soon!'.");
+    T.assertDeepEquals({ title: "Yearly Summary", message: "Coming Soon!" }, lastAlert, "Alert should contain correct title and message.");
     T.assertTrue(lastHandledError === null, "No error should be handled.");
   });
 
   T.registerTest("ReportService", "generateCategoryBreakdown should show 'Coming Soon' alert", function() {
     resetMocks();
+    T.assertEquals(null, lastAlert, "lastAlert should be reset before calling the service.");
     const result = TestReportService.generateCategoryBreakdown();
 
     T.assertTrue(result === undefined || result === null, "Placeholder function should return null or undefined.");
-    T.assertNotNull(lastAlert, "uiService.showInfoAlert should have been called.");
-    T.assertEquals("Category Breakdown", lastAlert.title, "Alert title should be correct.");
-    T.assertEquals("Coming Soon!", lastAlert.message, "Alert message should be 'Coming Soon!'.");
+    T.assertDeepEquals({ title: "Category Breakdown", message: "Coming Soon!" }, lastAlert, "Alert should contain correct title and message.");
     T.assertTrue(lastHandledError === null, "No error should be handled.");
   });
 
   T.registerTest("ReportService", "generateSavingsAnalysis should show 'Coming Soon' alert", function() {
     resetMocks();
+    T.assertEquals(null, lastAlert, "lastAlert should be reset before calling the service.");
     const result = TestReportService.generateSavingsAnalysis();
 
     T.assertTrue(result === undefined || result === null, "Placeholder function should return null or undefined.");
-    T.assertNotNull(lastAlert, "uiService.showInfoAlert should have been called.");
-    T.assertEquals("Savings Analysis", lastAlert.title, "Alert title should be correct.");
-    T.assertEquals("Coming Soon!", lastAlert.message, "Alert message should be 'Coming Soon!'.");
+    T.assertDeepEquals({ title: "Savings Analysis", message: "Coming Soon!" }, lastAlert, "Alert should contain correct title and message.");
     T.assertTrue(lastHandledError === null, "No error should be handled.");
   });
 
