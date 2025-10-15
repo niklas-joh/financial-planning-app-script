@@ -185,6 +185,24 @@ const ConfigModule = (function() {
       /** @property {boolean} USE_BATCH_OPERATIONS Flag to enable or disable batch operations for better performance. */
       USE_BATCH_OPERATIONS: true,
     },
+    /** @property {object} PLAID Plaid integration settings. */
+    PLAID: {
+      /** @property {string} API_URL The Plaid API base URL (sandbox by default). */
+      API_URL: 'https://sandbox.plaid.com',
+      /** 
+       * @property {object} CATEGORY_MAP Mapping of Plaid categories to application transaction types.
+       * Maps Plaid's primary category to the app's Type field.
+       */
+      CATEGORY_MAP: {
+        'Food and Drink': 'Essentials',
+        'Shops': 'Wants/Pleasure',
+        'Travel': 'Wants/Pleasure',
+        'Recreation': 'Wants/Pleasure',
+        'Transfer': 'Savings',
+        'Payment': 'Essentials',
+        'Service': 'Essentials'
+      }
+    },
   };
 
   /**

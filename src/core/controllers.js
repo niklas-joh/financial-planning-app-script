@@ -81,6 +81,27 @@ const ControllersModule = (function() {
     createFinancialOverview: function() {
       return FinancialPlanner.FinanceOverview.create();
     },
+    /** Opens Plaid Link dialog for connecting bank account. */
+    connectBankAccount: function() {
+      const htmlOutput = HtmlService.createHtmlOutputFromFile('src/services/plaid-link')
+        .setWidth(600)
+        .setHeight(500);
+      SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Connect Bank Account');
+    },
+    /** Imports transactions from Plaid for the last 30 days. */
+    importTransactions: function() {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30);
+      
+      const dateFormat = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      const endFormat = Utilities.formatDate(endDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      
+      const result = FinancialPlanner.PlaidService.getTransactions(dateFormat, endFormat);
+      const count = FinancialPlanner.PlaidService.importToSheet(result.transactions);
+      
+      return count;
+    },
     /** Calls MonthlySpendingReport service to generate the report. */
     generateMonthlySpendingReport: function() {
       return FinancialPlanner.MonthlySpendingReport.generate();
@@ -176,6 +197,8 @@ const ControllersModule = (function() {
    */
   ControllersModuleConstructor.prototype._initializeWrappedMethods = function() {
     this.createFinancialOverview_Wrapped = this._wrapWithFeedback(coreLogic.createFinancialOverview, 'Generating financial overview...', 'Financial overview generated successfully!', 'Failed to generate financial overview');
+    this.connectBankAccount_Wrapped = this._wrapWithFeedback(coreLogic.connectBankAccount, null, null, 'Failed to open bank connection dialog');
+    this.importTransactions_Wrapped = this._wrapWithFeedback(coreLogic.importTransactions, 'Importing transactions from bank...', function() { return 'Imported ' + arguments[0] + ' transactions successfully!'; }, 'Failed to import transactions');
     this.generateMonthlySpendingReport_Wrapped = this._wrapWithFeedback(coreLogic.generateMonthlySpendingReport, 'Generating monthly spending report...', 'Monthly spending report generated successfully!', 'Failed to generate monthly spending report');
     this.showKeyMetrics_Wrapped = this._wrapWithFeedback(coreLogic.showKeyMetrics, 'Analyzing financial data...', 'Key metrics displayed successfully!', 'Failed to display key metrics');
     this.generateYearlySummary_Wrapped = this._wrapWithFeedback(coreLogic.generateYearlySummary, 'Generating yearly summary report...', 'Yearly summary report generated successfully!', 'Failed to generate yearly summary report');
@@ -211,6 +234,10 @@ const ControllersModule = (function() {
       // Menu items will call global functions, which in turn call the _Wrapped methods on the instance
       ui.createMenu('📊 Financial Tools')
         .addItem('📈 Generate Overview', 'createFinancialOverview_Global')
+        .addSeparator()
+        .addSubMenu(ui.createMenu('🏦 Bank Integration')
+          .addItem('🔗 Connect Bank Account', 'connectBankAccount_Global')
+          .addItem('📥 Import Transactions', 'importTransactions_Global'))
         .addSeparator()
         .addSubMenu(ui.createMenu('📋 Reports')
           .addItem('📝 Monthly Spending Report', 'generateMonthlySpendingReport_Global')
@@ -358,6 +385,8 @@ function createGlobalControllerAction(methodName) {
 // Create global functions for all wrapped controller actions
 // These names must match what's used in the onOpen menu creation.
 createGlobalControllerAction('createFinancialOverview');
+createGlobalControllerAction('connectBankAccount');
+createGlobalControllerAction('importTransactions');
 createGlobalControllerAction('generateMonthlySpendingReport');
 createGlobalControllerAction('showKeyMetrics');
 createGlobalControllerAction('generateYearlySummary');

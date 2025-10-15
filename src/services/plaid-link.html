@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
+    
+    #link-button {
+      background-color: #1976D2;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    
+    #link-button:hover {
+      background-color: #1565C0;
+    }
+    
+    #link-button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    
+    #status {
+      margin-top: 20px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    
+    .loading {
+      color: #666;
+    }
+    
+    .error {
+      color: #D32F2F;
+      background-color: #FFEBEE;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    
+    .success {
+      color: #2E7D32;
+      background-color: #E8F5E9;
+      padding: 10px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Connect Your Bank Account</h2>
+  <p>Click the button below to securely connect your bank account via Plaid.</p>
+  
+  <button id="link-button" disabled>Loading...</button>
+  
+  <div id="status"></div>
+  
+  <script>
+    const linkButton = document.getElementById('link-button');
+    const statusDiv = document.getElementById('status');
+    
+    function showStatus(message, type) {
+      statusDiv.innerHTML = message;
+      statusDiv.className = type || '';
+    }
+    
+    function showError(message) {
+      showStatus(message, 'error');
+      linkButton.disabled = false;
+      linkButton.textContent = 'Connect Bank Account';
+    }
+    
+    // Get link token from server
+    showStatus('Initializing Plaid Link...', 'loading');
+    
+    google.script.run
+      .withSuccessHandler(function(response) {
+        if (!response || !response.link_token) {
+          showError('Failed to initialize Plaid Link. Please check your API credentials.');
+          return;
+        }
+        
+        const linkToken = response.link_token;
+        
+        // Initialize Plaid Link
+        const handler = Plaid.create({
+          token: linkToken,
+          onSuccess: function(publicToken, metadata) {
+            linkButton.disabled = true;
+            showStatus('Processing connection...', 'loading');
+            
+            // Exchange public token for access token
+            google.script.run
+              .withSuccessHandler(function() {
+                showStatus('Bank account connected successfully!', 'success');
+                setTimeout(function() {
+                  google.script.host.close();
+                }, 2000);
+              })
+              .withFailureHandler(function(error) {
+                showError('Failed to complete connection: ' + error.message);
+              })
+              .plaidExchangeTokenGlobal(publicToken);
+          },
+          onExit: function(err, metadata) {
+            if (err) {
+              showError('Connection cancelled: ' + err.error_message);
+            } else {
+              showStatus('Connection cancelled.', '');
+            }
+          }
+        });
+        
+        // Enable button and set up click handler
+        linkButton.disabled = false;
+        linkButton.textContent = 'Connect Bank Account';
+        showStatus('Ready to connect. Click the button above.', '');
+        
+        linkButton.onclick = function() {
+          handler.open();
+        };
+      })
+      .withFailureHandler(function(error) {
+        showError('Failed to initialize: ' + error.message);
+      })
+      .plaidCreateLinkTokenGlobal();
+  </script>
+</body>
+</html>

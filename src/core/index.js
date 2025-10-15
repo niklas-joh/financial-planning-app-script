@@ -1,11 +1,30 @@
 /**
- * @fileoverview Main entry point for the Financial Planning Tools Google Apps Script project.
- * This script handles the final initialization steps after all modules are loaded.
- * It ensures that the application's core components are ready and logs the
- * application version. It's designed to be one of the last scripts executed
- * as per the `appsscript.json` file order.
+ * @fileoverview Global entry point functions for Financial Planning Tools.
+ * These functions are specifically designed to be called from HTML dialogs
+ * via google.script.run and should remain at the global scope.
  * @module core/index
  */
+
+/**
+ * Global function called from plaid-link.html to create a Plaid Link token.
+ * @returns {{link_token: string, expiration: string}} The link token response.
+ * @global
+ */
+// eslint-disable-next-line no-unused-vars
+function plaidCreateLinkTokenGlobal() {
+  return FinancialPlanner.PlaidService.createLinkToken();
+}
+
+/**
+ * Global function called from plaid-link.html to exchange a public token.
+ * @param {string} publicToken - The public token from Plaid Link.
+ * @returns {{access_token: string, item_id: string}} The access token response.
+ * @global
+ */
+// eslint-disable-next-line no-unused-vars
+function plaidExchangeTokenGlobal(publicToken) {
+  return FinancialPlanner.PlaidService.exchangePublicToken(publicToken);
+}
 
 /**
  * Initializes the Financial Planning Tools application.

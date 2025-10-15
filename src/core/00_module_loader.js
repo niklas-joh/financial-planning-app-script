@@ -48,6 +48,7 @@ FinancialPlanner.FormulaBuilder = new FormulaBuilderModule(FinancialPlanner.Conf
 FinancialPlanner.SheetBuilder = new SheetBuilderModule(FinancialPlanner.Config, FinancialPlanner.Utils);
 FinancialPlanner.MetricsCalculator = new MetricsCalculatorModule(FinancialPlanner.Config);
 FinancialPlanner.DataProcessor = new DataProcessorModule(FinancialPlanner.Config, FinancialPlanner.ErrorService);
+FinancialPlanner.PlaidService = new PlaidServiceModule(FinancialPlanner.Config, FinancialPlanner.ErrorService);
 
 // Instantiate controllers last as they depend on services
 FinancialPlanner.Controllers = new ControllersModule(FinancialPlanner.Config, FinancialPlanner.UIService, FinancialPlanner.ErrorService);
