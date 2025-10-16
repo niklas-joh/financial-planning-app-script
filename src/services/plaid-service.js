@@ -76,7 +76,7 @@ FinancialPlanner.PlaidService = (function() {
         client_id: credentials.clientId,
         secret: credentials.secret,
         user: {
-          client_user_id: Session.getActiveUser().getEmail()
+          client_user_id: SpreadsheetApp.getActiveSpreadsheet().getId()
         },
         client_name: 'Financial Planning Tools',
         products: ['transactions'],
