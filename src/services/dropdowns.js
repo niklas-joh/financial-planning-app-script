@@ -331,6 +331,17 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
         // Skip header row if it's frozen and the edit is in the first row
         if (e.range.getRow() === 1 && sheet.getFrozenRows() >= 1) return;
 
+        // Check if sheet has expected structure for dropdowns (Type/Category/SubCategory columns)
+        // If headers don't match expected structure, skip dropdown processing
+        if (sheet.getLastRow() > 0) {
+          const headerRow = sheet.getRange(1, 1, 1, Math.min(6, sheet.getLastColumn())).getValues()[0];
+          const hasExpectedStructure = headerRow[2] === 'Type' || headerRow[2] === 'Category'; // Column C or D
+          if (!hasExpectedStructure) {
+            Logger.log("DropdownService: Sheet structure doesn't match expected format. Skipping dropdown processing.");
+            return;
+          }
+        }
+
         if (!dropdownCache) {
           Logger.log("DropdownService: Initializing dropdown cache in handleEdit.");
           dropdownCache = buildDropdownCache(e.source); // e.source is the Spreadsheet

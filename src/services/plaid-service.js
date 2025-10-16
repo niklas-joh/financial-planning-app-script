@@ -209,6 +209,7 @@ FinancialPlanner.PlaidService = (function() {
 
     /**
      * Imports Plaid transactions to the Transactions sheet.
+     * Stores raw Plaid data without transformation.
      * @param {Array<object>} transactions - Array of Plaid transaction objects.
      * @returns {number} Number of transactions imported.
      * @memberof FinancialPlanner.PlaidService
@@ -216,34 +217,100 @@ FinancialPlanner.PlaidService = (function() {
     importToSheet: function(transactions) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheetNames = FinancialPlanner.Config.getSheetNames();
-      const transactionSheet = ss.getSheetByName(sheetNames.TRANSACTIONS);
+      let transactionSheet = ss.getSheetByName(sheetNames.TRANSACTIONS);
       
       if (!transactionSheet) {
-        throw FinancialPlanner.ErrorService.create(
-          'Transactions sheet not found',
-          { severity: 'high' }
-        );
+        Logger.log('Transactions sheet not found. Creating new sheet with headers...');
+        // Create the Transactions sheet with headers for raw Plaid data
+        // Based on Plaid API: https://plaid.com/docs/api/products/transactions/
+        transactionSheet = ss.insertSheet(sheetNames.TRANSACTIONS);
+        transactionSheet.getRange('A1:T1').setValues([[
+          'transaction_id',
+          'account_id',
+          'date',
+          'authorized_date',
+          'amount',
+          'iso_currency_code',
+          'unofficial_currency_code',
+          'name',
+          'merchant_name',
+          'payment_channel',
+          'category',
+          'category_id',
+          'personal_finance_category',
+          'transaction_type',
+          'pending',
+          'pending_transaction_id',
+          'account_owner',
+          'location',
+          'payment_meta',
+          'website'
+        ]]).setFontWeight('bold');
+        Logger.log('Transactions sheet created with Plaid raw data columns');
       }
       
-      // Transform Plaid transactions to sheet format: Date, Type, Category, Sub-Category, Shared?, Amount
+      Logger.log('Processing ' + transactions.length + ' transactions from Plaid');
+      
+      // Helper function to safely convert value, handling null/undefined
+      function safeValue(value, defaultValue) {
+        return (value !== null && value !== undefined) ? value : defaultValue;
+      }
+      
+      // Helper function to stringify objects/arrays
+      function stringify(value) {
+        if (value === null || value === undefined) return '';
+        if (typeof value === 'object') return JSON.stringify(value);
+        return String(value);
+      }
+      
+      // Store raw Plaid transaction data without transformation
       const dataToImport = transactions.map(function(tx) {
         return [
-          new Date(tx.date),
-          mapCategory(tx.category),
-          tx.merchant_name || tx.name || 'Unknown',
-          '', // Sub-category (to be filled by user)
-          false, // Shared
-          Math.abs(tx.amount) // Plaid amounts are negative for debits
+          safeValue(tx.transaction_id, ''),
+          safeValue(tx.account_id, ''),
+          tx.date ? new Date(tx.date) : '',
+          tx.authorized_date ? new Date(tx.authorized_date) : '',
+          safeValue(tx.amount, 0),
+          safeValue(tx.iso_currency_code, ''),
+          safeValue(tx.unofficial_currency_code, ''),
+          safeValue(tx.name, ''),
+          safeValue(tx.merchant_name, ''),
+          safeValue(tx.payment_channel, ''),
+          tx.category ? tx.category.join(', ') : '',
+          safeValue(tx.category_id, ''),
+          tx.personal_finance_category ? 
+            (safeValue(tx.personal_finance_category.primary, '') + ' > ' + 
+             safeValue(tx.personal_finance_category.detailed, '')) : '',
+          safeValue(tx.transaction_type, ''),
+          safeValue(tx.pending, false),
+          safeValue(tx.pending_transaction_id, ''),
+          safeValue(tx.account_owner, ''),
+          stringify(tx.location),
+          stringify(tx.payment_meta),
+          safeValue(tx.website, '')
         ];
       });
       
       if (dataToImport.length === 0) {
+        Logger.log('No transactions to import');
         return 0;
+      }
+      
+      // Log first transaction for debugging
+      if (transactions.length > 0) {
+        Logger.log('Sample raw transaction data from Plaid:');
+        Logger.log(JSON.stringify(transactions[0], null, 2));
+        Logger.log('Mapped to row data:');
+        Logger.log(JSON.stringify(dataToImport[0]));
       }
       
       // Append to sheet
       const lastRow = transactionSheet.getLastRow();
-      transactionSheet.getRange(lastRow + 1, 1, dataToImport.length, 6).setValues(dataToImport);
+      const targetRange = transactionSheet.getRange(lastRow + 1, 1, dataToImport.length, 20);
+      targetRange.setValues(dataToImport);
+      
+      Logger.log('Successfully imported ' + dataToImport.length + ' raw transactions starting at row ' + (lastRow + 1));
+      Logger.log('Data written to range: ' + targetRange.getA1Notation());
       
       return dataToImport.length;
     }
