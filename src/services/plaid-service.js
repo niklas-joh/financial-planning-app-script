@@ -80,6 +80,14 @@ FinancialPlanner.PlaidService = (function() {
   }
 
   /**
+   * Resets the cursor to force a full sync on next call.
+   * @private
+   */
+  function resetCursor() {
+    PropertiesService.getScriptProperties().deleteProperty('PLAID_SYNC_CURSOR');
+  }
+
+  /**
    * Helper function to safely convert value, handling null/undefined.
    * @private
    * @param {*} value - The value to convert.
@@ -343,6 +351,18 @@ FinancialPlanner.PlaidService = (function() {
         FinancialPlanner.ErrorService.handle(error, 'Failed to sync transactions from Plaid');
         throw error;
       }
+    },
+
+    /**
+     * Resets the sync cursor and fetches all transactions from scratch.
+     * Useful for development, testing, or re-syncing all data.
+     * @returns {{added: Array<object>, modified: Array<object>, removed: Array<object>}} Sync results with all transactions.
+     * @memberof FinancialPlanner.PlaidService
+     */
+    resetAndSyncAll: function() {
+      Logger.log('Resetting cursor and fetching all transactions...');
+      resetCursor();
+      return this.syncTransactions();
     },
 
     /**

@@ -80,6 +80,13 @@ FinancialPlanner.Controllers = (function() {
       
       return count;
     },
+    resetAndImportAllTransactions: function() {
+      // Reset cursor and fetch all transactions from scratch
+      const syncResults = FinancialPlanner.PlaidService.resetAndSyncAll();
+      const count = FinancialPlanner.PlaidService.importToSheet(syncResults);
+      
+      return count;
+    },
     generateMonthlySpendingReport: function() {
       return FinancialPlanner.MonthlySpendingReport.generate();
     },
@@ -144,6 +151,7 @@ FinancialPlanner.Controllers = (function() {
     createFinancialOverview_Wrapped: wrapWithFeedback(coreLogic.createFinancialOverview, 'Generating financial overview...', 'Financial overview generated successfully!', 'Failed to generate financial overview'),
     connectBankAccount_Wrapped: wrapWithFeedback(coreLogic.connectBankAccount, null, null, 'Failed to open bank connection dialog'),
     importTransactions_Wrapped: wrapWithFeedback(coreLogic.importTransactions, 'Importing transactions from bank...', 'Transactions imported successfully!', 'Failed to import transactions'),
+    resetAndImportAllTransactions_Wrapped: wrapWithFeedback(coreLogic.resetAndImportAllTransactions, 'Resetting and fetching all transactions...', 'All transactions imported successfully!', 'Failed to import all transactions'),
     generateMonthlySpendingReport_Wrapped: wrapWithFeedback(coreLogic.generateMonthlySpendingReport, 'Generating monthly spending report...', 'Monthly spending report generated successfully!', 'Failed to generate monthly spending report'),
     showKeyMetrics_Wrapped: wrapWithFeedback(coreLogic.showKeyMetrics, 'Analyzing financial data...', 'Key metrics displayed successfully!', 'Failed to display key metrics'),
     generateYearlySummary_Wrapped: wrapWithFeedback(coreLogic.generateYearlySummary, 'Generating yearly summary report...', 'Yearly summary report generated successfully!', 'Failed to generate yearly summary report'),
@@ -171,7 +179,8 @@ FinancialPlanner.Controllers = (function() {
           .addSeparator()
           .addSubMenu(ui.createMenu('🏦 Bank Integration')
             .addItem('🔗 Connect Bank Account', 'connectBankAccount_Global')
-            .addItem('📥 Import Transactions', 'importTransactions_Global'))
+            .addItem('📥 Import Transactions', 'importTransactions_Global')
+            .addItem('🔄 Reset & Import All', 'resetAndImportAllTransactions_Global'))
           .addSeparator()
           .addSubMenu(ui.createMenu('📋 Reports')
             .addItem('📝 Monthly Spending Report', 'generateMonthlySpendingReport_Global')
@@ -275,6 +284,7 @@ function createGlobalControllerAction(methodName) {
 createGlobalControllerAction('createFinancialOverview');
 createGlobalControllerAction('connectBankAccount');
 createGlobalControllerAction('importTransactions');
+createGlobalControllerAction('resetAndImportAllTransactions');
 createGlobalControllerAction('generateMonthlySpendingReport');
 createGlobalControllerAction('showKeyMetrics');
 createGlobalControllerAction('generateYearlySummary');
