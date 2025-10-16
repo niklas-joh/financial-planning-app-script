@@ -74,15 +74,9 @@ FinancialPlanner.Controllers = (function() {
       SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Connect Bank Account');
     },
     importTransactions: function() {
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 30);
-      
-      const dateFormat = Utilities.formatDate(startDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      const endFormat = Utilities.formatDate(endDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      
-      const result = FinancialPlanner.PlaidService.getTransactions(dateFormat, endFormat);
-      const count = FinancialPlanner.PlaidService.importToSheet(result.transactions);
+      // Sync transactions using cursor-based API
+      const syncResults = FinancialPlanner.PlaidService.syncTransactions();
+      const count = FinancialPlanner.PlaidService.importToSheet(syncResults);
       
       return count;
     },

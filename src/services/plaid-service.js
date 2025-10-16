@@ -61,6 +61,101 @@ FinancialPlanner.PlaidService = (function() {
     return categoryMap[primaryCategory] || 'Extra';
   }
 
+  /**
+   * Gets the stored cursor for transaction sync.
+   * @private
+   * @returns {string|null} The stored cursor or null.
+   */
+  function getCursor() {
+    return PropertiesService.getScriptProperties().getProperty('PLAID_SYNC_CURSOR');
+  }
+
+  /**
+   * Saves the cursor for next transaction sync.
+   * @private
+   * @param {string} cursor - The cursor to save.
+   */
+  function saveCursor(cursor) {
+    PropertiesService.getScriptProperties().setProperty('PLAID_SYNC_CURSOR', cursor);
+  }
+
+  /**
+   * Helper function to safely convert value, handling null/undefined.
+   * @private
+   * @param {*} value - The value to convert.
+   * @param {*} defaultValue - The default value if null/undefined.
+   * @returns {*} The safe value.
+   */
+  function safeValue(value, defaultValue) {
+    return (value !== null && value !== undefined) ? value : defaultValue;
+  }
+
+  /**
+   * Helper function to stringify objects/arrays.
+   * @private
+   * @param {*} value - The value to stringify.
+   * @returns {string} The stringified value.
+   */
+  function stringify(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  /**
+   * Flattens a Plaid transaction object, expanding nested objects into separate fields.
+   * @private
+   * @param {object} tx - The transaction object to flatten.
+   * @returns {object} The flattened transaction object.
+   */
+  function flattenTransaction(tx) {
+    const flat = { ...tx };
+    
+    // Handle location nested object
+    if (tx.location) {
+      flat['location.address'] = tx.location.address;
+      flat['location.city'] = tx.location.city;
+      flat['location.region'] = tx.location.region;
+      flat['location.postal_code'] = tx.location.postal_code;
+      flat['location.country'] = tx.location.country;
+      flat['location.lat'] = tx.location.lat;
+      flat['location.lon'] = tx.location.lon;
+      flat['location.store_number'] = tx.location.store_number;
+      delete flat.location;
+    }
+    
+    // Handle payment_meta nested object
+    if (tx.payment_meta) {
+      flat['payment_meta.reference_number'] = tx.payment_meta.reference_number;
+      flat['payment_meta.ppd_id'] = tx.payment_meta.ppd_id;
+      flat['payment_meta.payee'] = tx.payment_meta.payee;
+      flat['payment_meta.by_order_of'] = tx.payment_meta.by_order_of;
+      flat['payment_meta.payer'] = tx.payment_meta.payer;
+      flat['payment_meta.payment_method'] = tx.payment_meta.payment_method;
+      flat['payment_meta.payment_processor'] = tx.payment_meta.payment_processor;
+      flat['payment_meta.reason'] = tx.payment_meta.reason;
+      delete flat.payment_meta;
+    }
+    
+    // Handle personal_finance_category nested object
+    if (tx.personal_finance_category) {
+      flat['personal_finance_category.primary'] = tx.personal_finance_category.primary;
+      flat['personal_finance_category.detailed'] = tx.personal_finance_category.detailed;
+      flat['personal_finance_category.confidence_level'] = tx.personal_finance_category.confidence_level;
+      delete flat.personal_finance_category;
+    }
+    
+    // Handle arrays - convert to comma-separated strings
+    if (Array.isArray(flat.category)) {
+      flat.category = flat.category.join(', ');
+    }
+    if (Array.isArray(flat.counterparties)) {
+      flat.counterparties = stringify(flat.counterparties);
+    }
+    
+    return flat;
+  }
+
   // Public API
   return {
     /**
@@ -156,14 +251,13 @@ FinancialPlanner.PlaidService = (function() {
     },
 
     /**
-     * Retrieves transactions from Plaid for a specified date range.
-     * @param {string} startDate - Start date in YYYY-MM-DD format.
-     * @param {string} endDate - End date in YYYY-MM-DD format.
-     * @returns {{transactions: Array<object>}} The transactions response.
+     * Syncs transactions from Plaid using the /transactions/sync endpoint.
+     * Uses cursor-based pagination to fetch all available transaction updates.
+     * @returns {{added: Array<object>, modified: Array<object>, removed: Array<object>}} Sync results with added, modified, and removed transactions.
      * @memberof FinancialPlanner.PlaidService
      */
-    getTransactions: function(startDate, endDate) {
-      const url = getApiUrl() + '/transactions/get';
+    syncTransactions: function() {
+      const url = getApiUrl() + '/transactions/sync';
       const credentials = getCredentials();
       const accessToken = PropertiesService.getScriptProperties().getProperty('PLAID_ACCESS_TOKEN');
       
@@ -174,145 +268,234 @@ FinancialPlanner.PlaidService = (function() {
         );
       }
       
-      const payload = {
-        client_id: credentials.clientId,
-        secret: credentials.secret,
-        access_token: accessToken,
-        start_date: startDate,
-        end_date: endDate
-      };
+      let allAdded = [];
+      let allModified = [];
+      let allRemoved = [];
+      let nextCursor;
+      let hasMore = true;
+      let currentCursor = getCursor(); // null for first sync = full history
       
       try {
-        const response = UrlFetchApp.fetch(url, {
-          method: 'post',
-          contentType: 'application/json',
-          payload: JSON.stringify(payload),
-          muteHttpExceptions: true
-        });
+        Logger.log('Starting transaction sync' + (currentCursor ? ' with cursor' : ' (full history)'));
         
-        const responseCode = response.getResponseCode();
-        const responseText = response.getContentText();
-        
-        if (responseCode !== 200) {
-          throw FinancialPlanner.ErrorService.create(
-            'Failed to fetch transactions from Plaid',
-            { responseCode: responseCode, response: responseText, severity: 'high' }
-          );
+        // Pagination loop to fetch all pages
+        while (hasMore) {
+          const payload = {
+            client_id: credentials.clientId,
+            secret: credentials.secret,
+            access_token: accessToken,
+            count: 500 // Maximum transactions per request
+          };
+          
+          // Add cursor if available
+          if (currentCursor) {
+            payload.cursor = currentCursor;
+          }
+          
+          const response = UrlFetchApp.fetch(url, {
+            method: 'post',
+            contentType: 'application/json',
+            payload: JSON.stringify(payload),
+            muteHttpExceptions: true
+          });
+          
+          const responseCode = response.getResponseCode();
+          const responseText = response.getContentText();
+          
+          if (responseCode !== 200) {
+            throw FinancialPlanner.ErrorService.create(
+              'Failed to sync transactions from Plaid',
+              { responseCode: responseCode, response: responseText, severity: 'high' }
+            );
+          }
+          
+          const data = JSON.parse(responseText);
+          
+          // Accumulate transaction updates
+          allAdded = allAdded.concat(data.added);
+          allModified = allModified.concat(data.modified);
+          allRemoved = allRemoved.concat(data.removed);
+          nextCursor = data.next_cursor;
+          hasMore = data.has_more;
+          
+          Logger.log('Fetched page: ' + data.added.length + ' added, ' + 
+                     data.modified.length + ' modified, ' + 
+                     data.removed.length + ' removed. Has more: ' + hasMore);
+          
+          // Update cursor for next iteration
+          if (hasMore) {
+            currentCursor = nextCursor;
+          }
         }
         
-        return JSON.parse(responseText);
+        // Save cursor for next sync
+        saveCursor(nextCursor);
+        Logger.log('Sync complete. Total: ' + allAdded.length + ' added, ' + 
+                   allModified.length + ' modified, ' + 
+                   allRemoved.length + ' removed');
+        
+        return {
+          added: allAdded,
+          modified: allModified,
+          removed: allRemoved
+        };
       } catch (error) {
-        FinancialPlanner.ErrorService.handle(error, 'Failed to fetch transactions from Plaid');
+        FinancialPlanner.ErrorService.handle(error, 'Failed to sync transactions from Plaid');
         throw error;
       }
     },
 
     /**
-     * Imports Plaid transactions to the Transactions sheet.
-     * Stores raw Plaid data without transformation.
-     * @param {Array<object>} transactions - Array of Plaid transaction objects.
-     * @returns {number} Number of transactions imported.
+     * Imports Plaid transaction sync results to the Transactions sheet.
+     * Handles added, modified, and removed transactions with dynamic column creation.
+     * @param {object} syncResults - Sync results with added, modified, and removed arrays.
+     * @returns {number} Number of transactions processed.
      * @memberof FinancialPlanner.PlaidService
      */
-    importToSheet: function(transactions) {
+    importToSheet: function(syncResults) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
       const sheetNames = FinancialPlanner.Config.getSheetNames();
       let transactionSheet = ss.getSheetByName(sheetNames.TRANSACTIONS);
       
-      if (!transactionSheet) {
-        Logger.log('Transactions sheet not found. Creating new sheet with headers...');
-        // Create the Transactions sheet with headers for raw Plaid data
-        // Based on Plaid API: https://plaid.com/docs/api/products/transactions/
-        transactionSheet = ss.insertSheet(sheetNames.TRANSACTIONS);
-        transactionSheet.getRange('A1:T1').setValues([[
-          'transaction_id',
-          'account_id',
-          'date',
-          'authorized_date',
-          'amount',
-          'iso_currency_code',
-          'unofficial_currency_code',
-          'name',
-          'merchant_name',
-          'payment_channel',
-          'category',
-          'category_id',
-          'personal_finance_category',
-          'transaction_type',
-          'pending',
-          'pending_transaction_id',
-          'account_owner',
-          'location',
-          'payment_meta',
-          'website'
-        ]]).setFontWeight('bold');
-        Logger.log('Transactions sheet created with Plaid raw data columns');
-      }
+      // Combine all transactions to check if there's anything to process
+      const allTransactions = [].concat(syncResults.added || [], syncResults.modified || []);
       
-      Logger.log('Processing ' + transactions.length + ' transactions from Plaid');
-      
-      // Helper function to safely convert value, handling null/undefined
-      function safeValue(value, defaultValue) {
-        return (value !== null && value !== undefined) ? value : defaultValue;
-      }
-      
-      // Helper function to stringify objects/arrays
-      function stringify(value) {
-        if (value === null || value === undefined) return '';
-        if (typeof value === 'object') return JSON.stringify(value);
-        return String(value);
-      }
-      
-      // Store raw Plaid transaction data without transformation
-      const dataToImport = transactions.map(function(tx) {
-        return [
-          safeValue(tx.transaction_id, ''),
-          safeValue(tx.account_id, ''),
-          tx.date ? new Date(tx.date) : '',
-          tx.authorized_date ? new Date(tx.authorized_date) : '',
-          safeValue(tx.amount, 0),
-          safeValue(tx.iso_currency_code, ''),
-          safeValue(tx.unofficial_currency_code, ''),
-          safeValue(tx.name, ''),
-          safeValue(tx.merchant_name, ''),
-          safeValue(tx.payment_channel, ''),
-          tx.category ? tx.category.join(', ') : '',
-          safeValue(tx.category_id, ''),
-          tx.personal_finance_category ? 
-            (safeValue(tx.personal_finance_category.primary, '') + ' > ' + 
-             safeValue(tx.personal_finance_category.detailed, '')) : '',
-          safeValue(tx.transaction_type, ''),
-          safeValue(tx.pending, false),
-          safeValue(tx.pending_transaction_id, ''),
-          safeValue(tx.account_owner, ''),
-          stringify(tx.location),
-          stringify(tx.payment_meta),
-          safeValue(tx.website, '')
-        ];
-      });
-      
-      if (dataToImport.length === 0) {
-        Logger.log('No transactions to import');
+      if (allTransactions.length === 0 && (!syncResults.removed || syncResults.removed.length === 0)) {
+        Logger.log('No transactions to process');
         return 0;
       }
       
-      // Log first transaction for debugging
-      if (transactions.length > 0) {
-        Logger.log('Sample raw transaction data from Plaid:');
-        Logger.log(JSON.stringify(transactions[0], null, 2));
-        Logger.log('Mapped to row data:');
-        Logger.log(JSON.stringify(dataToImport[0]));
+      Logger.log('Processing sync results: ' + 
+                 (syncResults.added ? syncResults.added.length : 0) + ' added, ' +
+                 (syncResults.modified ? syncResults.modified.length : 0) + ' modified, ' +
+                 (syncResults.removed ? syncResults.removed.length : 0) + ' removed');
+      
+      // Get or create headers from first transaction
+      let headers;
+      if (!transactionSheet || transactionSheet.getLastRow() === 0) {
+        // New sheet - create headers dynamically from first transaction
+        if (allTransactions.length > 0) {
+          const firstTx = allTransactions[0];
+          const flattened = flattenTransaction(firstTx);
+          headers = Object.keys(flattened);
+          headers.push('deleted'); // Add deleted flag column
+          
+          Logger.log('Creating new sheet with ' + headers.length + ' dynamic columns');
+          
+          if (!transactionSheet) {
+            transactionSheet = ss.insertSheet(sheetNames.TRANSACTIONS);
+          }
+          transactionSheet.getRange(1, 1, 1, headers.length)
+            .setValues([headers])
+            .setFontWeight('bold');
+        } else {
+          Logger.log('No transactions to create headers from');
+          return 0;
+        }
+      } else {
+        // Existing sheet - use existing headers
+        headers = transactionSheet.getRange(1, 1, 1, transactionSheet.getLastColumn()).getValues()[0];
+        Logger.log('Using existing headers: ' + headers.length + ' columns');
       }
       
-      // Append to sheet
-      const lastRow = transactionSheet.getLastRow();
-      const targetRange = transactionSheet.getRange(lastRow + 1, 1, dataToImport.length, 20);
-      targetRange.setValues(dataToImport);
+      const txIdIndex = headers.indexOf('transaction_id');
       
-      Logger.log('Successfully imported ' + dataToImport.length + ' raw transactions starting at row ' + (lastRow + 1));
-      Logger.log('Data written to range: ' + targetRange.getA1Notation());
+      if (txIdIndex === -1) {
+        throw FinancialPlanner.ErrorService.create(
+          'transaction_id column not found in sheet headers',
+          { severity: 'high' }
+        );
+      }
       
-      return dataToImport.length;
+      // Process added transactions (simple append)
+      if (syncResults.added && syncResults.added.length > 0) {
+        Logger.log('Adding ' + syncResults.added.length + ' new transactions');
+        
+        const addedRows = syncResults.added.map(function(tx) {
+          const flattened = flattenTransaction(tx);
+          return headers.map(function(header) {
+            if (header === 'deleted') {
+              return false;
+            }
+            const value = flattened[header];
+            // Parse date fields
+            if ((header.includes('date') || header.includes('datetime')) && value) {
+              return new Date(value);
+            }
+            return safeValue(value, '');
+          });
+        });
+        
+        const lastRow = transactionSheet.getLastRow();
+        transactionSheet.getRange(lastRow + 1, 1, addedRows.length, headers.length)
+          .setValues(addedRows);
+        Logger.log('Added transactions at row ' + (lastRow + 1));
+      }
+      
+      // Process modified and removed transactions (single sheet scan for efficiency)
+      if ((syncResults.modified && syncResults.modified.length > 0) || 
+          (syncResults.removed && syncResults.removed.length > 0)) {
+        
+        Logger.log('Processing ' + 
+                   (syncResults.modified ? syncResults.modified.length : 0) + ' modified and ' +
+                   (syncResults.removed ? syncResults.removed.length : 0) + ' removed transactions');
+        
+        const data = transactionSheet.getDataRange().getValues();
+        const modifiedMap = {};
+        const removedSet = new Set();
+        
+        // Build lookup maps
+        if (syncResults.modified) {
+          syncResults.modified.forEach(function(tx) {
+            modifiedMap[tx.transaction_id] = tx;
+          });
+        }
+        
+        if (syncResults.removed) {
+          syncResults.removed.forEach(function(tx) {
+            removedSet.add(tx.transaction_id);
+          });
+        }
+        
+        // Single pass through sheet to update rows
+        for (let i = 1; i < data.length; i++) {
+          const rowTxId = data[i][txIdIndex];
+          
+          // Update modified transactions
+          if (modifiedMap[rowTxId]) {
+            const tx = modifiedMap[rowTxId];
+            const flattened = flattenTransaction(tx);
+            const rowData = headers.map(function(header) {
+              if (header === 'deleted') {
+                return false; // Reset deleted flag for modified transactions
+              }
+              const value = flattened[header];
+              if ((header.includes('date') || header.includes('datetime')) && value) {
+                return new Date(value);
+              }
+              return safeValue(value, '');
+            });
+            transactionSheet.getRange(i + 1, 1, 1, headers.length).setValues([rowData]);
+          }
+          
+          // Mark removed transactions
+          if (removedSet.has(rowTxId)) {
+            const deletedColIndex = headers.indexOf('deleted') + 1;
+            if (deletedColIndex > 0) {
+              transactionSheet.getRange(i + 1, deletedColIndex).setValue(true);
+            }
+          }
+        }
+        
+        Logger.log('Updated existing transactions');
+      }
+      
+      const totalProcessed = (syncResults.added ? syncResults.added.length : 0) +
+                             (syncResults.modified ? syncResults.modified.length : 0) +
+                             (syncResults.removed ? syncResults.removed.length : 0);
+      
+      Logger.log('Successfully processed ' + totalProcessed + ' transactions');
+      return totalProcessed;
     }
   };
 })();
