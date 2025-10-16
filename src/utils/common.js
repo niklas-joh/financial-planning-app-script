@@ -6,6 +6,10 @@
  * @module utils/common
  */
 
+// Ensure the global FinancialPlanner namespace exists
+// eslint-disable-next-line no-var, vars-on-top
+var FinancialPlanner = FinancialPlanner || {};
+
 /**
  * @namespace FinancialPlanner.Utils
  * @description Provides common utility functions used across the Financial Planning Tools application,

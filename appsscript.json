@@ -20,37 +20,27 @@
   },
   "files": [
     {
-      "name": "src/core/namespace",
-      "type": "server_js",
-      "source": "javascript"
-    },
-    {
       "name": "src/core/config",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/core/ui-service",
+      "name": "src/services/ui-service",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/core/error-service",
+      "name": "src/services/error-service",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/core/cache-service",
+      "name": "src/services/cache-service",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/core/controllers",
-      "type": "server_js",
-      "source": "javascript"
-    },
-    {
-      "name": "src/core/settings-service",
+      "name": "src/services/settings-service",
       "type": "server_js",
       "source": "javascript"
     },
@@ -60,42 +50,27 @@
       "source": "javascript"
     },
     {
-      "name": "src/index",
+      "name": "src/services/formula-builder",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/main",
+      "name": "src/services/sheet-builder",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/services/finance_overview",
+      "name": "src/services/metrics-calculator",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/services/financial_analysis",
+      "name": "src/services/data_processor",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/services/monthly_spending_report",
-      "type": "server_js",
-      "source": "javascript"
-    },
-    {
-      "name": "src/services/reports",
-      "type": "server_js",
-      "source": "javascript"
-    },
-    {
-      "name": "src/services/settings",
-      "type": "server_js",
-      "source": "javascript"
-    },
-    {
-      "name": "src/services/visualizations",
+      "name": "src/services/plaid-service",
       "type": "server_js",
       "source": "javascript"
     },
@@ -105,12 +80,42 @@
       "source": "javascript"
     },
     {
-      "name": "src/tests/testing-framework",
+      "name": "src/features/financial-overview/finance_overview",
       "type": "server_js",
       "source": "javascript"
     },
     {
-      "name": "src/tests/utils.test",
+      "name": "src/features/financial-analysis/financial_analysis",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/reports/monthly_spending_report",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/reports/reports",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/features/visualizations/visualizations",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/00_module_loader",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/controllers",
+      "type": "server_js",
+      "source": "javascript"
+    },
+    {
+      "name": "src/core/index",
       "type": "server_js",
       "source": "javascript"
     }
