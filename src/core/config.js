@@ -1,20 +1,19 @@
 /**
  * @fileoverview Configuration Module for Financial Planning Tools.
  * Provides centralized configuration settings for the application.
- * This module is designed to be instantiated by the 00_module_loader.js.
+ * @module core/config
  */
 
-// This self-executing function encapsulates the module's private scope
-// and returns the constructor function. This pattern is used to keep
-// DEFAULT_CONFIG and mergeConfig private to the ConfigModule instances.
+// Ensure the global FinancialPlanner namespace exists
+// eslint-disable-next-line no-var, vars-on-top
+var FinancialPlanner = FinancialPlanner || {};
 
 /**
- * @module core/config
- * @description IIFE for ConfigModule. Encapsulates private members and returns the constructor.
- * This pattern ensures that DEFAULT_CONFIG and mergeConfig are private to ConfigModule instances.
+ * Configuration Service - Provides centralized configuration management.
+ * Uses IIFE to keep DEFAULT_CONFIG private via closure.
+ * @namespace FinancialPlanner.Config
  */
-// eslint-disable-next-line no-unused-vars
-const ConfigModule = (function() {
+FinancialPlanner.Config = (function() {
   /**
    * @const {object} DEFAULT_CONFIG
    * @private
@@ -226,118 +225,102 @@ const ConfigModule = (function() {
     return newTarget;
   }
 
-  /**
-   * Constructor for the ConfigModule.
-   * Initializes user-specific configuration.
-   * @constructor
-   */
-  function ConfigModuleConstructor() {
-    this.userConfig = {};
-    // All public methods will be attached to 'this' or its prototype.
-  }
+  // User-specific configuration (can be overridden)
+  let userConfig = {};
 
-  /**
-   * Retrieves the complete, merged configuration object (defaults merged with user overrides).
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @returns {object} The fully merged configuration object.
-   */
-  ConfigModuleConstructor.prototype.get = function() {
-    let currentConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG)); // Start with a fresh copy of defaults
-    currentConfig = mergeConfig(currentConfig, this.userConfig);
-    return currentConfig;
+  // Public API
+  return {
+    /**
+     * Retrieves the complete, merged configuration object (defaults merged with user overrides).
+     * @returns {object} The fully merged configuration object.
+     * @memberof FinancialPlanner.Config
+     */
+    get: function() {
+      let currentConfig = JSON.parse(JSON.stringify(DEFAULT_CONFIG)); // Start with a fresh copy of defaults
+      currentConfig = mergeConfig(currentConfig, userConfig);
+      return currentConfig;
+    },
+
+    /**
+     * Retrieves a specific section of the configuration.
+     * @param {string} section - The key of the configuration section to retrieve (e.g., 'SHEETS', 'UI').
+     * @returns {object} The configuration object for the specified section, or an empty object if not found.
+     * @memberof FinancialPlanner.Config
+     */
+    getSection: function(section) {
+      const config = this.get();
+      return config[section] || {};
+    },
+
+    /**
+     * Retrieves the sheet names configuration.
+     * @returns {object} An object mapping internal sheet identifiers to their display names.
+     * @memberof FinancialPlanner.Config
+     */
+    getSheetNames: function() {
+      return this.getSection('SHEETS');
+    },
+
+    /**
+     * Retrieves the transaction types configuration.
+     * @returns {object} An object defining the different types of financial transactions.
+     * @memberof FinancialPlanner.Config
+     */
+    getTransactionTypes: function() {
+      return this.getSection('TRANSACTION_TYPES');
+    },
+
+    /**
+     * Retrieves the target rates for financial planning (e.g., savings rate, expense ratios).
+     * @returns {object} An object mapping financial categories to their target percentage rates.
+     * @memberof FinancialPlanner.Config
+     */
+    getTargetRates: function() {
+      return this.getSection('TARGET_RATES');
+    },
+
+    /**
+     * Retrieves UI-specific configuration settings.
+     * @returns {object} An object containing UI settings like column widths, toggle labels, etc.
+     * @memberof FinancialPlanner.Config
+     */
+    getUI: function() {
+      return this.getSection('UI');
+    },
+
+    /**
+     * Retrieves color configurations for UI elements and charts.
+     * @returns {object} An object defining color palettes for various application components.
+     * @memberof FinancialPlanner.Config
+     */
+    getColors: function() {
+      return this.getSection('COLORS');
+    },
+
+    /**
+     * Retrieves locale-specific settings like currency symbol and date formats.
+     * @returns {object} An object containing localization settings.
+     * @memberof FinancialPlanner.Config
+     */
+    getLocale: function() {
+      return this.getSection('LOCALE');
+    },
+
+    /**
+     * Updates the user-specific configuration by merging new settings.
+     * @param {object} configToUpdate - An object containing configuration settings to merge into the user config.
+     * @memberof FinancialPlanner.Config
+     */
+    update: function(configToUpdate) {
+      userConfig = mergeConfig(userConfig, configToUpdate);
+    },
+
+    /**
+     * Resets the user-specific configuration to an empty object, effectively reverting to default settings.
+     * @memberof FinancialPlanner.Config
+     */
+    reset: function() {
+      userConfig = {};
+    }
   };
-
-  /**
-   * Retrieves a specific section of the configuration.
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @param {string} section - The key of the configuration section to retrieve (e.g., 'SHEETS', 'UI').
-   * @returns {object} The configuration object for the specified section, or an empty object if not found.
-   */
-  ConfigModuleConstructor.prototype.getSection = function(section) {
-    const config = this.get();
-    return config[section] || {};
-  };
-
-  /**
-   * Retrieves the sheet names configuration.
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @returns {object} An object mapping internal sheet identifiers to their display names.
-   */
-  ConfigModuleConstructor.prototype.getSheetNames = function() {
-    return this.getSection('SHEETS');
-  };
-
-  /**
-   * Retrieves the transaction types configuration.
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @returns {object} An object defining the different types of financial transactions.
-   */
-  ConfigModuleConstructor.prototype.getTransactionTypes = function() {
-    return this.getSection('TRANSACTION_TYPES');
-  };
-
-  /**
-   * Retrieves the target rates for financial planning (e.g., savings rate, expense ratios).
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @returns {object} An object mapping financial categories to their target percentage rates.
-   */
-  ConfigModuleConstructor.prototype.getTargetRates = function() {
-    return this.getSection('TARGET_RATES');
-  };
-
-  /**
-   * Retrieves UI-specific configuration settings.
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @returns {object} An object containing UI settings like column widths, toggle labels, etc.
-   */
-  ConfigModuleConstructor.prototype.getUI = function() {
-    return this.getSection('UI');
-  };
-
-  /**
-   * Retrieves color configurations for UI elements and charts.
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @returns {object} An object defining color palettes for various application components.
-   */
-  ConfigModuleConstructor.prototype.getColors = function() {
-    return this.getSection('COLORS');
-  };
-
-  /**
-   * Retrieves locale-specific settings like currency symbol and date formats.
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @returns {object} An object containing localization settings.
-   */
-  ConfigModuleConstructor.prototype.getLocale = function() {
-    return this.getSection('LOCALE');
-  };
-
-  /**
-   * Updates the user-specific configuration by merging new settings.
-   * @memberof ConfigModuleConstructor
-   * @instance
-   * @param {object} configToUpdate - An object containing configuration settings to merge into the user config.
-   */
-  ConfigModuleConstructor.prototype.update = function(configToUpdate) {
-    this.userConfig = mergeConfig(this.userConfig, configToUpdate);
-  };
-
-  /**
-   * Resets the user-specific configuration to an empty object, effectively reverting to default settings.
-   * @memberof ConfigModuleConstructor
-   * @instance
-   */
-  ConfigModuleConstructor.prototype.reset = function() {
-    this.userConfig = {};
-  };
-
-  return ConfigModuleConstructor;
 })();

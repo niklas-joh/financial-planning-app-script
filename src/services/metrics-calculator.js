@@ -2,44 +2,30 @@
  * @fileoverview Metrics Calculator Service for Financial Planning Tools.
  * Centralizes common financial metric calculations such as savings rate,
  * expense rates, variance, percentage change, and more.
- * This module is designed to be instantiated by `00_module_loader.js`.
  * @module services/metrics-calculator
  */
 
-/**
- * IIFE to encapsulate the MetricsCalculatorModule logic.
- * @returns {function} The MetricsCalculatorModule constructor.
- */
-// eslint-disable-next-line no-unused-vars
-const MetricsCalculatorModule = (function() {
-  /**
-   * Constructor for the MetricsCalculatorModule.
-   * @param {ConfigModule} configInstance - An instance of ConfigModule, used for locale-specific formatting.
-   * @constructor
-   * @alias MetricsCalculatorModule
-   * @memberof module:services/metrics-calculator
-   */
-  function MetricsCalculatorModuleConstructor(configInstance) {
-    /**
-     * Instance of ConfigModule.
-     * @type {ConfigModule}
-     * @private
-     */
-    this.config = configInstance;
-  }
+// Ensure the global FinancialPlanner namespace exists
+// eslint-disable-next-line no-var, vars-on-top
+var FinancialPlanner = FinancialPlanner || {};
 
+/**
+ * Metrics Calculator Service - Provides common financial metric calculations.
+ * @namespace FinancialPlanner.MetricsCalculator
+ */
+FinancialPlanner.MetricsCalculator = {
   /**
    * Calculates the savings rate.
    * Savings rate is defined as (Total Savings / Total Income).
    * @param {number} income - Total income. Must be non-negative.
    * @param {number} savings - Total savings.
    * @returns {number} The savings rate as a decimal (e.g., 0.1 for 10%). Returns 0 if income is 0.
-   * @memberof MetricsCalculatorModule
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculateSavingsRate = function(income, savings) {
+  calculateSavingsRate: function(income, savings) {
     if (income === 0) return 0;
     return savings / income;
-  };
+  },
 
   /**
    * Calculates the expense rate for a given expense amount relative to total income.
@@ -47,12 +33,12 @@ const MetricsCalculatorModule = (function() {
    * @param {number} expense - The expense amount. Can be positive or negative; its absolute value is used.
    * @param {number} income - Total income. Must be non-negative.
    * @returns {number} The expense rate as a decimal (e.g., 0.2 for 20%). Returns 0 if income is 0.
-   * @memberof MetricsCalculatorModule
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculateExpenseRate = function(expense, income) {
+  calculateExpenseRate: function(expense, income) {
     if (income === 0) return 0;
     return Math.abs(expense) / income;
-  };
+  },
 
   /**
    * Calculates the variance between an actual value and a target value.
@@ -60,11 +46,11 @@ const MetricsCalculatorModule = (function() {
    * @param {number} actual - The actual observed value.
    * @param {number} target - The target or budgeted value.
    * @returns {number} The difference between actual and target.
-   * @memberof MetricsCalculatorModule
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculateVariance = function(actual, target) {
+  calculateVariance: function(actual, target) {
     return actual - target;
-  };
+  },
 
   /**
    * Calculates the percentage change between a current value and a previous value.
@@ -73,12 +59,12 @@ const MetricsCalculatorModule = (function() {
    * @param {number} previous - The previous value.
    * @returns {number} The percentage change as a decimal (e.g., 0.05 for 5% increase).
    *   Returns 1 (100%) if previous is 0 and current is positive, 0 otherwise if previous is 0.
-   * @memberof MetricsCalculatorModule
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculatePercentageChange = function(current, previous) {
+  calculatePercentageChange: function(current, previous) {
     if (previous === 0) return current > 0 ? 1 : 0;
     return (current - previous) / previous;
-  };
+  },
 
   /**
    * Calculates net income (or loss).
@@ -86,11 +72,11 @@ const MetricsCalculatorModule = (function() {
    * @param {number} income - Total income.
    * @param {number} expenses - Total expenses (conventionally a negative value).
    * @returns {number} The net income.
-   * @memberof MetricsCalculatorModule
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculateNetIncome = function(income, expenses) {
+  calculateNetIncome: function(income, expenses) {
     return income + expenses; // expenses are negative
-  };
+  },
 
   /**
    * Calculates allocatable income, often used in budgeting.
@@ -101,11 +87,11 @@ const MetricsCalculatorModule = (function() {
    * @param {number} wants - Total discretionary expenses (wants, typically a negative value).
    * @param {number} savings - Total amount allocated to savings (typically a positive value).
    * @returns {number} The remaining allocatable income.
-   * @memberof MetricsCalculatorModule
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculateAllocatableIncome = function(income, essentials, wants, savings) {
+  calculateAllocatableIncome: function(income, essentials, wants, savings) {
     return income + essentials + wants - savings;
-  };
+  },
 
   /**
    * Aggregates transactions by a specified category field.
@@ -118,10 +104,10 @@ const MetricsCalculatorModule = (function() {
    * @returns {Object<string, {count: number, total: number, transactions: Array<object>, average: number}>}
    *   An object where keys are the unique values from `categoryField` and values are objects
    *   containing `count`, `total` amount, an array of `transactions`, and `average` amount for that category.
-   * @memberof MetricsCalculatorModule
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.aggregateByCategory = function(transactions, categoryField) {
-    return transactions.reduce((acc, transaction) => {
+  aggregateByCategory: function(transactions, categoryField) {
+    return transactions.reduce(function(acc, transaction) {
       const category = transaction[categoryField];
       if (!acc[category]) {
         acc[category] = { 
@@ -137,24 +123,21 @@ const MetricsCalculatorModule = (function() {
       acc[category].average = acc[category].total / acc[category].count;
       return acc;
     }, {});
-  };
+  },
 
   /**
    * Calculates a trend indicator based on current and previous values and defined thresholds.
    * @param {number} current - The current period's value.
    * @param {number} previous - The previous period's value.
-   * @param {{increase: number, decrease: number}} [thresholds={increase: 0.1, decrease: -0.1}] -
+   * @param {{increase: number, decrease: number}} [thresholds] -
    *   Optional. An object defining the percentage change thresholds for 'up' and 'down' trends.
    *   `increase` should be positive (e.g., 0.1 for +10%), `decrease` should be negative (e.g., -0.1 for -10%).
    * @returns {{direction: 'up'|'down'|'stable', percentage: number, indicator: string, color: string}}
-   *   An object describing the trend:
-   *   - `direction`: 'up', 'down', or 'stable'.
-   *   - `percentage`: The calculated percentage change (absolute for 'down' trend).
-   *   - `indicator`: A visual indicator ('↑', '↓', '→').
-   *   - `color`: A hex color code representing the trend (e.g., red for increase, green for decrease).
-   * @memberof MetricsCalculatorModule
+   *   An object describing the trend.
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculateTrend = function(current, previous, thresholds = { increase: 0.1, decrease: -0.1 }) {
+  calculateTrend: function(current, previous, thresholds) {
+    thresholds = thresholds || { increase: 0.1, decrease: -0.1 };
     const change = this.calculatePercentageChange(current, previous);
     
     if (change > thresholds.increase) {
@@ -179,22 +162,16 @@ const MetricsCalculatorModule = (function() {
         color: '#666666' // Gray for stable
       };
     }
-  };
+  },
 
   /**
    * Validates a set of financial metrics against common sense rules.
-   * @param {object} metrics - An object containing financial metrics to validate. Expected properties might include:
-   *   - `income`: Total income.
-   *   - `savingsRate`: Calculated savings rate.
-   *   - `expenseRates`: An object where keys are expense categories and values are their rates.
+   * @param {object} metrics - An object containing financial metrics to validate.
    * @returns {{valid: boolean, errors: Array<string>, warnings: Array<string>}}
-   *   An object containing:
-   *   - `valid`: True if no errors were found, false otherwise.
-   *   - `errors`: An array of error message strings.
-   *   - `warnings`: An array of warning message strings.
-   * @memberof MetricsCalculatorModule
+   *   An object containing validation results.
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.validateMetrics = function(metrics) {
+  validateMetrics: function(metrics) {
     const errors = [];
     const warnings = [];
     
@@ -211,7 +188,7 @@ const MetricsCalculatorModule = (function() {
     }
     
     const totalExpenseRate = Object.values(metrics.expenseRates || {})
-      .reduce((sum, rate) => sum + rate, 0);
+      .reduce(function(sum, rate) { return sum + rate; }, 0);
       
     if (totalExpenseRate > 1) {
       warnings.push('Total expense rate exceeds 100%');
@@ -222,65 +199,60 @@ const MetricsCalculatorModule = (function() {
       errors: errors,
       warnings: warnings
     };
-  };
+  },
 
   /**
    * Formats a numeric value as a currency string based on locale settings from ConfigModule.
    * @param {number} value - The numeric value to format.
-   * @param {{symbol?: string, decimals?: number}} [options={}] - Optional formatting options.
-   *   - `symbol`: Override the default currency symbol from locale.
-   *   - `decimals`: Override the default number of decimal places (default is 0).
+   * @param {{symbol?: string, decimals?: number}} [options] - Optional formatting options.
    * @returns {string} The formatted currency string (e.g., "$1,234", "€-50.00").
-   * @memberof MetricsCalculatorModule
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.formatCurrency = function(value, options = {}) {
-    const locale = this.config.getLocale();
+  formatCurrency: function(value, options) {
+    options = options || {};
+    const locale = FinancialPlanner.Config.getLocale();
     const symbol = options.symbol || locale.CURRENCY_SYMBOL;
     const decimals = options.decimals !== undefined ? options.decimals : 0;
     
     const formatted = Math.abs(value).toFixed(decimals);
     const sign = value < 0 ? '-' : '';
     
-    return `${sign}${symbol}${formatted}`;
-  };
+    return sign + symbol + formatted;
+  },
 
   /**
    * Calculates the running total for an array of numeric values.
    * @param {Array<number>} values - An array of numbers.
-   * @returns {Array<number>} An array of the same length, where each element
-   *   is the cumulative sum up to that point in the input array.
-   * @memberof MetricsCalculatorModule
+   * @returns {Array<number>} An array of cumulative sums.
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculateRunningTotals = function(values) {
+  calculateRunningTotals: function(values) {
     let runningTotal = 0;
-    return values.map(value => {
+    return values.map(function(value) {
       runningTotal += value;
       return runningTotal;
     });
-  };
+  },
 
   /**
    * Calculates the moving average for an array of numeric values over a specified period.
    * @param {Array<number>} values - An array of numbers.
    * @param {number} period - The number of values to include in each average calculation (window size).
-   * @returns {Array<number|null>} An array of moving averages. Elements before the first
-   *   full period will be `null`.
-   * @memberof MetricsCalculatorModule
+   * @returns {Array<number|null>} An array of moving averages.
+   * @memberof FinancialPlanner.MetricsCalculator
    */
-  MetricsCalculatorModuleConstructor.prototype.calculateMovingAverage = function(values, period) {
+  calculateMovingAverage: function(values, period) {
     const movingAverages = [];
     
     for (let i = 0; i < values.length; i++) {
       if (i < period - 1) {
         movingAverages.push(null);
       } else {
-        const sum = values.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0);
+        const sum = values.slice(i - period + 1, i + 1).reduce(function(a, b) { return a + b; }, 0);
         movingAverages.push(sum / period);
       }
     }
     
     return movingAverages;
-  };
-
-  return MetricsCalculatorModuleConstructor;
-})();
+  }
+};
