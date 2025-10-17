@@ -157,9 +157,19 @@ FinancialPlanner.PlaidService = (function() {
     if (Array.isArray(flat.category)) {
       flat.category = flat.category.join(', ');
     }
-    if (Array.isArray(flat.counterparties)) {
-      flat.counterparties = stringify(flat.counterparties);
+    
+    // Handle counterparties array - flatten first counterparty
+    if (Array.isArray(flat.counterparties) && flat.counterparties.length > 0) {
+      const firstCounterparty = flat.counterparties[0];
+      flat['counterparties.name'] = firstCounterparty.name;
+      flat['counterparties.type'] = firstCounterparty.type;
+      flat['counterparties.confidence_level'] = firstCounterparty.confidence_level;
+      flat['counterparties.logo_url'] = firstCounterparty.logo_url;
+      flat['counterparties.website'] = firstCounterparty.website;
+      flat['counterparties.entity_id'] = firstCounterparty.entity_id;
+      flat['counterparties.phone_number'] = firstCounterparty.phone_number;
     }
+    delete flat.counterparties;
     
     return flat;
   }
