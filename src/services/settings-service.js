@@ -176,6 +176,31 @@ FinancialPlanner.SettingsService = (function() {
     },
 
     /**
+     * Gets the current Plaid environment setting.
+     * @returns {string} The current environment ('sandbox' or 'production'). Defaults to 'sandbox'.
+     * @memberof FinancialPlanner.SettingsService
+     */
+    getPlaidEnvironment: function() {
+      return this.getValue('PlaidEnvironment', 'sandbox');
+    },
+
+    /**
+     * Sets the Plaid environment preference.
+     * @param {string} environment - The environment to set ('sandbox' or 'production').
+     * @throws {Error} If the environment is invalid.
+     * @memberof FinancialPlanner.SettingsService
+     */
+    setPlaidEnvironment: function(environment) {
+      if (environment !== 'sandbox' && environment !== 'production') {
+        throw FinancialPlanner.ErrorService.create(
+          'Invalid environment. Must be "sandbox" or "production"',
+          { severity: 'high', providedValue: environment }
+        );
+      }
+      this.setValue('PlaidEnvironment', environment);
+    },
+
+    /**
      * Retrieves all preferences stored in the settings sheet as an object.
      * @returns {Object<string, *>} An object where keys are preference names and values are their stored values.
      *   Returns an empty object if an error occurs.

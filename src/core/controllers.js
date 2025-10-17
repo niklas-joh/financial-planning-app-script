@@ -137,6 +137,29 @@ FinancialPlanner.Controllers = (function() {
       }
       return true;
     },
+    switchPlaidEnvironment: function() {
+      const current = FinancialPlanner.SettingsService.getPlaidEnvironment();
+      const newEnv = current === 'sandbox' ? 'production' : 'sandbox';
+      
+      const ui = SpreadsheetApp.getUi();
+      const response = ui.alert(
+        'Switch Plaid Environment',
+        'You are about to switch from ' + current.toUpperCase() + ' to ' + newEnv.toUpperCase() + '.\\n\\n' +
+        '⚠️ WARNING:\\n' +
+        '• This will use different API credentials\\n' +
+        '• Connected bank accounts are environment-specific\\n' +
+        '• Transaction sync cursors are kept separate\\n' +
+        '• Mixing data from different environments is not recommended\\n\\n' +
+        'Are you sure you want to continue?',
+        ui.ButtonSet.YES_NO
+      );
+      
+      if (response === ui.Button.YES) {
+        FinancialPlanner.SettingsService.setPlaidEnvironment(newEnv);
+        return newEnv;
+      }
+      return current;
+    },
     suggestSavingsOpportunities: function() { console.log("Suggesting savings..."); },
     detectSpendingAnomalies: function() { console.log("Detecting anomalies..."); },
     analyzeFixedVsVariableExpenses: function() { console.log("Analyzing fixed vs variable..."); },
@@ -163,6 +186,7 @@ FinancialPlanner.Controllers = (function() {
     createCategoryPieChart_Wrapped: wrapWithFeedback(coreLogic.createCategoryPieChart, 'Creating category pie chart...', 'Category pie chart created successfully!', 'Failed to create category pie chart'),
     toggleShowSubCategories_Wrapped: wrapWithFeedback(coreLogic.toggleShowSubCategories, 'Updating display preferences...', 'Display preferences updated successfully!', 'Failed to update display preferences'),
     refreshCache_Wrapped: wrapWithFeedback(coreLogic.refreshCache, 'Refreshing all caches...', 'Caches refreshed successfully!', 'Failed to refresh one or more caches'),
+    switchPlaidEnvironment_Wrapped: wrapWithFeedback(coreLogic.switchPlaidEnvironment, null, 'Environment switched successfully!', 'Failed to switch environment'),
     suggestSavingsOpportunities_Wrapped: wrapWithFeedback(coreLogic.suggestSavingsOpportunities, 'Working...', 'Coming soon!', 'Operation failed'),
     detectSpendingAnomalies_Wrapped: wrapWithFeedback(coreLogic.detectSpendingAnomalies, 'Working...', 'Coming soon!', 'Operation failed'),
     analyzeFixedVsVariableExpenses_Wrapped: wrapWithFeedback(coreLogic.analyzeFixedVsVariableExpenses, 'Working...', 'Coming soon!', 'Operation failed'),
@@ -180,7 +204,11 @@ FinancialPlanner.Controllers = (function() {
           .addSubMenu(ui.createMenu('🏦 Bank Integration')
             .addItem('🔗 Connect Bank Account', 'connectBankAccount_Global')
             .addItem('📥 Import Transactions', 'importTransactions_Global')
-            .addItem('🔄 Reset & Import All', 'resetAndImportAllTransactions_Global'))
+            .addItem('🔄 Reset & Import All', 'resetAndImportAllTransactions_Global')
+            .addSeparator()
+            .addItem('🔄 Switch Environment (Current: ' + 
+              FinancialPlanner.SettingsService.getPlaidEnvironment().toUpperCase() + ')', 
+              'switchPlaidEnvironment_Global'))
           .addSeparator()
           .addSubMenu(ui.createMenu('📋 Reports')
             .addItem('📝 Monthly Spending Report', 'generateMonthlySpendingReport_Global')
@@ -221,15 +249,10 @@ FinancialPlanner.Controllers = (function() {
         const sheet = e.range.getSheet();
         const sheetName = sheet.getName();
         const overviewSheetName = FinancialPlanner.Config.getSheetNames().OVERVIEW;
-        const transactionsSheetName = FinancialPlanner.Config.getSheetNames().TRANSACTIONS;
 
         if (sheetName === overviewSheetName) {
           if (FinancialPlanner.FinanceOverview && FinancialPlanner.FinanceOverview.handleEdit) {
             FinancialPlanner.FinanceOverview.handleEdit(e);
-          }
-        } else if (sheetName === transactionsSheetName) {
-          if (FinancialPlanner.DropdownService && FinancialPlanner.DropdownService.handleEdit) {
-            FinancialPlanner.DropdownService.handleEdit(e);
           }
         }
       } catch (error) {
@@ -302,6 +325,7 @@ createGlobalControllerAction('analyzeFixedVsVariableExpenses');
 createGlobalControllerAction('generateCashFlowForecast');
 createGlobalControllerAction('setBudgetTargets');
 createGlobalControllerAction('setupEmailReports');
+createGlobalControllerAction('switchPlaidEnvironment');
 
 // Log successful initialization
 Logger.log('FinancialPlanner modules loaded successfully. Version: ' + FinancialPlanner.VERSION);

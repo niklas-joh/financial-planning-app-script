@@ -186,8 +186,13 @@ FinancialPlanner.Config = (function() {
     },
     /** @property {object} PLAID Plaid integration settings. */
     PLAID: {
-      /** @property {string} API_URL The Plaid API base URL (sandbox by default). */
-      API_URL: 'https://sandbox.plaid.com',
+      /** @property {object} ENVIRONMENTS Plaid API base URLs for different environments. */
+      ENVIRONMENTS: {
+        SANDBOX: 'https://sandbox.plaid.com',
+        PRODUCTION: 'https://production.plaid.com'
+      },
+      /** @property {string} DEFAULT_ENVIRONMENT The default Plaid environment (sandbox for safety). */
+      DEFAULT_ENVIRONMENT: 'sandbox',
       /** 
        * @property {object} CATEGORY_MAP Mapping of Plaid categories to application transaction types.
        * Maps Plaid's primary category to the app's Type field.

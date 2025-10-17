@@ -19,24 +19,27 @@ FinancialPlanner.PlaidService = (function() {
    * @returns {string} The Plaid API base URL.
    */
   function getApiUrl() {
-    const plaidConfig = FinancialPlanner.Config.getSection('PLAID');
-    return plaidConfig.API_URL || 'https://sandbox.plaid.com';
+    const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
+    const envUrls = FinancialPlanner.Config.getSection('PLAID').ENVIRONMENTS;
+    return env === 'production' ? envUrls.PRODUCTION : envUrls.SANDBOX;
   }
 
   /**
-   * Gets API credentials from Script Properties.
+   * Gets API credentials from Script Properties for the current environment.
    * @private
    * @returns {{clientId: string, secret: string}} The Plaid credentials.
    * @throws {Error} If credentials are not configured.
    */
   function getCredentials() {
+    const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
+    const prefix = 'PLAID_' + env.toUpperCase() + '_';
     const props = PropertiesService.getScriptProperties();
-    const clientId = props.getProperty('PLAID_CLIENT_ID');
-    const secret = props.getProperty('PLAID_SECRET');
+    const clientId = props.getProperty(prefix + 'CLIENT_ID');
+    const secret = props.getProperty(prefix + 'SECRET');
     
     if (!clientId || !secret) {
       throw FinancialPlanner.ErrorService.create(
-        'Plaid credentials not configured. Please set PLAID_CLIENT_ID and PLAID_SECRET in Script Properties.',
+        'Plaid credentials not configured for ' + env + ' environment. Please set ' + prefix + 'CLIENT_ID and ' + prefix + 'SECRET in Script Properties.',
         { severity: 'high' }
       );
     }
@@ -62,29 +65,35 @@ FinancialPlanner.PlaidService = (function() {
   }
 
   /**
-   * Gets the stored cursor for transaction sync.
+   * Gets the stored cursor for transaction sync for the current environment.
    * @private
    * @returns {string|null} The stored cursor or null.
    */
   function getCursor() {
-    return PropertiesService.getScriptProperties().getProperty('PLAID_SYNC_CURSOR');
+    const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
+    const key = 'PLAID_' + env.toUpperCase() + '_SYNC_CURSOR';
+    return PropertiesService.getScriptProperties().getProperty(key);
   }
 
   /**
-   * Saves the cursor for next transaction sync.
+   * Saves the cursor for next transaction sync for the current environment.
    * @private
    * @param {string} cursor - The cursor to save.
    */
   function saveCursor(cursor) {
-    PropertiesService.getScriptProperties().setProperty('PLAID_SYNC_CURSOR', cursor);
+    const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
+    const key = 'PLAID_' + env.toUpperCase() + '_SYNC_CURSOR';
+    PropertiesService.getScriptProperties().setProperty(key, cursor);
   }
 
   /**
-   * Resets the cursor to force a full sync on next call.
+   * Resets the cursor to force a full sync on next call for the current environment.
    * @private
    */
   function resetCursor() {
-    PropertiesService.getScriptProperties().deleteProperty('PLAID_SYNC_CURSOR');
+    const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
+    const key = 'PLAID_' + env.toUpperCase() + '_SYNC_CURSOR';
+    PropertiesService.getScriptProperties().deleteProperty(key);
   }
 
   /**
@@ -258,8 +267,10 @@ FinancialPlanner.PlaidService = (function() {
         
         const result = JSON.parse(responseText);
         
-        // Store access token in Script Properties
-        PropertiesService.getScriptProperties().setProperty('PLAID_ACCESS_TOKEN', result.access_token);
+        // Store access token in Script Properties with environment prefix
+        const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
+        const tokenKey = 'PLAID_' + env.toUpperCase() + '_ACCESS_TOKEN';
+        PropertiesService.getScriptProperties().setProperty(tokenKey, result.access_token);
         
         return result;
       } catch (error) {
@@ -277,11 +288,14 @@ FinancialPlanner.PlaidService = (function() {
     syncTransactions: function() {
       const url = getApiUrl() + '/transactions/sync';
       const credentials = getCredentials();
-      const accessToken = PropertiesService.getScriptProperties().getProperty('PLAID_ACCESS_TOKEN');
+      
+      const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
+      const tokenKey = 'PLAID_' + env.toUpperCase() + '_ACCESS_TOKEN';
+      const accessToken = PropertiesService.getScriptProperties().getProperty(tokenKey);
       
       if (!accessToken) {
         throw FinancialPlanner.ErrorService.create(
-          'No bank account connected. Please connect your bank account first.',
+          'No bank account connected for ' + env + ' environment. Please connect your bank account first.',
           { severity: 'medium' }
         );
       }
