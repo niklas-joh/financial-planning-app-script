@@ -30,6 +30,7 @@ FinancialPlanner.Config = (function() {
     SHEETS: {
       OVERVIEW: 'Overview',
       TRANSACTIONS: 'Transactions',
+      INSTITUTIONS: 'Institutions',
       DROPDOWNS: 'Dropdowns',
       ERROR_LOG: 'Error Log',
       ANALYSIS: 'Analysis',
@@ -193,6 +194,15 @@ FinancialPlanner.Config = (function() {
       },
       /** @property {string} DEFAULT_ENVIRONMENT The default Plaid environment (sandbox for safety). */
       DEFAULT_ENVIRONMENT: 'sandbox',
+      /** 
+       * @property {object} COUNTRY_CODES Country codes for institutions endpoint by environment.
+       * Note: European countries require special Plaid access, even in production.
+       * Change to ['DE', 'FR', 'BE', 'NL'] once you have European access.
+       */
+      COUNTRY_CODES: {
+        SANDBOX: ['US'],
+        PRODUCTION: ['US'] // Change to ['DE', 'FR', 'BE', 'NL'] when you have European access
+      },
       /** 
        * @property {object} CATEGORY_MAP Mapping of Plaid categories to application transaction types.
        * Maps Plaid's primary category to the app's Type field.

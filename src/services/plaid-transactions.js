@@ -1,7 +1,7 @@
 /**
- * @fileoverview Plaid Service Module for Financial Planning Tools.
- * Handles API communication with Plaid for bank account linking and transaction retrieval.
- * @module services/plaid-service
+ * @fileoverview Plaid Transactions Module - Transaction sync and sheet operations.
+ * Handles fetching transactions from Plaid and importing them to Google Sheets.
+ * @module services/plaid-transactions
  */
 
 // Ensure the global FinancialPlanner namespace exists
@@ -9,61 +9,10 @@
 var FinancialPlanner = FinancialPlanner || {};
 
 /**
- * Plaid Service - Handles Plaid API integration for bank connections and transactions.
- * @namespace FinancialPlanner.PlaidService
+ * Plaid Transactions - Handles transaction sync and import operations.
+ * @namespace FinancialPlanner.PlaidTransactions
  */
-FinancialPlanner.PlaidService = (function() {
-  /**
-   * Gets the appropriate Plaid API URL based on environment setting.
-   * @private
-   * @returns {string} The Plaid API base URL.
-   */
-  function getApiUrl() {
-    const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
-    const envUrls = FinancialPlanner.Config.getSection('PLAID').ENVIRONMENTS;
-    return env === 'production' ? envUrls.PRODUCTION : envUrls.SANDBOX;
-  }
-
-  /**
-   * Gets API credentials from Script Properties for the current environment.
-   * @private
-   * @returns {{clientId: string, secret: string}} The Plaid credentials.
-   * @throws {Error} If credentials are not configured.
-   */
-  function getCredentials() {
-    const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
-    const prefix = 'PLAID_' + env.toUpperCase() + '_';
-    const props = PropertiesService.getScriptProperties();
-    const clientId = props.getProperty(prefix + 'CLIENT_ID');
-    const secret = props.getProperty(prefix + 'SECRET');
-    
-    if (!clientId || !secret) {
-      throw FinancialPlanner.ErrorService.create(
-        'Plaid credentials not configured for ' + env + ' environment. Please set ' + prefix + 'CLIENT_ID and ' + prefix + 'SECRET in Script Properties.',
-        { severity: 'high' }
-      );
-    }
-    
-    return { clientId: clientId, secret: secret };
-  }
-
-  /**
-   * Maps a Plaid category to the application's transaction type.
-   * @private
-   * @param {Array<string>} plaidCategories - Plaid category array.
-   * @returns {string} The mapped transaction type.
-   */
-  function mapCategory(plaidCategories) {
-    if (!plaidCategories || plaidCategories.length === 0) {
-      return 'Extra';
-    }
-    
-    const categoryMap = FinancialPlanner.Config.getSection('PLAID').CATEGORY_MAP || {};
-    const primaryCategory = plaidCategories[0];
-    
-    return categoryMap[primaryCategory] || 'Extra';
-  }
-
+FinancialPlanner.PlaidTransactions = (function() {
   /**
    * Gets the stored cursor for transaction sync for the current environment.
    * @private
@@ -96,198 +45,17 @@ FinancialPlanner.PlaidService = (function() {
     PropertiesService.getScriptProperties().deleteProperty(key);
   }
 
-  /**
-   * Helper function to safely convert value, handling null/undefined.
-   * @private
-   * @param {*} value - The value to convert.
-   * @param {*} defaultValue - The default value if null/undefined.
-   * @returns {*} The safe value.
-   */
-  function safeValue(value, defaultValue) {
-    return (value !== null && value !== undefined) ? value : defaultValue;
-  }
-
-  /**
-   * Helper function to stringify objects/arrays.
-   * @private
-   * @param {*} value - The value to stringify.
-   * @returns {string} The stringified value.
-   */
-  function stringify(value) {
-    if (value === null || value === undefined) return '';
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-  }
-
-  /**
-   * Flattens a Plaid transaction object, expanding nested objects into separate fields.
-   * @private
-   * @param {object} tx - The transaction object to flatten.
-   * @returns {object} The flattened transaction object.
-   */
-  function flattenTransaction(tx) {
-    const flat = { ...tx };
-    
-    // Handle location nested object
-    if (tx.location) {
-      flat['location.address'] = tx.location.address;
-      flat['location.city'] = tx.location.city;
-      flat['location.region'] = tx.location.region;
-      flat['location.postal_code'] = tx.location.postal_code;
-      flat['location.country'] = tx.location.country;
-      flat['location.lat'] = tx.location.lat;
-      flat['location.lon'] = tx.location.lon;
-      flat['location.store_number'] = tx.location.store_number;
-      delete flat.location;
-    }
-    
-    // Handle payment_meta nested object
-    if (tx.payment_meta) {
-      flat['payment_meta.reference_number'] = tx.payment_meta.reference_number;
-      flat['payment_meta.ppd_id'] = tx.payment_meta.ppd_id;
-      flat['payment_meta.payee'] = tx.payment_meta.payee;
-      flat['payment_meta.by_order_of'] = tx.payment_meta.by_order_of;
-      flat['payment_meta.payer'] = tx.payment_meta.payer;
-      flat['payment_meta.payment_method'] = tx.payment_meta.payment_method;
-      flat['payment_meta.payment_processor'] = tx.payment_meta.payment_processor;
-      flat['payment_meta.reason'] = tx.payment_meta.reason;
-      delete flat.payment_meta;
-    }
-    
-    // Handle personal_finance_category nested object
-    if (tx.personal_finance_category) {
-      flat['personal_finance_category.primary'] = tx.personal_finance_category.primary;
-      flat['personal_finance_category.detailed'] = tx.personal_finance_category.detailed;
-      flat['personal_finance_category.confidence_level'] = tx.personal_finance_category.confidence_level;
-      delete flat.personal_finance_category;
-    }
-    
-    // Handle arrays - convert to comma-separated strings
-    if (Array.isArray(flat.category)) {
-      flat.category = flat.category.join(', ');
-    }
-    
-    // Handle counterparties array - flatten first counterparty
-    if (Array.isArray(flat.counterparties) && flat.counterparties.length > 0) {
-      const firstCounterparty = flat.counterparties[0];
-      flat['counterparties.name'] = firstCounterparty.name;
-      flat['counterparties.type'] = firstCounterparty.type;
-      flat['counterparties.confidence_level'] = firstCounterparty.confidence_level;
-      flat['counterparties.logo_url'] = firstCounterparty.logo_url;
-      flat['counterparties.website'] = firstCounterparty.website;
-      flat['counterparties.entity_id'] = firstCounterparty.entity_id;
-      flat['counterparties.phone_number'] = firstCounterparty.phone_number;
-    }
-    delete flat.counterparties;
-    
-    return flat;
-  }
-
   // Public API
   return {
-    /**
-     * Creates a Plaid Link token for initiating the bank connection flow.
-     * @returns {{link_token: string, expiration: string}} The link token response.
-     * @memberof FinancialPlanner.PlaidService
-     */
-    createLinkToken: function() {
-      const url = getApiUrl() + '/link/token/create';
-      const credentials = getCredentials();
-      
-      const payload = {
-        client_id: credentials.clientId,
-        secret: credentials.secret,
-        user: {
-          client_user_id: SpreadsheetApp.getActiveSpreadsheet().getId()
-        },
-        client_name: 'Financial Planning Tools',
-        products: ['transactions'],
-        country_codes: ['US'],
-        language: 'en'
-      };
-      
-      try {
-        const response = UrlFetchApp.fetch(url, {
-          method: 'post',
-          contentType: 'application/json',
-          payload: JSON.stringify(payload),
-          muteHttpExceptions: true
-        });
-        
-        const responseCode = response.getResponseCode();
-        const responseText = response.getContentText();
-        
-        if (responseCode !== 200) {
-          throw FinancialPlanner.ErrorService.create(
-            'Failed to create Plaid Link token',
-            { responseCode: responseCode, response: responseText, severity: 'high' }
-          );
-        }
-        
-        return JSON.parse(responseText);
-      } catch (error) {
-        FinancialPlanner.ErrorService.handle(error, 'Failed to create Plaid Link token');
-        throw error;
-      }
-    },
-
-    /**
-     * Exchanges a public token for an access token.
-     * @param {string} publicToken - The public token from Plaid Link.
-     * @returns {{access_token: string, item_id: string}} The access token response.
-     * @memberof FinancialPlanner.PlaidService
-     */
-    exchangePublicToken: function(publicToken) {
-      const url = getApiUrl() + '/item/public_token/exchange';
-      const credentials = getCredentials();
-      
-      const payload = {
-        client_id: credentials.clientId,
-        secret: credentials.secret,
-        public_token: publicToken
-      };
-      
-      try {
-        const response = UrlFetchApp.fetch(url, {
-          method: 'post',
-          contentType: 'application/json',
-          payload: JSON.stringify(payload),
-          muteHttpExceptions: true
-        });
-        
-        const responseCode = response.getResponseCode();
-        const responseText = response.getContentText();
-        
-        if (responseCode !== 200) {
-          throw FinancialPlanner.ErrorService.create(
-            'Failed to exchange public token',
-            { responseCode: responseCode, response: responseText, severity: 'high' }
-          );
-        }
-        
-        const result = JSON.parse(responseText);
-        
-        // Store access token in Script Properties with environment prefix
-        const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
-        const tokenKey = 'PLAID_' + env.toUpperCase() + '_ACCESS_TOKEN';
-        PropertiesService.getScriptProperties().setProperty(tokenKey, result.access_token);
-        
-        return result;
-      } catch (error) {
-        FinancialPlanner.ErrorService.handle(error, 'Failed to exchange public token');
-        throw error;
-      }
-    },
-
     /**
      * Syncs transactions from Plaid using the /transactions/sync endpoint.
      * Uses cursor-based pagination to fetch all available transaction updates.
      * @returns {{added: Array<object>, modified: Array<object>, removed: Array<object>}} Sync results with added, modified, and removed transactions.
-     * @memberof FinancialPlanner.PlaidService
+     * @memberof FinancialPlanner.PlaidTransactions
      */
-    syncTransactions: function() {
-      const url = getApiUrl() + '/transactions/sync';
-      const credentials = getCredentials();
+    syncAll: function() {
+      const url = FinancialPlanner.PlaidClient.getApiUrl() + '/transactions/sync';
+      const credentials = FinancialPlanner.PlaidClient.getCredentials();
       
       const env = FinancialPlanner.SettingsService.getPlaidEnvironment();
       const tokenKey = 'PLAID_' + env.toUpperCase() + '_ACCESS_TOKEN';
@@ -381,12 +149,12 @@ FinancialPlanner.PlaidService = (function() {
      * Resets the sync cursor and fetches all transactions from scratch.
      * Useful for development, testing, or re-syncing all data.
      * @returns {{added: Array<object>, modified: Array<object>, removed: Array<object>}} Sync results with all transactions.
-     * @memberof FinancialPlanner.PlaidService
+     * @memberof FinancialPlanner.PlaidTransactions
      */
     resetAndSyncAll: function() {
       Logger.log('Resetting cursor and fetching all transactions...');
       resetCursor();
-      return this.syncTransactions();
+      return this.syncAll();
     },
 
     /**
@@ -394,7 +162,7 @@ FinancialPlanner.PlaidService = (function() {
      * Handles added, modified, and removed transactions with dynamic column creation.
      * @param {object} syncResults - Sync results with added, modified, and removed arrays.
      * @returns {number} Number of transactions processed.
-     * @memberof FinancialPlanner.PlaidService
+     * @memberof FinancialPlanner.PlaidTransactions
      */
     importToSheet: function(syncResults) {
       const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -420,7 +188,7 @@ FinancialPlanner.PlaidService = (function() {
         // New sheet - create headers dynamically from first transaction
         if (allTransactions.length > 0) {
           const firstTx = allTransactions[0];
-          const flattened = flattenTransaction(firstTx);
+          const flattened = FinancialPlanner.PlaidClient.flattenObject(firstTx);
           headers = Object.keys(flattened);
           headers.push('deleted'); // Add deleted flag column
           
@@ -456,7 +224,7 @@ FinancialPlanner.PlaidService = (function() {
         Logger.log('Adding ' + syncResults.added.length + ' new transactions');
         
         const addedRows = syncResults.added.map(function(tx) {
-          const flattened = flattenTransaction(tx);
+          const flattened = FinancialPlanner.PlaidClient.flattenObject(tx);
           return headers.map(function(header) {
             if (header === 'deleted') {
               return false;
@@ -466,7 +234,7 @@ FinancialPlanner.PlaidService = (function() {
             if ((header.includes('date') || header.includes('datetime')) && value) {
               return new Date(value);
             }
-            return safeValue(value, '');
+            return FinancialPlanner.PlaidClient.safeValue(value, '');
           });
         });
         
@@ -508,7 +276,7 @@ FinancialPlanner.PlaidService = (function() {
           // Update modified transactions
           if (modifiedMap[rowTxId]) {
             const tx = modifiedMap[rowTxId];
-            const flattened = flattenTransaction(tx);
+            const flattened = FinancialPlanner.PlaidClient.flattenObject(tx);
             const rowData = headers.map(function(header) {
               if (header === 'deleted') {
                 return false; // Reset deleted flag for modified transactions
@@ -517,7 +285,7 @@ FinancialPlanner.PlaidService = (function() {
               if ((header.includes('date') || header.includes('datetime')) && value) {
                 return new Date(value);
               }
-              return safeValue(value, '');
+              return FinancialPlanner.PlaidClient.safeValue(value, '');
             });
             transactionSheet.getRange(i + 1, 1, 1, headers.length).setValues([rowData]);
           }
