@@ -185,7 +185,16 @@ FinancialPlanner.Controllers = (function() {
     analyzeFixedVsVariableExpenses: function() { console.log("Analyzing fixed vs variable..."); },
     generateCashFlowForecast: function() { console.log("Generating cash flow forecast..."); },
     setBudgetTargets: function() { console.log("Setting budget targets..."); },
-    setupEmailReports: function() { console.log("Setting up email reports..."); }
+    setupEmailReports: function() { console.log("Setting up email reports..."); },
+    saltedgeSetup: function() {
+      return FinancialPlanner.SaltEdgeClient.setup();
+    },
+    saltedgeConnect: function() {
+      return FinancialPlanner.SaltEdgeClient.connectBank();
+    },
+    saltedgeImport: function() {
+      return FinancialPlanner.SaltEdgeClient.importAllData();
+    }
   };
 
   // Public API
@@ -208,6 +217,9 @@ FinancialPlanner.Controllers = (function() {
     toggleShowSubCategories_Wrapped: wrapWithFeedback(coreLogic.toggleShowSubCategories, 'Updating display preferences...', 'Display preferences updated successfully!', 'Failed to update display preferences'),
     refreshCache_Wrapped: wrapWithFeedback(coreLogic.refreshCache, 'Refreshing all caches...', 'Caches refreshed successfully!', 'Failed to refresh one or more caches'),
     switchPlaidEnvironment_Wrapped: wrapWithFeedback(coreLogic.switchPlaidEnvironment, null, 'Environment switched successfully!', 'Failed to switch environment'),
+    saltedgeSetup_Wrapped: wrapWithFeedback(coreLogic.saltedgeSetup, 'Setting up SaltEdge integration...', 'SaltEdge setup completed successfully!', 'Failed to setup SaltEdge'),
+    saltedgeConnect_Wrapped: wrapWithFeedback(coreLogic.saltedgeConnect, null, null, 'Failed to connect SaltEdge bank account'),
+    saltedgeImport_Wrapped: wrapWithFeedback(coreLogic.saltedgeImport, 'Importing data from SaltEdge...', 'SaltEdge data imported successfully!', 'Failed to import SaltEdge data'),
     suggestSavingsOpportunities_Wrapped: wrapWithFeedback(coreLogic.suggestSavingsOpportunities, 'Working...', 'Coming soon!', 'Operation failed'),
     detectSpendingAnomalies_Wrapped: wrapWithFeedback(coreLogic.detectSpendingAnomalies, 'Working...', 'Coming soon!', 'Operation failed'),
     analyzeFixedVsVariableExpenses_Wrapped: wrapWithFeedback(coreLogic.analyzeFixedVsVariableExpenses, 'Working...', 'Coming soon!', 'Operation failed'),
@@ -230,7 +242,11 @@ FinancialPlanner.Controllers = (function() {
             .addSeparator()
             .addItem('🔄 Switch Environment (Current: ' + 
               FinancialPlanner.SettingsService.getPlaidEnvironment().toUpperCase() + ')', 
-              'switchPlaidEnvironment_Global'))
+              'switchPlaidEnvironment_Global')
+            .addSeparator()
+            .addItem('⚙️ Setup SaltEdge', 'saltedgeSetup_Global')
+            .addItem('🌊 Connect SaltEdge Bank', 'saltedgeConnect_Global')
+            .addItem('📥 Import SaltEdge Data', 'saltedgeImport_Global'))
           .addSeparator()
           .addSubMenu(ui.createMenu('📋 Reports')
             .addItem('📝 Monthly Spending Report', 'generateMonthlySpendingReport_Global')
@@ -349,6 +365,9 @@ createGlobalControllerAction('generateCashFlowForecast');
 createGlobalControllerAction('setBudgetTargets');
 createGlobalControllerAction('setupEmailReports');
 createGlobalControllerAction('switchPlaidEnvironment');
+createGlobalControllerAction('saltedgeSetup');
+createGlobalControllerAction('saltedgeConnect');
+createGlobalControllerAction('saltedgeImport');
 
 // Log successful initialization
 Logger.log('FinancialPlanner modules loaded successfully. Version: ' + FinancialPlanner.VERSION);

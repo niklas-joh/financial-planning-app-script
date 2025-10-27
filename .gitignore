@@ -3,11 +3,37 @@
 node_modules/
 *.log
 
-// exclude cline folder (for CLI instructions)
-cline/
+# Exclude cline folder (for CLI instructions)
+Cline/
 
-// exclude .idea folder
+# Exclude IDE folders
 .idea/
-
-// exclude .codebuddy folder
 .codebuddy/
+
+# Security: Exclude RSA keys and sensitive files
+*.pem
+*.key
+*.p12
+*.pfx
+*.cer
+*.crt
+*.der
+
+# Google Apps Script credentials and config
+.clasp.json.local
+credentials.json
+token.json
+
+# Environment and secrets
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+secrets.*
+
+# Temporary and backup files
+*.tmp
+*.bak
+*.swp
+*~

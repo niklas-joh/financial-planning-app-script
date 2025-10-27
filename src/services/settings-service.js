@@ -201,6 +201,24 @@ FinancialPlanner.SettingsService = (function() {
     },
 
     /**
+     * Gets the stored SaltEdge customer ID.
+     * @returns {string|null} SaltEdge customer ID or null if not set.
+     * @memberof FinancialPlanner.SettingsService
+     */
+    getSaltEdgeCustomerId: function() {
+      return this.getValue('SaltEdgeCustomerId', null);
+    },
+
+    /**
+     * Sets the SaltEdge customer ID preference.
+     * @param {string} customerId - The SaltEdge customer ID to store.
+     * @memberof FinancialPlanner.SettingsService
+     */
+    setSaltEdgeCustomerId: function(customerId) {
+      this.setValue('SaltEdgeCustomerId', customerId);
+    },
+
+    /**
      * Retrieves all preferences stored in the settings sheet as an object.
      * @returns {Object<string, *>} An object where keys are preference names and values are their stored values.
      *   Returns an empty object if an error occurs.

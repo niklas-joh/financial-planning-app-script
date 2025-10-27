@@ -35,6 +35,7 @@ FinancialPlanner.Config = (function() {
       ERROR_LOG: 'Error Log',
       ANALYSIS: 'Analysis',
       SETTINGS: 'Settings',
+      SALTEDGE_TRANSACTIONS: 'SaltEdge Transactions',
     },
     /** 
      * @property {object} TRANSACTION_TYPES Defines categories for financial transactions.
@@ -216,6 +217,17 @@ FinancialPlanner.Config = (function() {
         'Payment': 'Essentials',
         'Service': 'Essentials'
       }
+    },
+    /** @property {object} SALTEDGE SaltEdge Account Information Service integration settings. */
+    SALTEDGE: {
+      /** @property {string} API_URL SaltEdge API base URL for all requests. */
+      API_URL: 'https://www.saltedge.com/api/v6',
+      /** @property {string[]} CONSENT_SCOPES PSD2 consent scopes for data access permissions. */
+      CONSENT_SCOPES: ['accounts', 'transactions'],
+      /** @property {string[]} FETCH_SCOPES Data scopes to fetch during connection attempts. */
+      FETCH_SCOPES: ['accounts', 'balance', 'transactions'],
+      /** @property {number} DEFAULT_CONSENT_DAYS Default consent duration in days for recurring consent. */
+      DEFAULT_CONSENT_DAYS: 90
     },
   };
 
