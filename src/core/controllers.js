@@ -194,6 +194,28 @@ FinancialPlanner.Controllers = (function() {
     },
     saltedgeImport: function() {
       return FinancialPlanner.SaltEdgeClient.importAllData();
+    },
+    saltedgeShowAccounts: function() {
+      return FinancialPlanner.SaltEdgeClient.showConnectedAccounts();
+    },
+    saltedgeDisconnect: function() {
+      // Interactive disconnect: show prompt to select connection ID
+      const ui = SpreadsheetApp.getUi();
+      const response = ui.prompt(
+        'Disconnect SaltEdge Account',
+        'Enter the Connection ID to disconnect (find in "Show Connected Accounts"):',
+        ui.ButtonSet.OK_CANCEL
+      );
+      
+      if (response.getSelectedButton() === ui.Button.OK) {
+        const connectionId = response.getResponseText().trim();
+        if (connectionId) {
+          return FinancialPlanner.SaltEdgeClient.disconnectConnection(connectionId);
+        } else {
+          throw new Error('Connection ID is required');
+        }
+      }
+      return 'Disconnect cancelled by user';
     }
   };
 
@@ -220,6 +242,8 @@ FinancialPlanner.Controllers = (function() {
     saltedgeSetup_Wrapped: wrapWithFeedback(coreLogic.saltedgeSetup, 'Setting up SaltEdge integration...', 'SaltEdge setup completed successfully!', 'Failed to setup SaltEdge'),
     saltedgeConnect_Wrapped: wrapWithFeedback(coreLogic.saltedgeConnect, null, null, 'Failed to connect SaltEdge bank account'),
     saltedgeImport_Wrapped: wrapWithFeedback(coreLogic.saltedgeImport, 'Importing data from SaltEdge...', 'SaltEdge data imported successfully!', 'Failed to import SaltEdge data'),
+    saltedgeShowAccounts_Wrapped: wrapWithFeedback(coreLogic.saltedgeShowAccounts, null, null, 'Failed to show connected SaltEdge accounts'),
+    saltedgeDisconnect_Wrapped: wrapWithFeedback(coreLogic.saltedgeDisconnect, 'Disconnecting SaltEdge account...', 'Account disconnected successfully!', 'Failed to disconnect SaltEdge account'),
     suggestSavingsOpportunities_Wrapped: wrapWithFeedback(coreLogic.suggestSavingsOpportunities, 'Working...', 'Coming soon!', 'Operation failed'),
     detectSpendingAnomalies_Wrapped: wrapWithFeedback(coreLogic.detectSpendingAnomalies, 'Working...', 'Coming soon!', 'Operation failed'),
     analyzeFixedVsVariableExpenses_Wrapped: wrapWithFeedback(coreLogic.analyzeFixedVsVariableExpenses, 'Working...', 'Coming soon!', 'Operation failed'),
@@ -246,7 +270,9 @@ FinancialPlanner.Controllers = (function() {
             .addSeparator()
             .addItem('⚙️ Setup SaltEdge', 'saltedgeSetup_Global')
             .addItem('🌊 Connect SaltEdge Bank', 'saltedgeConnect_Global')
-            .addItem('📥 Import SaltEdge Data', 'saltedgeImport_Global'))
+            .addItem('📥 Import SaltEdge Data', 'saltedgeImport_Global')
+            .addItem('👁️ Show Connected Accounts', 'saltedgeShowAccounts_Global')
+            .addItem('🔌 Disconnect Account', 'saltedgeDisconnect_Global'))
           .addSeparator()
           .addSubMenu(ui.createMenu('📋 Reports')
             .addItem('📝 Monthly Spending Report', 'generateMonthlySpendingReport_Global')
@@ -320,6 +346,23 @@ function onEdit(e) {
   }
 }
 
+/**
+ * Handles web app GET requests (SaltEdge callbacks)
+ * Required for SaltEdge widget return_to parameter
+ */
+function doGet(e) {
+  const stage = e.parameter.stage;
+  const error = e.parameter.error_message;
+  
+  const html = stage === 'success' 
+    ? '<h2>✅ Bank Connected!</h2><p>Close this window and click "Financial Tools → Bank Integration → Import SaltEdge Data" in your spreadsheet.</p>'
+    : '<h2>❌ Connection Failed</h2><p>' + (error || 'Unknown error') + '</p><p>Please try again.</p>';
+  
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:Arial;text-align:center;padding:40px;">' + html + '</div>'
+  );
+}
+
 // Global action functions
 function createGlobalControllerAction(methodName) {
   this[methodName + '_Global'] = function() {
@@ -368,6 +411,8 @@ createGlobalControllerAction('switchPlaidEnvironment');
 createGlobalControllerAction('saltedgeSetup');
 createGlobalControllerAction('saltedgeConnect');
 createGlobalControllerAction('saltedgeImport');
+createGlobalControllerAction('saltedgeShowAccounts');
+createGlobalControllerAction('saltedgeDisconnect');
 
 // Log successful initialization
 Logger.log('FinancialPlanner modules loaded successfully. Version: ' + FinancialPlanner.VERSION);

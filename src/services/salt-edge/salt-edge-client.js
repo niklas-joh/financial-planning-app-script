@@ -59,7 +59,10 @@ FinancialPlanner.SaltEdgeClient = (function() {
       );
     }
     
-    return privateKey;
+    // Fix private key format: replace spaces with newlines for proper PEM structure
+    return privateKey.replace(/\s+/g, '\n')
+                     .replace(/-----BEGIN\n+PRIVATE\n+KEY-----/, '-----BEGIN PRIVATE KEY-----')
+                     .replace(/-----END\n+PRIVATE\n+KEY-----/, '-----END PRIVATE KEY-----');
   }
 
   /**
@@ -217,6 +220,116 @@ FinancialPlanner.SaltEdgeClient = (function() {
   }
 
   /**
+   * Gets list of stored connection IDs from Script Properties
+   * @returns {Array<string>} Array of connection IDs
+   * @private
+   */
+  function getStoredConnections() {
+    const props = PropertiesService.getScriptProperties();
+    const connectionsJson = props.getProperty('SALTEDGE_CONNECTIONS');
+    return connectionsJson ? JSON.parse(connectionsJson) : [];
+  }
+
+  /**
+   * Stores connection metadata in Script Properties and updates connections list
+   * @param {Object} connectionData - Connection metadata to store
+   * @param {string} connectionData.connection_id - Connection ID
+   * @param {string} connectionData.customer_id - Customer ID
+   * @param {string} connectionData.provider_name - Provider name
+   * @param {string} connectionData.provider_code - Provider code
+   * @param {string} connectionData.status - Connection status
+   * @param {string} connectionData.created_at - Creation timestamp
+   * @param {string} connectionData.last_synced_at - Last sync timestamp
+   * @private
+   */
+  function storeConnection(connectionData) {
+    const props = PropertiesService.getScriptProperties();
+    const key = 'SALTEDGE_CONNECTION_' + connectionData.connection_id;
+    props.setProperty(key, JSON.stringify(connectionData));
+    
+    // Update connections list
+    const connections = getStoredConnections();
+    if (!connections.includes(connectionData.connection_id)) {
+      connections.push(connectionData.connection_id);
+      props.setProperty('SALTEDGE_CONNECTIONS', JSON.stringify(connections));
+    }
+  }
+
+  /**
+   * Stores account metadata in Script Properties
+   * @param {string} connectionId - Connection ID the account belongs to
+   * @param {Object} accountData - Account metadata to store
+   * @param {string} accountData.account_id - Account ID
+   * @param {string} accountData.name - Account name
+   * @param {string} accountData.nature - Account nature/type
+   * @param {string} accountData.currency_code - Account currency code
+   * @private
+   */
+  function storeAccount(connectionId, accountData) {
+    const props = PropertiesService.getScriptProperties();
+    const key = 'SALTEDGE_ACCOUNT_' + connectionId + '_' + accountData.account_id;
+    const dataToStore = Object.assign({}, accountData, { connection_id: connectionId });
+    props.setProperty(key, JSON.stringify(dataToStore));
+  }
+
+  /**
+   * Gets stored pagination cursor for a specific account
+   * @param {string} connectionId - Connection ID
+   * @param {string} accountId - Account ID
+   * @returns {string|null} Pagination cursor (next_id) or null if not set
+   * @private
+   */
+  function getStoredCursor(connectionId, accountId) {
+    const props = PropertiesService.getScriptProperties();
+    const key = 'SALTEDGE_CURSOR_' + connectionId + '_' + accountId;
+    return props.getProperty(key);
+  }
+
+  /**
+   * Saves pagination cursor for a specific account
+   * @param {string} connectionId - Connection ID
+   * @param {string} accountId - Account ID
+   * @param {string} nextId - Pagination cursor (next_id from API response)
+   * @private
+   */
+  function saveCursor(connectionId, accountId, nextId) {
+    const props = PropertiesService.getScriptProperties();
+    const key = 'SALTEDGE_CURSOR_' + connectionId + '_' + accountId;
+    if (nextId) {
+      props.setProperty(key, nextId);
+    }
+  }
+
+  /**
+   * Removes connection and all associated data from Script Properties
+   * Deletes connection metadata, accounts, and pagination cursors
+   * @param {string} connectionId - Connection ID to remove
+   * @private
+   */
+  function removeConnection(connectionId) {
+    const props = PropertiesService.getScriptProperties();
+    
+    // Remove connection metadata
+    props.deleteProperty('SALTEDGE_CONNECTION_' + connectionId);
+    
+    // Remove from connections list
+    const connections = getStoredConnections();
+    const updatedConnections = connections.filter(function(id) {
+      return id !== connectionId;
+    });
+    props.setProperty('SALTEDGE_CONNECTIONS', JSON.stringify(updatedConnections));
+    
+    // Remove all accounts and cursors for this connection
+    const allKeys = props.getKeys();
+    allKeys.forEach(function(key) {
+      if (key.startsWith('SALTEDGE_ACCOUNT_' + connectionId + '_') ||
+          key.startsWith('SALTEDGE_CURSOR_' + connectionId + '_')) {
+        props.deleteProperty(key);
+      }
+    });
+  }
+
+  /**
    * Gets or creates a SaltEdge customer automatically
    * Stores customer ID in settings for future use
    * @param {string} [identifier] - Custom identifier, defaults to standard identifier
@@ -362,7 +475,10 @@ FinancialPlanner.SaltEdgeClient = (function() {
   }
 
   /**
-   * Lists all transactions for a specific account
+   * Lists all transactions for a specific account with pagination support
+   * Uses stored cursor for incremental imports (only fetches new transactions)
+   * First import: Returns all transactions and saves cursor
+   * Subsequent imports: Returns only new transactions since last cursor
    * @param {string} connectionId - SaltEdge connection ID
    * @param {string} accountId - SaltEdge account ID
    * @param {Object} [options={}] - Query options (pending, from_date, etc.)
@@ -373,22 +489,47 @@ FinancialPlanner.SaltEdgeClient = (function() {
     options = options || {};
     
     try {
-      Logger.log('Fetching SaltEdge transactions for account: ' + accountId);
+      let allTransactions = [];
+      let nextId = getStoredCursor(connectionId, accountId);
+      let hasMore = true;
       
-      const params = {
-        connection_id: connectionId,
-        account_id: accountId
-      };
+      Logger.log('Fetching SaltEdge transactions for account: ' + accountId + 
+                 (nextId ? ' (from cursor: ' + nextId + ')' : ' (full history)'));
       
-      // Add optional filters
-      if (options.pending !== undefined) {
-        params.pending = options.pending;
+      // Pagination loop to fetch all pages
+      while (hasMore) {
+        const params = {
+          connection_id: connectionId,
+          account_id: accountId,
+          pending: false,      // Only posted transactions
+          duplicated: false,   // Filter out duplicates
+          per_page: 250        // Max per request
+        };
+        
+        // Add pagination cursor if exists
+        if (nextId) {
+          params.from_id = nextId;
+        }
+        
+        const response = makeRequest('/transactions', 'GET', params);
+        
+        allTransactions = allTransactions.concat(response.data);
+        
+        // Check for more pages
+        nextId = response.meta ? response.meta.next_id : null;
+        hasMore = !!nextId && response.data.length > 0;
+        
+        Logger.log('Fetched page: ' + response.data.length + ' transactions. Has more: ' + hasMore);
       }
       
-      const response = makeRequest('/transactions', 'GET', params);
+      // Save final cursor for next import (null if no more data)
+      if (allTransactions.length > 0 || nextId) {
+        saveCursor(connectionId, accountId, nextId);
+        Logger.log('Saved pagination cursor for next import: ' + (nextId || 'null (no more data)'));
+      }
       
-      Logger.log('Found ' + response.data.length + ' transactions');
-      return response.data;
+      Logger.log('Total transactions fetched: ' + allTransactions.length);
+      return allTransactions;
     } catch (error) {
       FinancialPlanner.ErrorService.handle(error, 'Failed to list SaltEdge transactions');
       throw error;
@@ -396,13 +537,16 @@ FinancialPlanner.SaltEdgeClient = (function() {
   }
 
   /**
-   * Imports transactions to Google Sheet with dynamic column headers
+   * Imports transactions to Google Sheet with metadata columns and dynamic headers
+   * Prepends connection and account metadata at start of each row
    * Creates sheet if it doesn't exist, handles flattened transaction structure
    * @param {Array<Object>} transactions - Array of transaction objects
+   * @param {Object} connectionMeta - Connection metadata (id, provider_name, etc.)
+   * @param {Object} accountMeta - Account metadata (name, nature, currency_code, etc.)
    * @returns {number} Number of transactions imported
    * @private
    */
-  function importTransactionsToSheet(transactions) {
+  function importTransactionsToSheet(transactions, connectionMeta, accountMeta) {
     if (!transactions || transactions.length === 0) {
       Logger.log('No transactions to import');
       return 0;
@@ -413,15 +557,20 @@ FinancialPlanner.SaltEdgeClient = (function() {
       const sheetName = FinancialPlanner.Config.getSheetNames().SALTEDGE_TRANSACTIONS;
       const sheet = FinancialPlanner.Utils.getOrCreateSheet(ss, sheetName);
       
-      // Get or create headers from first transaction
+      // Define metadata columns to prepend
+      const metadataColumns = ['connection_id', 'provider_name', 'account_name'];
+      
+      // Get or create headers
       let headers;
       if (sheet.getLastRow() === 0) {
-        // Create headers dynamically from first transaction
+        // Create headers: metadata + transaction fields
         const firstTx = transactions[0];
         const flattened = flattenObject(firstTx);
-        headers = Object.keys(flattened);
+        const txHeaders = Object.keys(flattened);
         
-        Logger.log('Creating SaltEdge sheet with ' + headers.length + ' dynamic columns');
+        headers = metadataColumns.concat(txHeaders);
+        
+        Logger.log('Creating SaltEdge sheet with ' + headers.length + ' columns (3 metadata + ' + txHeaders.length + ' transaction fields)');
         
         sheet.getRange(1, 1, 1, headers.length)
           .setValues([headers])
@@ -434,12 +583,26 @@ FinancialPlanner.SaltEdgeClient = (function() {
         Logger.log('Using existing headers: ' + headers.length + ' columns');
       }
       
-      // Prepare transaction rows
+      // Prepare transaction rows with metadata
       const rows = transactions.map(function(tx) {
         const flattened = flattenObject(tx);
+        
         return headers.map(function(header) {
+          // Prepend metadata values
+          if (header === 'connection_id') {
+            return connectionMeta.id;
+          }
+          if (header === 'provider_name') {
+            return connectionMeta.provider_name;
+          }
+          if (header === 'account_name') {
+            return accountMeta.name;
+          }
+          
+          // Map transaction fields
           const value = flattened[header];
-          // Parse date fields
+          
+          // Parse date fields (reuse Plaid pattern)
           if ((header.includes('date') || header.includes('_at')) && value && typeof value === 'string') {
             try {
               return new Date(value);
@@ -447,6 +610,7 @@ FinancialPlanner.SaltEdgeClient = (function() {
               return value;
             }
           }
+          
           return value !== undefined ? value : '';
         });
       });
@@ -457,13 +621,15 @@ FinancialPlanner.SaltEdgeClient = (function() {
         sheet.getRange(lastRow + 1, 1, rows.length, headers.length).setValues(rows);
         
         // Format currency columns (amount fields)
-        const amountColumns = headers.map((header, index) => 
-          header.toLowerCase().includes('amount') || header.toLowerCase().includes('balance') ? index + 1 : null
-        ).filter(col => col !== null);
+        const amountColumns = headers.map(function(header, index) {
+          return header.toLowerCase().includes('amount') || header.toLowerCase().includes('balance') ? index + 1 : null;
+        }).filter(function(col) {
+          return col !== null;
+        });
         
         if (amountColumns.length > 0) {
           const currencyFormat = FinancialPlanner.Config.getLocale().NUMBER_FORMATS.CURRENCY_DEFAULT;
-          amountColumns.forEach(col => {
+          amountColumns.forEach(function(col) {
             sheet.getRange(lastRow + 1, col, rows.length, 1).setNumberFormat(currencyFormat);
           });
         }
@@ -586,7 +752,8 @@ FinancialPlanner.SaltEdgeClient = (function() {
           '<p style="color: #666; font-size: 12px; margin-bottom: 20px;">' +
           'Link expires at: ' + result.expires_at + '</p>' +
           '<p style="color: #666; font-size: 12px;">' +
-          'After completing authentication, return here and use "Import SaltEdge" to fetch your data.' +
+          'After completing authentication in the SaltEdge widget, close that window and return here. ' +
+          'Then use "Financial Tools → Bank Integration → Import SaltEdge Data" to fetch your data.' +
           '</p>' +
           '<button onclick="google.script.host.close()" ' +
           'style="background: #ccc; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Close</button>' +
@@ -603,7 +770,139 @@ FinancialPlanner.SaltEdgeClient = (function() {
     },
 
     /**
+     * Disconnects a SaltEdge connection and removes all associated data
+     * Shows confirmation dialog, calls API to disconnect, removes local storage
+     * @param {string} connectionId - Connection ID to disconnect
+     * @returns {string} Success message
+     * @memberof FinancialPlanner.SaltEdgeClient
+     */
+    disconnectConnection: function(connectionId) {
+      try {
+        const props = PropertiesService.getScriptProperties();
+        const ui = SpreadsheetApp.getUi();
+        
+        // Get connection metadata for confirmation
+        const connKey = 'SALTEDGE_CONNECTION_' + connectionId;
+        const connDataJson = props.getProperty(connKey);
+        
+        if (!connDataJson) {
+          throw FinancialPlanner.ErrorService.create(
+            'Connection not found: ' + connectionId,
+            { severity: 'medium' }
+          );
+        }
+        
+        const connData = JSON.parse(connDataJson);
+        
+        // Show confirmation dialog
+        const confirmResponse = ui.alert(
+          'Disconnect SaltEdge Account',
+          'Are you sure you want to disconnect "' + connData.provider_name + '"?\\n\\n' +
+          'This will remove the connection and all associated account metadata. ' +
+          'Transaction data in the sheet will NOT be deleted.',
+          ui.ButtonSet.YES_NO
+        );
+        
+        if (confirmResponse !== ui.Button.YES) {
+          return 'Disconnect cancelled by user';
+        }
+        
+        Logger.log('Disconnecting SaltEdge connection: ' + connectionId);
+        
+        // Call SaltEdge API to disconnect
+        try {
+          makeRequest('/connections/' + connectionId, 'DELETE', null);
+          Logger.log('Connection disconnected from SaltEdge API');
+        } catch (apiError) {
+          // Continue with local cleanup even if API call fails
+          Logger.log('Warning: API disconnect failed, proceeding with local cleanup: ' + apiError.message);
+        }
+        
+        // Remove connection and all associated data from Script Properties
+        removeConnection(connectionId);
+        
+        const message = 'Successfully disconnected "' + connData.provider_name + '". ' +
+                       'Transaction data remains in sheet.';
+        
+        Logger.log(message);
+        return message;
+      } catch (error) {
+        FinancialPlanner.ErrorService.handle(error, 'Failed to disconnect SaltEdge connection');
+        throw error;
+      }
+    },
+
+    /**
+     * Shows connected SaltEdge accounts in a modal dialog
+     * Reads from Script Properties and displays in HTML table
+     * @returns {void}
+     * @memberof FinancialPlanner.SaltEdgeClient
+     */
+    showConnectedAccounts: function() {
+      try {
+        const connectionIds = getStoredConnections();
+        
+        if (connectionIds.length === 0) {
+          const html = HtmlService.createHtmlOutput(
+            '<div style="padding: 20px; font-family: Arial, sans-serif;">' +
+            '<p>No SaltEdge accounts connected yet.</p>' +
+            '<p style="margin-top: 15px; color: #666; font-size: 14px;">Use "Financial Tools → Bank Integration → Connect SaltEdge" to add a bank account.</p>' +
+            '</div>'
+          ).setWidth(400).setHeight(150);
+          
+          SpreadsheetApp.getUi().showModalDialog(html, 'Connected SaltEdge Accounts');
+          return;
+        }
+        
+        const props = PropertiesService.getScriptProperties();
+        let tableRows = '';
+        
+        connectionIds.forEach(function(connId) {
+          const connData = JSON.parse(props.getProperty('SALTEDGE_CONNECTION_' + connId));
+          
+          // Get accounts for this connection
+          const allKeys = props.getKeys();
+          allKeys.forEach(function(key) {
+            if (key.startsWith('SALTEDGE_ACCOUNT_' + connId + '_')) {
+              const accountData = JSON.parse(props.getProperty(key));
+              tableRows += '<tr>' +
+                '<td style="padding: 8px; border-bottom: 1px solid #ddd;">' + connData.provider_name + '</td>' +
+                '<td style="padding: 8px; border-bottom: 1px solid #ddd;">' + accountData.name + '</td>' +
+                '<td style="padding: 8px; border-bottom: 1px solid #ddd;">' + accountData.nature + '</td>' +
+                '<td style="padding: 8px; border-bottom: 1px solid #ddd;">' + accountData.currency_code + '</td>' +
+                '<td style="padding: 8px; border-bottom: 1px solid #ddd;">' + connData.status + '</td>' +
+                '</tr>';
+            }
+          });
+        });
+        
+        const html = HtmlService.createHtmlOutput(
+          '<div style="padding: 20px; font-family: Arial, sans-serif;">' +
+          '<h2 style="color: #4285F4; margin-top: 0;">Connected SaltEdge Accounts</h2>' +
+          '<table style="border-collapse: collapse; width: 100%; margin-top: 20px;">' +
+          '<thead><tr style="background: #4285F4; color: white;">' +
+          '<th style="padding: 10px; text-align: left;">Provider</th>' +
+          '<th style="padding: 10px; text-align: left;">Account</th>' +
+          '<th style="padding: 10px; text-align: left;">Type</th>' +
+          '<th style="padding: 10px; text-align: left;">Currency</th>' +
+          '<th style="padding: 10px; text-align: left;">Status</th>' +
+          '</tr></thead>' +
+          '<tbody>' + tableRows + '</tbody>' +
+          '</table>' +
+          '<p style="margin-top: 20px; color: #666; font-size: 12px;">Use "Import SaltEdge Data" to fetch the latest transactions from these accounts.</p>' +
+          '</div>'
+        ).setWidth(700).setHeight(400);
+        
+        SpreadsheetApp.getUi().showModalDialog(html, 'Connected SaltEdge Accounts');
+      } catch (error) {
+        FinancialPlanner.ErrorService.handle(error, 'Failed to show connected accounts');
+        throw error;
+      }
+    },
+
+    /**
      * Imports all data (accounts and transactions) from all connections
+     * Stores connection and account metadata, uses pagination for transactions
      * Combined operation that fetches everything in one action
      * @returns {string} Success message with import summary
      * @memberof FinancialPlanner.SaltEdgeClient
@@ -612,12 +911,14 @@ FinancialPlanner.SaltEdgeClient = (function() {
       try {
         Logger.log('Starting SaltEdge data import...');
         
-        // Get all connections
+        // Get all connections from API
         const connections = listConnections();
         
         if (connections.length === 0) {
           return 'No SaltEdge connections found. Connect a bank account first.';
         }
+        
+        Logger.log('Found ' + connections.length + ' connection(s)');
         
         let totalTransactions = 0;
         
@@ -625,17 +926,44 @@ FinancialPlanner.SaltEdgeClient = (function() {
         connections.forEach(function(connection) {
           Logger.log('Processing connection: ' + connection.provider_name);
           
+          // Store connection metadata in Script Properties
+          storeConnection({
+            connection_id: connection.id,
+            customer_id: connection.customer_id,
+            provider_name: connection.provider_name,
+            provider_code: connection.provider_code,
+            status: connection.status,
+            created_at: connection.created_at,
+            last_synced_at: new Date().toISOString()
+          });
+          
           // Get accounts for this connection
           const accounts = listAccounts(connection.id, connection.customer_id);
           
-          // Get transactions for each account
+          Logger.log('Found ' + accounts.length + ' account(s) for connection: ' + connection.id);
+          
+          // Process each account
           accounts.forEach(function(account) {
             Logger.log('Processing account: ' + account.name);
             
+            // Store account metadata in Script Properties
+            storeAccount(connection.id, {
+              account_id: account.id,
+              name: account.name,
+              nature: account.nature,
+              currency_code: account.currency_code
+            });
+            
+            // Fetch transactions with pagination (uses stored cursor)
             const transactions = listTransactions(connection.id, account.id);
             
             if (transactions.length > 0) {
-              totalTransactions += importTransactionsToSheet(transactions);
+              // Import with metadata
+              totalTransactions += importTransactionsToSheet(
+                transactions,
+                connection,
+                account
+              );
             }
           });
         });
