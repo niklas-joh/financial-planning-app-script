@@ -227,7 +227,20 @@ FinancialPlanner.Config = (function() {
       /** @property {string[]} FETCH_SCOPES Data scopes to fetch during connection attempts. */
       FETCH_SCOPES: ['accounts', 'balance', 'transactions'],
       /** @property {number} DEFAULT_CONSENT_DAYS Default consent duration in days for recurring consent. */
-      DEFAULT_CONSENT_DAYS: 90
+      DEFAULT_CONSENT_DAYS: 90,
+      /** 
+       * @property {string[]} TRANSACTIONAL_ACCOUNT_NATURES Account types to import (transactional only).
+       * Non-transactional accounts (investment, loan, mortgage, insurance, bonus) are excluded.
+       */
+      TRANSACTIONAL_ACCOUNT_NATURES: [
+        'account',      // Generic account
+        'checking',     // Checking account
+        'savings',      // Savings account
+        'credit_card',  // Credit card
+        'debit_card',   // Debit card
+        'card',         // Generic card
+        'ewallet'       // E-wallet (PayPal, Venmo, etc.)
+      ]
     },
   };
 
