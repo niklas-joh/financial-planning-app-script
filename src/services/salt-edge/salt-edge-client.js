@@ -967,6 +967,8 @@ FinancialPlanner.SaltEdgeClient = (function() {
         Logger.log('Found ' + connections.length + ' connection(s)');
         
         let totalTransactions = 0;
+        let totalAccountsProcessed = 0;
+        let totalAccountsFiltered = 0;
         
         // Process each connection
         connections.forEach(function(connection) {
@@ -990,7 +992,15 @@ FinancialPlanner.SaltEdgeClient = (function() {
           
           // Process each account
           accounts.forEach(function(account) {
-            Logger.log('Processing account: ' + account.name);
+            // Filter out non-transactional accounts
+            if (!shouldImportAccount(account)) {
+              totalAccountsFiltered++;
+              Logger.log('Skipping non-transactional account: ' + account.name + ' (' + account.nature + ')');
+              return; // Skip this account
+            }
+            
+            totalAccountsProcessed++;
+            Logger.log('Processing transactional account: ' + account.name);
             
             // Store account metadata in Script Properties
             storeAccount(connection.id, {
@@ -1015,7 +1025,8 @@ FinancialPlanner.SaltEdgeClient = (function() {
         });
         
         const summary = 'Successfully imported ' + totalTransactions + ' transactions from ' + 
-                       connections.length + ' SaltEdge connection(s)';
+                       totalAccountsProcessed + ' account(s) across ' + connections.length + ' connection(s). ' +
+                       'Filtered out ' + totalAccountsFiltered + ' non-transactional account(s).';
         
         Logger.log(summary);
         return summary;
