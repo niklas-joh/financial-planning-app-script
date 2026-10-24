@@ -34,6 +34,8 @@ test('normalize: status mapping, skipped statuses and bad data', () => {
   assert.strictEqual(r.skipped, 2);
   assert.throws(() => norm([raw({ credit_debit_indicator: undefined })]), { name: 'DataError' });
   assert.throws(() => norm([raw({ transaction_amount: { amount: 'x', currency: 'EUR' } })]), { name: 'DataError' });
+  [ '', null, undefined ].forEach((amount) =>
+    assert.throws(() => norm([raw({ transaction_amount: { amount, currency: 'EUR' } })]), { name: 'DataError' }));
 });
 
 test('normalize: id prefers entry_reference, then transaction_id, then a stable content hash', () => {
@@ -73,8 +75,8 @@ test('merge: pending that books under a new id is replaced, not duplicated', () 
   assert.strictEqual(m.removed, 1);
 });
 
-test('merge: stale pending outside the fetched range or account is kept; undated pending is covered', () => {
-  const range = [{ accountId: 'a1', from: '2026-01-01', to: '2026-01-31' }];
+test('merge: stale pending outside the fetched range or account is kept; undated only for includesUndated', () => {
+  const range = [{ accountId: 'a1', from: '2026-01-01', to: '2026-01-31', includesUndated: true }];
   const outside = tx({ transactionId: 'o', status: 'pending', bookingDate: '2025-12-01' });
   const otherAccount = tx({ transactionId: 'x', status: 'pending', accountId: 'a2' });
   const undated = tx({ transactionId: 'u', status: 'pending', bookingDate: '' });
@@ -82,6 +84,8 @@ test('merge: stale pending outside the fetched range or account is kept; undated
   const m = BS.TxnMerge.merge([outside, otherAccount, undated, booked], [], range);
   assert.deepStrictEqual(m.rows.map((t) => t.transactionId).sort(), ['k', 'o', 'x']);
   assert.strictEqual(m.removed, 1);
+  const older = [{ accountId: 'a1', from: '2026-01-01', to: '2026-01-31' }];
+  assert.strictEqual(BS.TxnMerge.merge([undated], [], older).rows.length, 1);
 });
 
 test('merge: a booked row is never downgraded; FX columns survive an unchanged re-fetch', () => {
@@ -150,14 +154,24 @@ test('client.getTransactions builds the query and omits undefined parameters', (
 function fakeSheetBook() {
   const sheets = {};
   const makeSheet = () => {
-    const s = { grid: [], formats: [], frozen: 0 };
+    const s = { grid: [], formats: [], frozen: 0, cleared: [] };
     s.getLastRow = () => s.grid.length;
-    s.clearContents = () => { s.grid = []; };
+    s.clearContents = () => { throw new Error('whole-tab clear is not allowed'); };
     s.setFrozenRows = (n) => { s.frozen = n; };
     s.getRange = (row, col, rows, cols) => ({
       getValues: () => s.grid.slice(row - 1, row - 1 + rows).map((r) => r.slice(col - 1, col - 1 + cols)),
-      setValues: (m) => { m.forEach((r, i) => { s.grid[row - 1 + i] = r.slice(); }); },
-      setNumberFormat: (f) => { s.formats.push([col, f]); }
+      setValues: (m) => {
+        m.forEach((r, i) => {
+          const target = s.grid[row - 1 + i] || (s.grid[row - 1 + i] = []);
+          r.forEach((v, j) => { target[col - 1 + j] = v; });
+        });
+      },
+      setNumberFormat: (f) => { s.formats.push([col, f]); },
+      clearContent: () => {
+        s.cleared.push([row, col, rows, cols]);
+        for (let r = row - 1; r < row - 1 + rows; r++) for (let c = col - 1; c < col - 1 + cols; c++) if (s.grid[r]) s.grid[r][c] = '';
+        while (s.grid.length && s.grid[s.grid.length - 1].every((v) => v === '')) s.grid.pop();
+      }
     });
     return s;
   };
@@ -186,6 +200,27 @@ test('store round-trips rows, forces text format on text columns, tolerates Date
   assert.strictEqual(store.load()[0].bookingDate, '2026-01-10');
 });
 
+test('store: save never clears the whole tab, trims leftovers, keeps columns to the right', () => {
+  const book = fakeSheetBook();
+  const store = BS.TransactionsStore.create(book, (d) => d.toISOString().slice(0, 10));
+  store.save([tx({ transactionId: 'a' }), tx({ transactionId: 'b' }), tx({ transactionId: 'c' })]);
+  const sheet = book.sheets.transactions;
+  sheet.grid[1][BS.TransactionsStore.COLUMNS.length] = 'my note';
+  store.save([tx({ transactionId: 'a' })]);
+  assert.strictEqual(sheet.grid.length, 2);
+  assert.strictEqual(sheet.grid[1][BS.TransactionsStore.COLUMNS.length], 'my note');
+  assert.deepStrictEqual(sheet.cleared[0].slice(0, 3), [3, 1, 2]);
+  assert.strictEqual(store.load().length, 1);
+});
+
+test('store: load fails loudly when the header was changed', () => {
+  const book = fakeSheetBook();
+  const store = BS.TransactionsStore.create(book, (d) => d.toISOString().slice(0, 10));
+  store.save([tx({ transactionId: 'a' })]);
+  book.sheets.transactions.grid[0][2] = 'renamed';
+  assert.throws(() => store.load(), { name: 'DataError' });
+});
+
 function syncDeps(over) {
   const saves = [];
   let rows = [];
@@ -197,19 +232,23 @@ function syncDeps(over) {
     },
     store: { load: () => rows, save: (r) => { rows = r; saves.push(r.length); return r.length; } },
     nowMs: () => Date.parse('2026-04-01T12:00:00Z'),
+    todayIso: () => '2026-04-01',
     ...over
   };
   return { deps, saves, fetches, rows: () => rows };
 }
 
-test('sync: first run backfills in windows, saving after each, then is idempotent', () => {
+test('sync: first run backfills in windows and saves once per account; a re-run adds nothing', () => {
   const { deps, saves, fetches } = syncDeps();
   const result = BS.TxnSync.run(deps);
   assert.strictEqual(result.complete, true);
   assert.strictEqual(fetches[0].dateFrom, '2026-01-01');
   assert.strictEqual(fetches[fetches.length - 1].dateTo, '2026-04-01');
-  assert.strictEqual(saves.length, fetches.length);
+  assert.strictEqual(saves.length, 1);
   assert.strictEqual(result.added, fetches.length);
+  const again = BS.TxnSync.run({ ...deps, provider: { ...deps.provider,
+    getTransactions: (id, range) => [tx({ transactionId: 'n' + (fetches.findIndex((f) => f.dateTo === range.dateTo) + 1), bookingDate: range.dateTo })] } });
+  assert.strictEqual(again.added, 0);
 });
 
 test('sync: later runs start at the latest booked date minus the overlap', () => {
@@ -220,13 +259,41 @@ test('sync: later runs start at the latest booked date minus the overlap', () =>
   assert.strictEqual(fetches[0].dateFrom, '2026-03-25');
 });
 
-test('sync: stops at the time budget without losing saved work, and the next run continues', () => {
+test('sync: stops at the time budget, saves what it has, and the next run continues', () => {
   let now = Date.parse('2026-04-01T12:00:00Z');
   const { deps, saves, rows } = syncDeps({ nowMs: () => { now += 100000; return now; } });
   const partial = BS.TxnSync.run(deps);
   assert.strictEqual(partial.complete, false);
-  assert.ok(saves.length >= 1 && saves.length < 4);
-  assert.strictEqual(rows().length, saves[saves.length - 1]);
+  assert.strictEqual(saves.length, 1);
+  assert.ok(rows().length >= 1 && rows().length < 4);
+});
+
+test('sync: with two accounts, an exhausted budget skips the second without saving it', () => {
+  let now = Date.parse('2026-04-01T12:00:00Z');
+  const base = syncDeps({ nowMs: () => { now += 100000; return now; } });
+  base.deps.provider.listAccounts = () => [{ accountId: 'a1' }, { accountId: 'a2' }];
+  const result = BS.TxnSync.run(base.deps);
+  assert.strictEqual(result.complete, false);
+  assert.ok(base.rows().every((t) => t.accountId === 'a1'));
+});
+
+test('sync: a failing fetch still saves what was merged before it, then rethrows', () => {
+  const { deps, saves, rows } = syncDeps();
+  let calls = 0;
+  const inner = deps.provider.getTransactions;
+  deps.provider.getTransactions = (id, range) => { if (++calls === 3) throw BS.Errors.http(500, 'boom'); return inner(id, range); };
+  assert.throws(() => BS.TxnSync.run(deps), { name: 'HttpError' });
+  assert.strictEqual(saves.length, 1);
+  assert.strictEqual(rows().length, 2);
+});
+
+test('sync: undated pending rows survive early windows and are dropped only in the window ending today', () => {
+  const stale = tx({ transactionId: 'u', status: 'pending', bookingDate: '' });
+  const { deps, rows } = syncDeps();
+  deps.store.save(deps.store.load().concat([stale]));
+  deps.provider.getTransactions = () => [];
+  BS.TxnSync.run(deps);
+  assert.strictEqual(rows().length, 0);
 });
 
 test('sync: provider errors propagate', () => {

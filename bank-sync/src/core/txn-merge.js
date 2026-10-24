@@ -10,6 +10,8 @@
    * @property {string} accountId - Account that was fetched.
    * @property {string} from - First day covered, inclusive (ISO date).
    * @property {string} to - Last day covered, inclusive (ISO date).
+   * @property {boolean} [includesUndated] - True if the fetch also covers pending rows
+   *   that have no date (the window ending today). Otherwise they are left alone.
    */
 
   /**
@@ -40,7 +42,7 @@
 
   /**
    * Whether a stored pending row falls inside a range that was just re-fetched.
-   * Undated pending rows count as inside: they are always "current".
+   * Undated pending rows count as inside only for a range flagged `includesUndated`.
    * @param {import('../providers/bank-provider.js').Transaction} t - Stored row.
    * @param {FetchedRange} range - Fetched range.
    * @returns {boolean} True if the row should have been returned again.
@@ -48,7 +50,7 @@
   function coveredBy(t, range) {
     if (t.accountId !== range.accountId) return false;
     const date = effectiveDate(t);
-    return !date || (date >= range.from && date <= range.to);
+    return date ? date >= range.from && date <= range.to : Boolean(range.includesUndated);
   }
 
   /**
