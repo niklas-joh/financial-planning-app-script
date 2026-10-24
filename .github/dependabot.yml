@@ -1,0 +1,24 @@
+# Keeps pinned GitHub Actions and npm dev tools on their latest releases.
+# Updates are grouped so each ecosystem produces at most one PR per week.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      dev-tools:
+        patterns: ['*']
+    commit-message:
+      prefix: chore
+      include: scope

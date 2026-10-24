@@ -5,7 +5,7 @@
     "1C9Jlvvz1_r8c323sk1Gsktdgq2Gq7hxUCDZ4o-jCEEM"
   ],
   "filePushOrder": [
-    "00_namespace.js",
-    "core/config.js"
+    "src/00_namespace.js",
+    "src/core/config.js"
   ]
 }

@@ -1,0 +1,5 @@
+# Reviewed gitleaks findings that are not secrets (2026-10-24):
+# - salt-edge-client.js: a regex that normalises the PEM header text, not a key.
+# - salt-edge-swagger-v6.json: example tokens from SaltEdge's public API spec.
+46ef6f7799b780288e89b4d1b30327b9524931df:docs/salt-edge-swagger-v6.json:generic-api-key:1
+cbd9955e94943034ea3b3b652c593b5c29690bcc:src/services/salt-edge/salt-edge-client.js:private-key:64

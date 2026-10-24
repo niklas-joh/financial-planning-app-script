@@ -12,7 +12,7 @@
  */
 // eslint-disable-next-line no-unused-vars
 function plaidCreateLinkTokenGlobal() {
-  return FinancialPlanner.PlaidService.createLinkToken();
+  return FinancialPlanner.PlaidClient.createLinkToken();
 }
 
 /**
@@ -23,7 +23,7 @@ function plaidCreateLinkTokenGlobal() {
  */
 // eslint-disable-next-line no-unused-vars
 function plaidExchangeTokenGlobal(publicToken) {
-  return FinancialPlanner.PlaidService.exchangePublicToken(publicToken);
+  return FinancialPlanner.PlaidClient.exchangePublicToken(publicToken);
 }
 
 /**

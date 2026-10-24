@@ -334,7 +334,7 @@ FinancialPlanner.FinancialAnalysisService = (function(
       
       // Card Border: Apply a thin solid border around the entire card
       sheet.getRange(startRow, startColumn, 5, 2)
-        .setBorder(true, true, true, true, true, true, '#A9D18E', SpreadsheetApp.BorderStyle.SOLID_THIN); // Light green border
+        .setBorder(true, true, true, true, true, true, '#A9D18E', SpreadsheetApp.BorderStyle.SOLID); // Light green border
     }
   }
   
@@ -701,7 +701,7 @@ FinancialPlanner.FinancialAnalysisService = (function(
       // Filter out subcategories from expenses and sort by average amount (descending) for display
       const categories = metrics.categories.expenses
         .filter(c => !c.subcategory) // We only want main categories for this table
-        .sort((a, b) => b.amount - a.amount); // Sort by average amount, highest first
+        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)); // Biggest spend first (expenses are stored as negatives)
       
       this.builder
         .addSectionHeader('Expense Categories', { // Section title

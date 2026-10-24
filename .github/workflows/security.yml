@@ -1,0 +1,83 @@
+name: Security
+
+# Secret scanning (gitleaks) and static analysis (Semgrep). This repo handles
+# bank API credentials (Plaid, SaltEdge RSA key) and is public, so a leaked
+# secret would be exposed immediately — these run on every PR and weekly.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Gitleaks — secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      # sha256 of gitleaks_8.30.1_linux_x64.tar.gz from the release's checksums.txt
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # scan the full history, not just the last commit
+
+      - name: Install gitleaks (checksum-verified)
+        run: |
+          curl -sSL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar xzf gitleaks.tgz gitleaks
+          ./gitleaks version
+
+      - name: Scan git history
+        # Reviewed false positives are listed in .gitleaksignore.
+        run: ./gitleaks git . --redact --no-banner --exit-code 1
+
+  semgrep:
+    name: Semgrep — static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write # upload SARIF to the Security tab
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+
+      - name: Install Semgrep
+        run: pip install semgrep==1.182.1
+
+      - name: Run Semgrep
+        # p/github-actions also checks these workflow files for injection bugs.
+        run: |
+          semgrep scan \
+            --config=p/javascript \
+            --config=p/security-audit \
+            --config=p/owasp-top-ten \
+            --config=p/github-actions \
+            --severity=ERROR \
+            --metrics=off \
+            --error \
+            --sarif --output=semgrep.sarif
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always() && hashFiles('semgrep.sarif') != ''
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep

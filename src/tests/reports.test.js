@@ -1,94 +1,60 @@
 /**
  * Financial Planning Tools - Report Service Tests
  *
- * This file contains tests for the FinancialPlanner.ReportService module.
- * It tests the placeholder functions for report generation.
+ * Exercises the real FinancialPlanner.ReportService against the in-memory
+ * Apps Script fakes in gas-fakes.js.
  */
 (function() {
-  // Alias for easier access
   const T = FinancialPlanner.Testing;
+  const Reports = FinancialPlanner.ReportService;
+  let gas;
 
-  // --- Mock Dependencies & Globals ---
-  let lastToast = null;
-  let lastAlert = null;
-  let lastHandledError = null;
-
-  // Mock UI Service
-  const mockUiService = {
-    showLoadingSpinner: function(msg) { lastToast = { message: msg, title: "Working..." }; },
-    hideLoadingSpinner: function() { /* Mock */ },
-    showInfoAlert: function(title, message) { lastAlert = { title: title, message: message }; },
-    showErrorNotification: function(title, message) { lastAlert = { title: title, message: message }; } // Use alert for error mock too
-  };
-
-  // Mock Error Service
-  const mockErrorService = {
-    handle: function(error, msg) { lastHandledError = { error, msg }; console.error("ERROR SERVICE MOCK:", msg, error); },
-    create: function(msg, details) { const e = new Error(msg); e.details = details; e.name="FinancialPlannerError"; return e; },
-    log: function(error) { console.log("ErrorService Mock Log:", error.message); }
-  };
-
-  // Mock Config and Utils (minimal mocks as they aren't directly used by placeholders)
-  const mockConfig = {};
-  const mockUtils = {};
-  
-  // Global Logger mock
-  global.Logger = { log: function(msg) { console.log("Logger.log:", msg); } };
-
-
-  // --- Test Suite Setup ---
-   // Redefine ReportService with mocks
-   const TestReportService = (function(utils, uiService, errorService, config) {
-       // --- Copy of ReportService Implementation Start ---
-        function createYearlySummary() { uiService.showInfoAlert('Yearly Summary', 'Coming Soon!'); }
-        function createCategoryBreakdown() { uiService.showInfoAlert('Category Breakdown', 'Coming Soon!'); }
-        function createSavingsAnalysis() { uiService.showInfoAlert('Savings Analysis', 'Coming Soon!'); }
-        return {
-            generateYearlySummary: function() { try { uiService.showLoadingSpinner("Generating yearly summary report..."); const result = createYearlySummary(); uiService.hideLoadingSpinner(); return result; } catch (error) { uiService.hideLoadingSpinner(); errorService.handle(error, "Failed to generate yearly summary report"); return null; } },
-            generateCategoryBreakdown: function() { try { uiService.showLoadingSpinner("Generating category breakdown report..."); const result = createCategoryBreakdown(); uiService.hideLoadingSpinner(); return result; } catch (error) { uiService.hideLoadingSpinner(); errorService.handle(error, "Failed to generate category breakdown report"); return null; } },
-            generateSavingsAnalysis: function() { try { uiService.showLoadingSpinner("Generating savings analysis report..."); const result = createSavingsAnalysis(); uiService.hideLoadingSpinner(); return result; } catch (error) { uiService.hideLoadingSpinner(); errorService.handle(error, "Failed to generate savings analysis report"); return null; } }
-        };
-       // --- Copy of ReportService Implementation End ---
-   })(mockUtils, mockUiService, mockErrorService, mockConfig); // Pass mocks
-
-
-  // --- Helper to reset state before each test ---
-  function resetMocks() {
-      lastToast = null;
-      lastAlert = null;
-      lastHandledError = null;
+  function setup() {
+    gas = FakeGas.install(global);
   }
 
-  // --- Test Cases ---
+  [
+    ['generateYearlySummary', 'Yearly Summary', 'Generating yearly summary report...'],
+    ['generateCategoryBreakdown', 'Category Breakdown', 'Generating category breakdown report...'],
+    ['generateSavingsAnalysis', 'Savings Analysis', 'Generating savings analysis report...'],
+  ].forEach(function([method, title, spinner]) {
+    T.registerTest("ReportService", method + " should show 'Coming Soon' alert", function() {
+      setup();
+      const result = Reports[method]();
 
-  T.registerTest("ReportService", "generateYearlySummary should show 'Coming Soon' alert", function() {
-    resetMocks();
-    T.assertEquals(null, lastAlert, "lastAlert should be reset before calling the service.");
-    const result = TestReportService.generateYearlySummary();
+      T.assertTrue(result === undefined, 'Placeholder should return undefined.');
+      T.assertEquals(1, gas.ui.alerts.length, 'Exactly one alert should be shown.');
+      T.assertEquals(title, gas.ui.alerts[0].title, 'Alert title should match.');
+      T.assertEquals('Coming Soon!', gas.ui.alerts[0].message, 'Alert message should match.');
+      T.assertEquals(gas.ui.ButtonSet.OK, gas.ui.alerts[0].buttons, 'Alert should use the OK button set.');
+    });
 
-    T.assertTrue(result === undefined || result === null, "Placeholder function should return null or undefined."); // Placeholder returns void, wrapper returns null on error or result (which is undefined)
-    T.assertDeepEquals({ title: "Yearly Summary", message: "Coming Soon!" }, lastAlert, "Alert should contain correct title and message.");
-    T.assertTrue(lastHandledError === null, "No error should be handled.");
+    T.registerTest("ReportService", method + " should show and then clear the loading toast", function() {
+      setup();
+      Reports[method]();
+
+      const toasts = gas.spreadsheet.toasts;
+      T.assertEquals(2, toasts.length, 'A spinner toast and a clearing toast are expected.');
+      T.assertEquals(spinner, toasts[0].message, 'Spinner message should match.');
+      T.assertEquals('', toasts[1].message, 'The second toast clears the spinner.');
+    });
   });
 
-  T.registerTest("ReportService", "generateCategoryBreakdown should show 'Coming Soon' alert", function() {
-    resetMocks();
-    T.assertEquals(null, lastAlert, "lastAlert should be reset before calling the service.");
-    const result = TestReportService.generateCategoryBreakdown();
-
-    T.assertTrue(result === undefined || result === null, "Placeholder function should return null or undefined.");
-    T.assertDeepEquals({ title: "Category Breakdown", message: "Coming Soon!" }, lastAlert, "Alert should contain correct title and message.");
-    T.assertTrue(lastHandledError === null, "No error should be handled.");
+  T.registerTest("ReportService", "errors are routed to ErrorService and the spinner is cleared", function() {
+    setup();
+    // Make the alert fail; the service must catch it, report it and return null.
+    gas.ui.alert = function() { throw new Error('UI unavailable'); };
+    const original = FinancialPlanner.ErrorService.handle;
+    let handled = null;
+    FinancialPlanner.ErrorService.handle = function(error, message) { handled = { error, message }; };
+    try {
+      const result = Reports.generateYearlySummary();
+      T.assertEquals(null, result, 'Should return null on error.');
+      T.assertNotNull(handled, 'ErrorService.handle should be called.');
+      T.assertEquals('Failed to generate yearly summary report', handled.message, 'User-facing message should match.');
+      T.assertEquals('', gas.spreadsheet.toasts[gas.spreadsheet.toasts.length - 1].message, 'Spinner should be cleared.');
+    } finally {
+      FinancialPlanner.ErrorService.handle = original;
+    }
   });
-
-  T.registerTest("ReportService", "generateSavingsAnalysis should show 'Coming Soon' alert", function() {
-    resetMocks();
-    T.assertEquals(null, lastAlert, "lastAlert should be reset before calling the service.");
-    const result = TestReportService.generateSavingsAnalysis();
-
-    T.assertTrue(result === undefined || result === null, "Placeholder function should return null or undefined.");
-    T.assertDeepEquals({ title: "Savings Analysis", message: "Coming Soon!" }, lastAlert, "Alert should contain correct title and message.");
-    T.assertTrue(lastHandledError === null, "No error should be handled.");
-  });
-
-})(); // End IIFE
+})();

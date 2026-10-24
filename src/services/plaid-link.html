@@ -68,7 +68,8 @@
     const statusDiv = document.getElementById('status');
     
     function showStatus(message, type) {
-      statusDiv.innerHTML = message;
+      // textContent, not innerHTML: messages can include error text from the server or Plaid.
+      statusDiv.textContent = message;
       statusDiv.className = type || '';
     }
     

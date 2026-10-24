@@ -91,6 +91,9 @@ const SheetBuilderModule = (function() {
       this.currentRow = 1; // Reset current row as sheet is cleared
       this.sheet.clear();
       this.sheet.clearFormats();
+      // Sheet.clear() keeps embedded charts; remove them so rebuilding a
+      // sheet doesn't stack a new set of charts on top of the old ones.
+      this.sheet.getCharts().forEach(chart => this.sheet.removeChart(chart));
       this.sheet.getRange("A1:Z1000").setDataValidation(null);
       return this;
     }
@@ -235,7 +238,8 @@ const SheetBuilderModule = (function() {
      * @returns {SheetBuilder} The `SheetBuilder` instance for chaining.
      */
     addBlankRow(height) {
-      const effectiveHeight = height === undefined ? this.sheet.getParent().getDefaultRowHeight() : height;
+      // Apps Script has no getter for the default row height; 21px is Sheets' default.
+      const effectiveHeight = height === undefined ? 21 : height;
       this.sheet.setRowHeight(this.currentRow, effectiveHeight);
       this.currentRow++;
       return this;
@@ -253,8 +257,7 @@ const SheetBuilderModule = (function() {
      *   verticalAlignment?: string,
      *   numberFormat?: string,
      *   wrap?: boolean,
-     *   border?: {top?: boolean, left?: boolean, bottom?: boolean, right?: boolean, internal?: boolean, color?: string, style?: GoogleAppsScript.Spreadsheet.BorderStyleValue},
-     *   indent?: number
+     *   border?: {internal?: boolean, color?: string, style?: GoogleAppsScript.Spreadsheet.BorderStyle}
      * }} formatting - An object containing formatting properties.
      * @private
      */
@@ -271,12 +274,10 @@ const SheetBuilderModule = (function() {
       if (formatting.border) {
         range.setBorder(
           true, true, true, true, formatting.border.internal || false, formatting.border.internal || false,
-          formatting.borderColor || '#000000',
-          formatting.borderStyle || SpreadsheetApp.BorderStyle.SOLID
+          formatting.border.color || '#000000',
+          formatting.border.style || SpreadsheetApp.BorderStyle.SOLID
         );
       }
-      
-      if (formatting.indent) range.setIndentationLevel(formatting.indent);
     }
 
     /**
@@ -385,3 +386,7 @@ const SheetBuilderModule = (function() {
 
   return SheetBuilderModuleConstructor;
 })();
+
+// The features receive this instance as a load-time dependency, so Config and
+// Utils must be loaded first (see filePushOrder in .clasp.json).
+FinancialPlanner.SheetBuilder = new SheetBuilderModule(FinancialPlanner.Config, FinancialPlanner.Utils);

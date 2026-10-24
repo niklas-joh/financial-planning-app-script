@@ -63,6 +63,9 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
       .setOption('height', 300)
       .build();
     
+    // Clearing the sheet's content does not remove charts, so drop the previous
+    // run's chart instead of stacking a new one on top of it.
+    sheet.getCharts().forEach(chart => sheet.removeChart(chart));
     sheet.insertChart(pieChart);
   }
   
@@ -204,13 +207,14 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
     });
     
     // Group by category and sub-category
+    const expenseTypes = config.getSection('EXPENSE_TYPES');
     const categoryData = {};
     let totalExpenses = 0;
     
     currentMonthTransactions.forEach(row => {
       const type = row[typeColIndex];
-      // Only include expenses
-      if (type !== "Expenses" && type !== "Wants/Pleasure" && type !== "Extra") return;
+      // Only include expense types (Essentials, Wants/Pleasure, Extra)
+      if (!expenseTypes.includes(type)) return;
       
       const category = row[categoryColIndex];
       const subcategory = row[subcategoryColIndex] || "(None)";
@@ -296,8 +300,9 @@ FinancialPlanner.MonthlySpendingReport = (function(utils, uiService, errorServic
     // Apply number formats in batches
     if (finalDataRowIndex >= 4) {
         // Amount column (C) and Avg column (E)
-        utils.formatAsCurrency(reportSheet.getRange(4, 3, finalDataRowIndex - 4 + 1, 1), config.getLocale().CURRENCY_SYMBOL, config.getLocale().CURRENCY_LOCALE);
-        utils.formatAsCurrency(reportSheet.getRange(4, 5, finalDataRowIndex - 4 + 1, 1), config.getLocale().CURRENCY_SYMBOL, config.getLocale().CURRENCY_LOCALE);
+        const currencyFormat = config.getLocale().NUMBER_FORMATS.CURRENCY_DEFAULT;
+        utils.formatAsCurrency(reportSheet.getRange(4, 3, finalDataRowIndex - 4 + 1, 1), currencyFormat);
+        utils.formatAsCurrency(reportSheet.getRange(4, 5, finalDataRowIndex - 4 + 1, 1), currencyFormat);
         // Percentage column (D)
         reportSheet.getRange(4, 4, finalDataRowIndex - 4 + 1, 1).setNumberFormat("0.0%");
     }

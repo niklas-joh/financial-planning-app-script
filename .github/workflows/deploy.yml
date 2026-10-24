@@ -1,0 +1,97 @@
+name: Deploy to Apps Script
+
+# Pushes src/ to the Apps Script project with clasp. Manual only, from main,
+# by the repo owner — the stored Google credential can read and change the
+# live spreadsheet, so nothing deploys automatically.
+#
+# One-time setup (see CLAUDE.md → "Deploying"):
+#   1. Locally: `npx clasp login` (uses the clasp version pinned in package.json).
+#   2. Copy the contents of ~/.clasprc.json into a repository secret named CLASPRC_JSON,
+#      ideally inside a GitHub environment called "apps-script" with yourself as a
+#      required reviewer.
+
+on:
+  workflow_dispatch:
+    inputs:
+      create_version:
+        description: 'Also create an immutable version after pushing'
+        type: boolean
+        default: false
+      deployment_id:
+        description: 'Optional: deployment ID to point at the new version (e.g. the SaltEdge callback web app)'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: clasp push
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.ref == 'refs/heads/main' && github.actor == github.repository_owner
+    environment: apps-script
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Run checks before deploying
+        run: |
+          npm run lint
+          npm run check:manifest
+          npm test
+
+      - name: Write clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [[ -z "$CLASPRC_JSON" ]]; then
+            echo "::error::Secret CLASPRC_JSON is not set. See the setup notes at the top of this workflow."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+
+      - name: Show files that will be pushed
+        run: npx clasp show-file-status
+
+      - name: Push to Apps Script
+        # --force accepts manifest (appsscript.json) changes without a prompt.
+        run: npx clasp push --force
+
+      - name: Create version
+        id: version
+        if: inputs.create_version || inputs.deployment_id != ''
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          OUT=$(npx clasp create-version "Deployed from ${SHA:0:7}")
+          echo "$OUT"
+          VERSION=$(printf '%s' "$OUT" | grep -oE '[0-9]+' | tail -1)
+          if [[ -z "$VERSION" ]]; then echo "::error::Could not read the new version number."; exit 1; fi
+          echo "number=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Update deployment
+        if: inputs.deployment_id != ''
+        env:
+          DEPLOYMENT_ID: ${{ inputs.deployment_id }}
+          VERSION: ${{ steps.version.outputs.number }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$DEPLOYMENT_ID" =~ ^[A-Za-z0-9_-]+$ ]]; then echo "::error::Invalid deployment ID."; exit 1; fi
+          npx clasp update-deployment "$DEPLOYMENT_ID" -V "$VERSION" -d "Deployed from ${SHA:0:7}"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
