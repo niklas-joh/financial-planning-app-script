@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const BS = require('./load');
+const { fakeSheetBook } = require('./fake-sheet');
 
 const NOW = Date.parse('2026-04-01T12:00:00Z');
 const memProps = () => {
@@ -121,15 +122,15 @@ test('sync all: rows of a connection that is not synced keep their labels', () =
 });
 
 test('sync all: skips connections once the shared time budget is nearly spent, writes no raw tabs if none ran', () => {
-  const { deps, raw, clock } = runAll();
+  const { deps, raw } = runAll();
   const real = deps.nowMs;
+  // The first call (run start) sees the real time; every later call sees an almost spent budget.
   let first = true;
   deps.nowMs = () => { if (first) { first = false; return real(); } return real() + BS.Config.TRANSACTIONS.TIME_BUDGET_MS - 1000; };
   const outcome = BS.SyncAll.run(deps);
   assert.ok(outcome.results.filter((r) => r.status !== 'not connected').every((r) => r.status === 'skipped: time budget'));
   assert.strictEqual(outcome.raw, null);
   assert.deepStrictEqual(raw, {});
-  assert.ok(clock);
 });
 
 test('sync all: the summary has counts per connection and no row content', () => {
@@ -148,4 +149,65 @@ test('transactions tab gets the label columns next to each row', () => {
   const row = m[1];
   ['bank', 'connection', 'accountName', 'ibanMasked'].forEach((k) => assert.ok(header.indexOf(k) !== -1 && header.indexOf(k) < header.indexOf('accountId')));
   assert.strictEqual(row[header.indexOf('connection')], 'revolut-niklas');
+});
+
+test('raw writer: refreshed connections are replaced, others kept, legacy rows dropped, never a whole-tab clear', () => {
+  const book = fakeSheetBook();
+  const writer = BS.RawWriter.create(book);
+  const cols = BS.RawWriter.ACCOUNT_COLUMNS;
+  writer.writeTable('raw_accounts', cols, [
+    { provider: 'p', connection: 'revolut-niklas', accountId: 'n1', accountName: 'Old' },
+    { provider: 'p', connection: 'revolut-partner', accountId: 'p1', accountName: 'Keep' },
+    { provider: 'p', connection: 'revolut-partner', accountId: 'p2', accountName: 'Keep2' }]);
+  book.sheets.raw_accounts.grid.push(['p', '', '', 'old-legacy', 'x', '', '', '', '']);
+  const written = writer.writeTable('raw_accounts', cols,
+    [{ provider: 'p', connection: 'revolut-niklas', accountId: 'n1', accountName: 'New' }], ['revolut-niklas']);
+  assert.strictEqual(written, 3);
+  const names = book.sheets.raw_accounts.grid.slice(1).map((r) => r[4]).filter(Boolean).sort();
+  assert.deepStrictEqual(names, ['Keep', 'Keep2', 'New']);
+  assert.ok(!book.sheets.raw_accounts.grid.some((r) => r.includes('old-legacy')));
+});
+
+test('raw writer: text columns are plain text (no formulas), the amount stays numeric', () => {
+  const book = fakeSheetBook();
+  BS.RawWriter.create(book).writeTable('raw_balances', BS.RawWriter.BALANCE_COLUMNS, [{ connection: 'c', amount: 5 }]);
+  const cols = BS.RawWriter.BALANCE_COLUMNS.map((c) => c.key);
+  const formatted = book.sheets.raw_balances.formats.map((f) => f[0]);
+  assert.ok(formatted.includes(cols.indexOf('accountName') + 1));
+  assert.ok(!formatted.includes(cols.indexOf('amount') + 1));
+});
+
+test('sync all: a connection that failed keeps its earlier raw rows on the next run', () => {
+  const book = fakeSheetBook();
+  const first = runAll({ rawWriter: BS.RawWriter.create(book) });
+  BS.SyncAll.run(first.deps);
+  const okProvider = (c) => ({
+    listAccounts: () => [acct({ accountId: 'a-' + c.key, connection: c.key })],
+    getBalances: (id) => [{ accountId: id, amount: 1 }], getTransactions: () => []
+  });
+  const failing = { listAccounts: () => { throw BS.Errors.auth('expired'); } };
+  const second = runAll({
+    rawWriter: BS.RawWriter.create(book),
+    isConnected: () => true,
+    providerFor: (c) => (c.key === 'revolut-niklas' ? failing : okProvider(c))
+  });
+  BS.SyncAll.run(second.deps);
+  const kept = book.sheets.raw_accounts.grid.slice(1).map((r) => r[2]).filter(Boolean);
+  assert.ok(kept.includes('revolut-niklas'), 'earlier row of the failed connection is still there');
+  assert.ok(kept.includes('revolut-partner'));
+});
+
+test('auth.complete rejects a pending state saved before connections existed', () => {
+  const store = BS.EbSessionStore.create(memProps(), () => NOW);
+  store.savePending('old', { bankKey: 'revolut', validUntil: '2026-06-01T00:00:00Z' });
+  const auth = BS.EbAuth.create({ client: { createSession: () => assert.fail('must not reach the bank') },
+    store, nowMs: () => NOW, uuid: () => 's', getRedirectUrl: () => 'x' });
+  assert.throws(() => auth.complete('code', 'old'), /started before an update/);
+  assert.strictEqual(store.loadSession('undefined'), null);
+});
+
+test('connections.choose accepts listed numbers only', () => {
+  const list = [{ key: 'a' }, { key: 'b' }];
+  assert.strictEqual(BS.Connections.choose(list, ' 2 ').key, 'b');
+  ['0', '3', '', 'x', '1.5', '-1'].forEach((bad) => assert.throws(() => BS.Connections.choose(list, bad), { name: 'InputError' }));
 });

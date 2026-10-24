@@ -26,17 +26,18 @@
   /**
    * Writes both raw tabs, adding bank, connection, account name and masked IBAN to
    * each balance.
-   * @param {{writeTable: function(string, Array<Object>, Array<Object>): number}} writer - Sheet writer.
-   * @param {RawData} data - Everything to show (all connections).
+   * @param {{writeTable: function(string, Array<Object>, Array<Object>, Array<string>=): number}} writer - Sheet writer.
+   * @param {RawData} data - Fresh rows from the connections that were read.
+   * @param {Array<string>} refreshed - Keys of those connections; other connections' rows stay.
    * @returns {{accounts: number, balances: number}} Row counts written (no sensitive data).
    */
-  function write(writer, data) {
+  function write(writer, data, refreshed) {
     const labelsFor = ns.AccountLabels.lookup(data.accounts);
     const balances = data.balances.map(function (b) { return ns.AccountLabels.stamp(b, labelsFor); });
     const tabs = ns.Config.TABS;
     return {
-      accounts: writer.writeTable(tabs.RAW_ACCOUNTS, ns.RawWriter.ACCOUNT_COLUMNS, data.accounts),
-      balances: writer.writeTable(tabs.RAW_BALANCES, ns.RawWriter.BALANCE_COLUMNS, balances)
+      accounts: writer.writeTable(tabs.RAW_ACCOUNTS, ns.RawWriter.ACCOUNT_COLUMNS, data.accounts, refreshed),
+      balances: writer.writeTable(tabs.RAW_BALANCES, ns.RawWriter.BALANCE_COLUMNS, balances, refreshed)
     };
   }
 

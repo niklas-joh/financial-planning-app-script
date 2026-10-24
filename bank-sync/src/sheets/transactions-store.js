@@ -122,7 +122,7 @@
       load: function () {
         const existing = spreadsheet.getSheetByName(tab);
         if (!existing || existing.getLastRow() < 1) return [];
-        const data = existing.getRange(1, 1, existing.getLastRow(), COLUMNS.length).getValues();
+        const data = existing.getRange(1, 1, existing.getLastRow(), existing.getLastColumn()).getValues();
         return fromMatrix(data.slice(1), indexByHeader(data[0]), formatDate);
       },
 

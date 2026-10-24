@@ -39,9 +39,7 @@
     const list = connections.map(function (c, i) { return (i + 1) + '. ' + ns.Connections.label(c); }).join('\n');
     const answer = ui.prompt(title, 'Enter a number:\n' + list, ui.ButtonSet.OK_CANCEL);
     if (answer.getSelectedButton() !== ui.Button.OK) return null;
-    const choice = connections[Number(answer.getResponseText()) - 1];
-    if (!choice) throw ns.Errors.create('InputError', 'Not a listed number');
-    return choice;
+    return ns.Connections.choose(connections, answer.getResponseText());
   }
 
   /** Starts authorization for a chosen connection and shows the login link. */
@@ -98,16 +96,18 @@
   /** Re-reads account names from the bank for every connected login (one call per account). */
   function refreshAccountNames() {
     guarded(function () {
-      const wired = ns.Container.services();
-      const lines = ns.Connections.all().map(function (c) {
-        if (!wired.store.loadSession(c.key)) return c.key + ': not connected';
-        try {
-          return c.key + ': ' + wired.auth.refreshAccounts(c) + ' accounts refreshed';
-        } catch (e) {
-          return c.key + ': ' + ns.Redact.text(e.name + ': ' + e.message);
-        }
+      withLock(function () {
+        const wired = ns.Container.services();
+        const lines = ns.Connections.all().map(function (c) {
+          if (!wired.store.loadSession(c.key)) return c.key + ': not connected';
+          try {
+            return c.key + ': ' + wired.auth.refreshAccounts(c) + ' accounts refreshed';
+          } catch (e) {
+            return c.key + ': ' + ns.Redact.text(e.name + ': ' + e.message);
+          }
+        });
+        SpreadsheetApp.getUi().alert(lines.join('\n') + '\nRun "Sync all" to update the sheet.');
       });
-      SpreadsheetApp.getUi().alert(lines.join('\n') + '\nRun "Sync all" to update the sheet.');
     });
   }
 

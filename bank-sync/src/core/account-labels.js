@@ -3,9 +3,6 @@
  * belongs to. Labels are joined from the accounts list, never recomputed per row.
  */
 (function (ns) {
-  /** Label fields written next to every balance and transaction. */
-  const LABEL_KEYS = ['bank', 'connection', 'accountName', 'ibanMasked'];
-
   /**
    * @typedef {Object} AccountLabels
    * @property {string} bank - Bank name.
@@ -44,5 +41,5 @@
     return labels ? Object.assign({}, row, labels) : row;
   }
 
-  ns.AccountLabels = { LABEL_KEYS: LABEL_KEYS, lookup: lookup, stamp: stamp };
+  ns.AccountLabels = { lookup: lookup, stamp: stamp };
 })(globalThis.BankSync);

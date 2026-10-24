@@ -1,11 +1,14 @@
 /**
- * @fileoverview Writes normalized rows to a tab in one batch call.
+ * @fileoverview Writes normalized rows to a raw tab in one batch call. Rows of
+ * connections that were not refreshed are kept, and the tab is never cleared first.
+ * String columns are plain text so bank-supplied strings cannot become formulas.
  */
 (function (ns) {
   /**
    * @typedef {Object} Column
    * @property {string} header - Header cell text.
    * @property {string} key - Property read from each row object.
+   * @property {boolean} [numeric] - Number column; every other column is plain text.
    */
 
   /** @type {Array<Column>} */
@@ -15,9 +18,8 @@
 
   /** @type {Array<Column>} */
   const BALANCE_COLUMNS = ['provider', 'bank', 'connection', 'accountName', 'ibanMasked', 'accountId',
-    'balanceType', 'name', 'amount', 'currency',
-    'referenceDate', 'lastChange', 'fetchedAt']
-    .map(function (k) { return { header: k, key: k }; });
+    'balanceType', 'name', 'amount', 'currency', 'referenceDate', 'lastChange', 'fetchedAt']
+    .map(function (k) { return { header: k, key: k, numeric: k === 'amount' }; });
 
   /**
    * Builds a 2-D array (header row plus data rows) for `setValues`.
@@ -34,26 +36,63 @@
   }
 
   /**
+   * Reads a tab's existing rows by header name.
+   * @param {Object} sheet - Sheet-like.
+   * @param {Array<Column>} columns - Column definitions.
+   * @returns {Array<Object>} Row objects; [] if the tab is empty.
+   */
+  function readRows(sheet, columns) {
+    if (sheet.getLastRow() < 2) return [];
+    const data = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+    const header = data[0];
+    return data.slice(1).map(function (cells) {
+      const row = {};
+      columns.forEach(function (c) {
+        const cell = cells[header.indexOf(c.header)];
+        if (cell === undefined) row[c.key] = '';
+        else if (cell instanceof Date) row[c.key] = cell.toISOString();
+        else row[c.key] = c.numeric ? Number(cell) : String(cell);
+      });
+      return row;
+    });
+  }
+
+  /**
    * Creates a writer.
    * @param {Object} spreadsheet - Spreadsheet-like (getSheetByName, insertSheet).
-   * @returns {{writeTable: function(string, Array<Column>, Array<Object>): number}} Writer.
+   * @returns {{writeTable: function(string, Array<Column>, Array<Object>, Array<string>=): number}} Writer.
    */
   function create(spreadsheet) {
     return {
       /**
-       * Replaces a tab's contents with the given rows.
-       * @param {string} tabName - Target tab (created if absent).
+       * Writes rows to a tab (created if absent). With `refreshed`, rows of other connections
+       * already on the tab are kept (rows without a connection, from before labels existed,
+       * are dropped as stale); without it the tab's rows are replaced. The new rows are
+       * written first and only leftover rows below are cleared, so a failed write never
+       * empties the tab.
+       * @param {string} tabName - Target tab.
        * @param {Array<Column>} columns - Column definitions.
-       * @param {Array<Object>} rows - Row objects.
-       * @returns {number} Number of data rows written.
+       * @param {Array<Object>} rows - Fresh row objects.
+       * @param {Array<string>} [refreshed] - Connection keys the fresh rows replace.
+       * @returns {number} Number of data rows now on the tab.
        */
-      writeTable: function (tabName, columns, rows) {
+      writeTable: function (tabName, columns, rows, refreshed) {
         const sheet = spreadsheet.getSheetByName(tabName) || spreadsheet.insertSheet(tabName);
-        const matrix = toMatrix(columns, rows);
-        sheet.clearContents();
+        const kept = refreshed
+          ? readRows(sheet, columns).filter(function (r) { return r.connection && refreshed.indexOf(r.connection) === -1; })
+          : [];
+        const all = kept.concat(rows);
+        const matrix = toMatrix(columns, all);
+        const previousLastRow = sheet.getLastRow();
+        columns.forEach(function (c, i) {
+          if (!c.numeric) sheet.getRange(1, i + 1, matrix.length, 1).setNumberFormat('@');
+        });
         sheet.getRange(1, 1, matrix.length, columns.length).setValues(matrix);
+        if (previousLastRow > matrix.length) {
+          sheet.getRange(matrix.length + 1, 1, previousLastRow - matrix.length, columns.length).clearContent();
+        }
         sheet.setFrozenRows(1);
-        return rows.length;
+        return all.length;
       }
     };
   }

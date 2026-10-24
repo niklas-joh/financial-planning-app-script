@@ -10,7 +10,7 @@
    * @property {function(import('./config.js').ConnectionConfig): boolean} isConnected - Whether a session exists.
    * @property {function(import('./config.js').ConnectionConfig): import('../providers/bank-provider.js').BankProvider} providerFor
    * @property {{load: function(): Array<Object>, save: function(Array<Object>): number}} store - Transactions store.
-   * @property {{writeTable: function(string, Array<Object>, Array<Object>): number}} rawWriter - Raw tab writer.
+   * @property {{writeTable: function(string, Array<Object>, Array<Object>, Array<string>=): number}} rawWriter - Raw tab writer.
    * @property {function(): number} nowMs - Clock.
    * @property {function(): string} todayIso - Today's date in the configured time zone.
    */
@@ -51,7 +51,7 @@
     const cfg = ns.Config.TRANSACTIONS;
     const startedAt = deps.nowMs();
     const collected = { accounts: [], balances: [] };
-    let anyOk = false;
+    const refreshed = [];
 
     const results = deps.connections.map(function (connection) {
       const result = { connection: connection.key, status: 'ok' };
@@ -66,7 +66,7 @@
           collected.accounts = collected.accounts.concat(done.data.accounts);
           collected.balances = collected.balances.concat(done.data.balances);
           result.transactions = done.transactions;
-          anyOk = true;
+          refreshed.push(connection.key);
         } catch (e) {
           result.status = 'error';
           result.error = ns.Redact.text(e.name + ': ' + e.message);
@@ -75,7 +75,7 @@
       return result;
     });
 
-    return { results: results, raw: anyOk ? ns.RawSync.write(deps.rawWriter, collected) : null };
+    return { results: results, raw: refreshed.length ? ns.RawSync.write(deps.rawWriter, collected, refreshed) : null };
   }
 
   /**

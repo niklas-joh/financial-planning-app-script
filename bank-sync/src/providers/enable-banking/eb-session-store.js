@@ -64,21 +64,21 @@
       },
 
       /**
-       * @param {string} bankKey - Connection key from Config.CONNECTIONS.
+       * @param {string} connectionKey - Connection key from Config.CONNECTIONS.
        * @param {StoredSession} session - Session to persist.
        */
-      saveSession: function (bankKey, session) {
+      saveSession: function (connectionKey, session) {
         const map = readMap(KEYS.EB_SESSIONS);
-        map[bankKey] = session;
+        map[connectionKey] = session;
         writeMap(KEYS.EB_SESSIONS, map);
       },
 
       /**
-       * @param {string} bankKey - Connection key from Config.CONNECTIONS.
+       * @param {string} connectionKey - Connection key from Config.CONNECTIONS.
        * @returns {?StoredSession} The session, or null if never authorized.
        */
-      loadSession: function (bankKey) {
-        return readMap(KEYS.EB_SESSIONS)[bankKey] || null;
+      loadSession: function (connectionKey) {
+        return readMap(KEYS.EB_SESSIONS)[connectionKey] || null;
       },
 
       /**

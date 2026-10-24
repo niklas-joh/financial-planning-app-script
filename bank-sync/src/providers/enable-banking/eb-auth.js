@@ -89,6 +89,7 @@
        */
       complete: function (code, state) {
         const pending = deps.store.consumePending(state);
+        if (!pending.connectionKey) throw ns.Errors.auth('Authorization started before an update; start again');
         const session = deps.client.createSession(code);
         const validUntil = (session.access && session.access.valid_until) || pending.validUntil;
         const accounts = (session.accounts || []).map(function (raw) { return ns.EbNormalize.normalizeAccount(raw); });
