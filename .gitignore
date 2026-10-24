@@ -37,3 +37,7 @@ secrets.*
 *.bak
 *.swp
 *~
+
+# Google OAuth client secrets and clasp login tokens
+client_secret*.json
+.clasprc.json
