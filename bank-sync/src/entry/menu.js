@@ -55,6 +55,26 @@
     });
   }
 
+  /** Syncs transactions into the transactions tab, serialised by a script lock. */
+  function syncTransactions() {
+    guarded(function () {
+      const lock = LockService.getScriptLock();
+      if (!lock.tryLock(30000)) throw ns.Errors.create('LockError', 'Another sync is running');
+      try {
+        const store = ns.TransactionsStore.create(
+          SpreadsheetApp.getActiveSpreadsheet(), ns.Gas.dateFormatter(ns.Config.TIMEZONE));
+        const result = ns.TxnSync.run({
+          provider: ns.Container.providerFor(BANK), store: store, nowMs: function () { return Date.now(); }
+        });
+        SpreadsheetApp.getUi().alert('Transactions: ' + result.added + ' added, ' + result.updated +
+          ' updated, ' + result.removed + ' pending removed.' +
+          (result.complete ? '' : '\nTime budget reached; run again to continue.'));
+      } finally {
+        lock.releaseLock();
+      }
+    });
+  }
+
   /** Shows non-secret setup status: which settings exist and when consent lapses. */
   function status() {
     guarded(function () {
@@ -74,7 +94,7 @@
     });
   }
 
-  ns.Menu = { authorize: authorize, refreshRaw: refreshRaw, status: status };
+  ns.Menu = { authorize: authorize, refreshRaw: refreshRaw, syncTransactions: syncTransactions, status: status };
 })(globalThis.BankSync);
 
 /** Adds the Bank Sync menu when the spreadsheet opens. */
@@ -82,6 +102,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Bank Sync')
     .addItem('Authorize Revolut', 'menuAuthorize')
     .addItem('Refresh accounts & balances', 'menuRefreshRaw')
+    .addItem('Sync transactions', 'menuSyncTransactions')
     .addItem('Show status', 'menuStatus')
     .addToUi();
 }
@@ -91,6 +112,9 @@ function menuAuthorize() { BankSync.Menu.authorize(); }
 
 /** Menu entry: refresh raw tabs. */
 function menuRefreshRaw() { BankSync.Menu.refreshRaw(); }
+
+/** Menu entry: sync transactions. */
+function menuSyncTransactions() { BankSync.Menu.syncTransactions(); }
 
 /** Menu entry: show setup status. */
 function menuStatus() { BankSync.Menu.status(); }

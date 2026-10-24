@@ -32,6 +32,14 @@
       return PropertiesService.getScriptProperties();
     },
 
+    /**
+     * @param {string} timeZone - IANA timezone.
+     * @returns {function(Date): string} Formats a Date as YYYY-MM-DD in that timezone.
+     */
+    dateFormatter: function (timeZone) {
+      return function (date) { return Utilities.formatDate(date, timeZone, 'yyyy-MM-dd'); };
+    },
+
     /** @returns {Object} Script cache service. */
     cache: function () {
       return CacheService.getScriptCache();

@@ -19,6 +19,9 @@
    * @property {Object<string,BankConfig>} BANKS - Banks reachable through Enable Banking.
    * @property {Object<string,string>} PROPERTY_KEYS - Script Properties key names.
    * @property {Object<string,string>} TABS - Sheet tab names.
+   * @property {Object<string,number>} TRANSACTIONS - Sync tuning: first-run lookback and
+   *   re-fetch overlap in days, fetch window size in days, page cap per fetch, and the
+   *   run time budget in ms (kept under the 6-minute Apps Script limit).
    */
 
   /** @type {BankSyncConfig} */
@@ -46,7 +49,15 @@
     }),
     TABS: Object.freeze({
       RAW_ACCOUNTS: 'raw_accounts',
-      RAW_BALANCES: 'raw_balances'
+      RAW_BALANCES: 'raw_balances',
+      TRANSACTIONS: 'transactions'
+    }),
+    TRANSACTIONS: Object.freeze({
+      INITIAL_LOOKBACK_DAYS: 90,
+      OVERLAP_DAYS: 7,
+      WINDOW_DAYS: 31,
+      MAX_PAGES: 50,
+      TIME_BUDGET_MS: 270000
     })
   });
 })(globalThis.BankSync);

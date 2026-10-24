@@ -7,7 +7,7 @@
    * Creates a client.
    * @param {{request: function(Object): *}} http - JSON HTTP client.
    * @param {function(): string} getToken - Returns a valid JWT.
-   * @returns {Object} Client with listAspsps, startAuth, createSession, getSession, getBalances.
+   * @returns {Object} Client with listAspsps, startAuth, createSession, getSession, getBalances, getTransactions.
    */
   function create(http, getToken) {
     const base = ns.Config.ENABLE_BANKING.BASE_URL;
@@ -41,6 +41,19 @@
       /** @param {string} accountUid - Account uid. @returns {{balances: Array<Object>}} Balances. */
       getBalances: function (accountUid) {
         return call('GET', '/accounts/' + encodeURIComponent(accountUid) + '/balances');
+      },
+      /**
+       * @param {string} accountUid - Account uid.
+       * @param {{date_from: (string|undefined), date_to: (string|undefined), continuation_key: (string|undefined)}} params
+       *   Query parameters; undefined ones are omitted. Dates are inclusive UTC days.
+       * @returns {{transactions: Array<Object>, continuation_key: ?string}} One page.
+       */
+      getTransactions: function (accountUid, params) {
+        const query = Object.keys(params || {})
+          .filter(function (key) { return params[key] !== undefined && params[key] !== null; })
+          .map(function (key) { return key + '=' + encodeURIComponent(params[key]); })
+          .join('&');
+        return call('GET', '/accounts/' + encodeURIComponent(accountUid) + '/transactions' + (query ? '?' + query : ''));
       }
     };
   }
