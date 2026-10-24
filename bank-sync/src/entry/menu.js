@@ -40,38 +40,47 @@
     });
   }
 
-  /** Refreshes the raw accounts and balances tabs, serialised by a script lock. */
+  /**
+   * Runs an action under the script lock so syncs never overlap.
+   * @param {function(): void} action - Work to run while holding the lock.
+   * @throws {Error} LockError if another sync holds the lock.
+   */
+  function withLock(action) {
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(ns.Config.TRANSACTIONS.LOCK_WAIT_MS)) throw ns.Errors.create('LockError', 'Another sync is running');
+    try {
+      action();
+    } finally {
+      lock.releaseLock();
+    }
+  }
+
+  /** Refreshes the raw accounts and balances tabs. */
   function refreshRaw() {
     guarded(function () {
-      const lock = LockService.getScriptLock();
-      if (!lock.tryLock(30000)) throw ns.Errors.create('LockError', 'Another sync is running');
-      try {
+      withLock(function () {
         const writer = ns.RawWriter.create(SpreadsheetApp.getActiveSpreadsheet());
         const counts = ns.RawSync.run(ns.Container.providerFor(BANK), writer);
         SpreadsheetApp.getUi().alert('Wrote ' + counts.accounts + ' accounts and ' + counts.balances + ' balances.');
-      } finally {
-        lock.releaseLock();
-      }
+      });
     });
   }
 
-  /** Syncs transactions into the transactions tab, serialised by a script lock. */
+  /** Syncs transactions into the transactions tab. */
   function syncTransactions() {
     guarded(function () {
-      const lock = LockService.getScriptLock();
-      if (!lock.tryLock(30000)) throw ns.Errors.create('LockError', 'Another sync is running');
-      try {
-        const store = ns.TransactionsStore.create(
-          SpreadsheetApp.getActiveSpreadsheet(), ns.Gas.dateFormatter(ns.Config.TIMEZONE));
+      withLock(function () {
+        const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
         const result = ns.TxnSync.run({
-          provider: ns.Container.providerFor(BANK), store: store, nowMs: function () { return Date.now(); }
+          provider: ns.Container.providerFor(BANK),
+          store: ns.TransactionsStore.create(SpreadsheetApp.getActiveSpreadsheet(), formatDate),
+          nowMs: function () { return Date.now(); },
+          todayIso: function () { return formatDate(new Date()); }
         });
         SpreadsheetApp.getUi().alert('Transactions: ' + result.added + ' added, ' + result.updated +
           ' updated, ' + result.removed + ' pending removed.' +
           (result.complete ? '' : '\nTime budget reached; run again to continue.'));
-      } finally {
-        lock.releaseLock();
-      }
+      });
     });
   }
 

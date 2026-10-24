@@ -57,6 +57,7 @@
       OVERLAP_DAYS: 7,
       WINDOW_DAYS: 31,
       MAX_PAGES: 50,
+      LOCK_WAIT_MS: 30000,
       TIME_BUDGET_MS: 270000
     })
   });

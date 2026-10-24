@@ -57,7 +57,8 @@
    * @throws {Error} DataError if the amount or indicator is unusable.
    */
   function signedAmount(raw) {
-    const magnitude = Math.abs(Number(raw.transaction_amount && raw.transaction_amount.amount));
+    const text = raw.transaction_amount && raw.transaction_amount.amount;
+    const magnitude = text === '' || text === null || text === undefined ? NaN : Math.abs(Number(text));
     if (!isFinite(magnitude)) throw ns.Errors.create('DataError', 'Transaction amount is not numeric');
     if (raw.credit_debit_indicator === 'DBIT') return -magnitude;
     if (raw.credit_debit_indicator === 'CRDT') return magnitude;

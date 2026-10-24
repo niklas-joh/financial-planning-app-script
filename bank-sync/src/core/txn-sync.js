@@ -1,7 +1,8 @@
 /**
  * @fileoverview Provider-agnostic transaction sync. Fetches oldest-to-newest in
- * date windows and saves after each window, so a run that hits the time budget
- * loses nothing: the next run restarts each account from its latest booked date.
+ * date windows and saves once per account (also when a fetch fails or the time
+ * budget ends the run), so nothing merged so far is lost: the next run restarts
+ * each account from its latest booked date.
  */
 (function (ns) {
   /**
@@ -9,6 +10,7 @@
    * @property {import('../providers/bank-provider.js').BankProvider} provider - Source.
    * @property {{load: function(): Array<Object>, save: function(Array<Object>): number}} store - Sheet store.
    * @property {function(): number} nowMs - Clock.
+   * @property {function(): string} todayIso - Today's date (YYYY-MM-DD) in the configured time zone.
    */
 
   /**
@@ -41,26 +43,32 @@
   function run(deps) {
     const cfg = ns.Config.TRANSACTIONS;
     const startedAt = deps.nowMs();
-    const today = ns.DateRange.isoDate(startedAt);
+    const today = deps.todayIso();
     const result = { added: 0, updated: 0, removed: 0, complete: true };
     let rows = deps.store.load();
 
     deps.provider.listAccounts().forEach(function (account) {
       const start = ns.DateRange.startFor(latestBooked(rows, account.accountId), today, cfg);
-      ns.DateRange.planWindows(start, today, cfg.WINDOW_DAYS).forEach(function (window) {
-        if (!result.complete || deps.nowMs() - startedAt > cfg.TIME_BUDGET_MS) {
-          result.complete = false;
-          return;
-        }
-        const incoming = deps.provider.getTransactions(account.accountId, { dateFrom: window.from, dateTo: window.to });
-        const merged = ns.TxnMerge.merge(rows, incoming,
-          [{ accountId: account.accountId, from: window.from, to: window.to }]);
-        rows = merged.rows;
-        deps.store.save(rows);
-        result.added += merged.added;
-        result.updated += merged.updated;
-        result.removed += merged.removed;
-      });
+      let dirty = false;
+      try {
+        ns.DateRange.planWindows(start, today, cfg.WINDOW_DAYS).forEach(function (window) {
+          if (!result.complete || deps.nowMs() - startedAt > cfg.TIME_BUDGET_MS) {
+            result.complete = false;
+            return;
+          }
+          const incoming = deps.provider.getTransactions(account.accountId, { dateFrom: window.from, dateTo: window.to });
+          const merged = ns.TxnMerge.merge(rows, incoming, [{
+            accountId: account.accountId, from: window.from, to: window.to, includesUndated: window.to === today
+          }]);
+          rows = merged.rows;
+          dirty = true;
+          result.added += merged.added;
+          result.updated += merged.updated;
+          result.removed += merged.removed;
+        });
+      } finally {
+        if (dirty) deps.store.save(rows);
+      }
     });
     return result;
   }

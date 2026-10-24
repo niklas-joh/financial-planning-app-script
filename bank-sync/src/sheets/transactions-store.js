@@ -70,6 +70,19 @@
   }
 
   /**
+   * Fails loudly if the header row was changed, instead of misreading columns.
+   * @param {Array<*>} header - First row as read from the sheet.
+   * @throws {Error} DataError if the header does not match `COLUMNS`.
+   */
+  function assertHeader(header) {
+    const matches = COLUMNS.every(function (column, i) { return header[i] === column.key; });
+    if (!matches) {
+      throw ns.Errors.create('DataError', 'The ' + ns.Config.TABS.TRANSACTIONS +
+        ' tab header was changed; restore it or delete the tab to rebuild it');
+    }
+  }
+
+  /**
    * Creates the store.
    * @param {Object} spreadsheet - Spreadsheet-like (getSheetByName, insertSheet).
    * @param {function(Date): string} formatDate - Date to ISO date (YYYY-MM-DD).
@@ -90,24 +103,30 @@
        */
       load: function () {
         const existing = spreadsheet.getSheetByName(tab);
-        if (!existing || existing.getLastRow() < 2) return [];
-        const data = existing.getRange(2, 1, existing.getLastRow() - 1, COLUMNS.length).getValues();
-        return fromMatrix(data, formatDate);
+        if (!existing || existing.getLastRow() < 1) return [];
+        const data = existing.getRange(1, 1, existing.getLastRow(), COLUMNS.length).getValues();
+        assertHeader(data[0]);
+        return fromMatrix(data.slice(1), formatDate);
       },
 
       /**
-       * Replaces the tab's contents with the given transactions in one write.
+       * Replaces the stored transactions in one write. The new rows are written
+       * first and only the leftover rows below them are cleared, so a failed write
+       * never empties the tab and cells to the right of the table are untouched.
        * @param {Array<import('../providers/bank-provider.js').Transaction>} rows - Full set to store.
        * @returns {number} Rows written.
        */
       save: function (rows) {
         const target = sheet();
         const matrix = toMatrix(rows);
-        target.clearContents();
+        const previousLastRow = target.getLastRow();
         COLUMNS.forEach(function (column, i) {
           if (column.text) target.getRange(1, i + 1, matrix.length, 1).setNumberFormat('@');
         });
         target.getRange(1, 1, matrix.length, COLUMNS.length).setValues(matrix);
+        if (previousLastRow > matrix.length) {
+          target.getRange(matrix.length + 1, 1, previousLastRow - matrix.length, COLUMNS.length).clearContent();
+        }
         target.setFrozenRows(1);
         return rows.length;
       }
