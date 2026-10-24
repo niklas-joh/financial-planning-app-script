@@ -87,10 +87,13 @@ jobs:
             PR NUMBER: ${{ steps.pr_context.outputs.pr_number }}
             BASE BRANCH: ${{ steps.pr_context.outputs.base_ref }}
 
-            Review this pull request against the repository's CLAUDE.md. This is a
-            Google Apps Script project (V8 runtime, one shared global scope, files
-            loaded in .clasp.json filePushOrder) that handles personal bank data from
-            Plaid and SaltEdge. Be constructive and specific.
+            Review this pull request against the repository's CLAUDE.md. This repo holds
+            two independent Google Apps Script projects (V8 runtime, files loaded in
+            .clasp.json filePushOrder) that handle personal bank data: the legacy
+            project in src/ (Plaid, SaltEdge, namespace FinancialPlanner) and bank-sync/
+            (Enable Banking, own .clasp.json, namespace BankSync, Node tests under
+            bank-sync/test; see docs/BANK_SYNC_ROADMAP.md). Judge each file against the
+            project it belongs to. Be constructive and specific.
 
             Read the diff with `gh pr diff ${{ steps.pr_context.outputs.pr_number }}`
             and open the surrounding code with Read/Grep before judging it.
@@ -127,9 +130,11 @@ jobs:
             - **[DRY]**, **[KISS]**, **[YAGNI]**, **[SRP]** — see docs/DEVELOPMENT_PRINCIPLES.md
             - **[Naming]**, **[Dead-code]**, **[Constants]** (magic sheet names/columns that
               belong in core/config.js)
-            - **[Tests]** — new logic without a test in src/tests/ using gas-fakes.js
+            - **[Tests]** — new logic without a test: src/tests/ using gas-fakes.js for the
+              legacy project, bank-sync/test/*.test.js for bank-sync
 
-            Post exactly one comment:
+            Write the comment body to review.md in the working directory with the Write
+            tool, then post exactly one comment:
 
               gh pr comment ${{ steps.pr_context.outputs.pr_number }} --body-file <file> --repo ${{ github.repository }}
 
@@ -143,4 +148,7 @@ jobs:
 
             Do not push commits, open issues or approve the PR.
 
-          claude_args: "--allowedTools Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Glob,Grep"
+          # Write is needed to create the --body-file; without it the review is never posted.
+          claude_args: "--allowedTools Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Write,Glob,Grep"
+          # Keep the agent transcript in the job log so a silent failure can be diagnosed.
+          show_full_output: true
