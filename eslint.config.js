@@ -79,7 +79,11 @@ export default [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'script',
-      globals: { ...appsScriptGlobals, module: 'readonly' },
+      globals: { ...appsScriptGlobals, BankSync: 'writable', module: 'readonly' },
+    },
+    rules: {
+      // Entry points (onOpen, doGet, menu handlers) are called by Apps Script.
+      'no-unused-vars': ['error', { vars: 'local', args: 'none', caughtErrors: 'none' }],
     },
   },
   {
