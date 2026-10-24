@@ -1,0 +1,146 @@
+name: Claude Code Review
+
+# Reviews each new PR against CLAUDE.md with an Apps Script–specific checklist
+# and posts one comment with a coverage table and a verdict. Informational
+# only: it never blocks a merge.
+
+on:
+  pull_request:
+    types: [opened, ready_for_review]
+    paths-ignore:
+      - 'package-lock.json'
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review'
+        required: true
+        type: number
+
+jobs:
+  claude-review:
+    # Fork PRs get no secrets, and drafts are reviewed once marked ready.
+    if: >
+      github.event_name == 'workflow_dispatch' || (
+        github.event.pull_request.draft == false &&
+        github.event.pull_request.head.repo.full_name == github.repository
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true # review is informational; never block merges
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write # claude-code-action verifies the workflow via OIDC
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Resolve PR context
+        id: pr_context
+        # Untrusted context goes through env, never straight into run:.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER_INPUT: ${{ github.event.pull_request.number || inputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          PR_NUMBER="$PR_NUMBER_INPUT"
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "::error::No PR number available. Supply pr_number when triggering manually."
+            exit 1
+          fi
+          PR_JSON=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=$(echo "$PR_JSON" | jq -r '.base.ref')" >> "$GITHUB_OUTPUT"
+
+      - name: Guard — skip if this review workflow itself changed
+        id: guard
+        # claude-code-action checks this file against the default branch, so a
+        # PR that edits it cannot be reviewed by it.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr_context.outputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          count=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate \
+            --jq '[.[] | select(.filename == ".github/workflows/claude-code-review.yml")] | length')
+          if [[ "$count" -gt 0 ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Claude Code Review — this PR modifies claude-code-review.yml itself."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Claude Code Review
+        if: steps.guard.outputs.skip != 'true'
+        uses: anthropics/claude-code-action@16f9f71ab9c490faf367f94dd294897edc25be33 # v1.0.261
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ steps.pr_context.outputs.pr_number }}
+            BASE BRANCH: ${{ steps.pr_context.outputs.base_ref }}
+
+            Review this pull request against the repository's CLAUDE.md. This is a
+            Google Apps Script project (V8 runtime, one shared global scope, files
+            loaded in .clasp.json filePushOrder) that handles personal bank data from
+            Plaid and SaltEdge. Be constructive and specific.
+
+            Read the diff with `gh pr diff ${{ steps.pr_context.outputs.pr_number }}`
+            and open the surrounding code with Read/Grep before judging it.
+
+            Check every category below. Prefix each finding with its tag. For
+            categories with nothing to report, still list them as ✅ in the table.
+
+            **Correctness & safety**
+            - **[Bugs]** — logic errors, edge cases, wrong sheet/column assumptions
+            - **[Security]** — escaping of anything rendered through HtmlService, input from
+              e.parameter / google.script.run, signature handling for SaltEdge/Plaid
+            - **[Secrets]** — API keys, tokens or the SaltEdge private key stored anywhere
+              other than PropertiesService, or committed to the repo
+            - **[PII]** — transaction, account or balance data written to Logger/console,
+              error sheets or URLs
+            - **[Money]** — floating-point arithmetic on amounts, sign conventions
+              (expenses are negative), rounding, currency formats
+            - **[Data-loss]** — clearing or overwriting user sheets, irreversible deletes
+
+            **Apps Script platform**
+            - **[Batching]** — getValue/setValue/getRange inside loops instead of one
+              getValues/setValues (Apps Script's N+1)
+            - **[Quotas]** — risk of the 6-minute execution limit, UrlFetchApp quotas,
+              missing pagination limits or LockService where concurrency matters
+            - **[Scopes]** — new or broader oauthScopes in appsscript.json (each one is a
+              new permission the user must grant)
+            - **[Load-order]** — new files missing from filePushOrder, or modules that read
+              FinancialPlanner.X at load time before X's file has loaded
+            - **[Globals]** — duplicate top-level names across files (the last one loaded
+              silently wins), menu items pointing at functions that don't exist
+            - **[API]** — calls to Apps Script methods or enum values that don't exist
+
+            **Design & quality**
+            - **[DRY]**, **[KISS]**, **[YAGNI]**, **[SRP]** — see docs/DEVELOPMENT_PRINCIPLES.md
+            - **[Naming]**, **[Dead-code]**, **[Constants]** (magic sheet names/columns that
+              belong in core/config.js)
+            - **[Tests]** — new logic without a test in src/tests/ using gas-fakes.js
+
+            Post exactly one comment:
+
+              gh pr comment ${{ steps.pr_context.outputs.pr_number }} --body-file <file> --repo ${{ github.repository }}
+
+            Structure:
+            1. **Summary** — 1–3 sentences.
+            2. **Coverage table** — one row per category: `| Category | Status | Note |`
+               using 🔴 bug/blocking, 🟡 improvement, 🔵 nit, ✅ clean. Every row present.
+            3. **Findings** — grouped by severity, each as
+               `[Category] path/to/file.js lines N–M — what is wrong and the fix`.
+            4. **Verdict** — Approved / Needs changes / Needs discussion.
+
+            Do not push commits, open issues or approve the PR.
+
+          claude_args: "--allowedTools Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Glob,Grep"

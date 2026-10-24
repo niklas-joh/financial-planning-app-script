@@ -152,8 +152,9 @@
     const message = "Detailed error message.";
     UIService.showErrorNotification(title, message);
     T.assertNotNull(lastAlert, "ui.alert should have been called for error.");
-    // Note: The service formats the message with the title
-    T.assertEquals(`${title}: ${message}`, lastAlert.message, "Alert message should include title and message.");
+    // The service calls ui.alert(prompt) with one combined string, which the
+    // mock records as its first argument.
+    T.assertEquals(`${title}: ${message}`, lastAlert.title, "Alert text should include title and message.");
     // T.assertEquals(title, lastAlert.title, "Alert title should match."); // ui.alert combines title and message
   });
 

@@ -1,0 +1,17 @@
+{
+  // Type-checks the Apps Script sources using their JSDoc annotations.
+  // Nothing is compiled: `tsc --noEmit` only reports errors.
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "types": ["google-apps-script"],
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.js"],
+  "exclude": ["src/tests/**"]
+}
