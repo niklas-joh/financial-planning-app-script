@@ -209,6 +209,52 @@ FinancialPlanner.SaltEdgeClient = (function() {
   }
 
   /**
+   * Checks if an account should be imported based on its nature.
+   * Only transactional account types (checking, savings, credit_card, etc.) are imported.
+   * Non-transactional types (investments, loans, mortgages, insurance, bonus) are filtered out.
+   * @private
+   * @param {Object} account - Account object from SaltEdge API
+   * @param {string} account.nature - Account nature (e.g., 'checking', 'investment', 'loan')
+   * @returns {boolean} True if account should be imported, false otherwise
+   */
+  function shouldImportAccount(account) {
+    // Handle invalid account object
+    if (!account || typeof account !== 'object') {
+      FinancialPlanner.ErrorService.logError(
+        'shouldImportAccount',
+        new Error('Invalid account object provided'),
+        { account: account }
+      );
+      return false;
+    }
+    
+    // Handle missing nature property
+    if (!account.nature) {
+      FinancialPlanner.ErrorService.logError(
+        'shouldImportAccount',
+        new Error('Account nature is missing'),
+        { account_id: account.id, account_name: account.name }
+      );
+      return false;
+    }
+    
+    // Get transactional account natures from config
+    const config = FinancialPlanner.Config.getSection('SALTEDGE');
+    const transactionalNatures = config.TRANSACTIONAL_ACCOUNT_NATURES;
+    
+    // Check if account nature is in the allowed list
+    const shouldImport = transactionalNatures.includes(account.nature);
+    
+    // Log filtering decision for debugging
+    if (!shouldImport) {
+      Logger.log('Filtering out non-transactional account: ' + 
+                 (account.name || 'Unknown') + ' (nature: ' + account.nature + ')');
+    }
+    
+    return shouldImport;
+  }
+
+  /**
    * Gets default from_date for data fetching (90 days ago)
    * @returns {string} Date in YYYY-MM-DD format
    * @private
@@ -919,6 +965,8 @@ FinancialPlanner.SaltEdgeClient = (function() {
         Logger.log('Found ' + connections.length + ' connection(s)');
         
         let totalTransactions = 0;
+        let totalAccountsProcessed = 0;
+        let totalAccountsFiltered = 0;
         
         // Process each connection
         connections.forEach(function(connection) {
@@ -942,7 +990,15 @@ FinancialPlanner.SaltEdgeClient = (function() {
           
           // Process each account
           accounts.forEach(function(account) {
-            Logger.log('Processing account: ' + account.name);
+            // Filter out non-transactional accounts
+            if (!shouldImportAccount(account)) {
+              totalAccountsFiltered++;
+              Logger.log('Skipping non-transactional account: ' + account.name + ' (' + account.nature + ')');
+              return; // Skip this account
+            }
+            
+            totalAccountsProcessed++;
+            Logger.log('Processing transactional account: ' + account.name);
             
             // Store account metadata in Script Properties
             storeAccount(connection.id, {
@@ -967,7 +1023,8 @@ FinancialPlanner.SaltEdgeClient = (function() {
         });
         
         const summary = 'Successfully imported ' + totalTransactions + ' transactions from ' + 
-                       connections.length + ' SaltEdge connection(s)';
+                       totalAccountsProcessed + ' account(s) across ' + connections.length + ' connection(s). ' +
+                       'Filtered out ' + totalAccountsFiltered + ' non-transactional account(s).';
         
         Logger.log(summary);
         return summary;

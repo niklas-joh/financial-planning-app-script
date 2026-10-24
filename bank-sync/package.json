@@ -1,0 +1,8 @@
+{
+  "name": "bank-sync",
+  "private": true,
+  "description": "Bank sync Apps Script project. Dev tooling only; nothing here ships to Apps Script.",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  }
+}
