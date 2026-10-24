@@ -312,11 +312,15 @@ FinancialPlanner.Controllers = (function() {
       try {
         const sheet = e.range.getSheet();
         const sheetName = sheet.getName();
-        const overviewSheetName = FinancialPlanner.Config.getSheetNames().OVERVIEW;
+        const sheetNames = FinancialPlanner.Config.getSheetNames();
 
-        if (sheetName === overviewSheetName) {
+        if (sheetName === sheetNames.OVERVIEW) {
           if (FinancialPlanner.FinanceOverview && FinancialPlanner.FinanceOverview.handleEdit) {
             FinancialPlanner.FinanceOverview.handleEdit(e);
+          }
+        } else if (sheetName === sheetNames.TRANSACTIONS) {
+          if (FinancialPlanner.DropdownService && FinancialPlanner.DropdownService.handleEdit) {
+            FinancialPlanner.DropdownService.handleEdit(e);
           }
         }
       } catch (error) {
@@ -336,7 +340,8 @@ function onOpen() {
     FinancialPlanner.Controllers.onOpen();
   } else {
     console.error('FinancialPlanner.Controllers or FinancialPlanner.Controllers.onOpen not available at onOpen trigger.');
-    SpreadsheetApp.getUi().createMenu('⚠️ Error').addItem('Setup Incomplete. Check Logs.', 'function(){};').addToUi();
+    // Menu items must name a global function; clicking this retries the setup.
+    SpreadsheetApp.getUi().createMenu('⚠️ Error').addItem('Setup incomplete — check logs, then click to retry', 'onOpen').addToUi();
   }
 }
 
@@ -352,11 +357,15 @@ function onEdit(e) {
  */
 function doGet(e) {
   const stage = e.parameter.stage;
-  const error = e.parameter.error_message;
-  
-  const html = stage === 'success' 
+  // error_message comes from the callback URL, so it must be escaped before it
+  // is placed in the page.
+  const error = String(e.parameter.error_message || 'Unknown error')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  const html = stage === 'success'
     ? '<h2>✅ Bank Connected!</h2><p>Close this window and click "Financial Tools → Bank Integration → Import SaltEdge Data" in your spreadsheet.</p>'
-    : '<h2>❌ Connection Failed</h2><p>' + (error || 'Unknown error') + '</p><p>Please try again.</p>';
+    : '<h2>❌ Connection Failed</h2><p>' + error + '</p><p>Please try again.</p>';
   
   return HtmlService.createHtmlOutput(
     '<div style="font-family:Arial;text-align:center;padding:40px;">' + html + '</div>'

@@ -465,3 +465,7 @@ const DataProcessorModule = (function() {
 
   return DataProcessorModuleConstructor;
 })();
+
+// The features receive this instance as a load-time dependency, so Config and
+// ErrorService must be loaded first (see filePushOrder in .clasp.json).
+FinancialPlanner.DataProcessor = new DataProcessorModule(FinancialPlanner.Config, FinancialPlanner.ErrorService);

@@ -88,7 +88,6 @@ FinancialPlanner.UIService = {
    * @memberof FinancialPlanner.UIService
    */
   showPromptDialog: function(title, message, defaultValue) {
-    defaultValue = defaultValue || '';
     const ui = SpreadsheetApp.getUi();
     // Note: The Apps Script `ui.prompt` method signature used here is:
     // prompt(title, prompt, buttons)

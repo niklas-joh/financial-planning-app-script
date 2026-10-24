@@ -76,7 +76,7 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
   function mapSetsToArrays(obj) {
     const out = {};
     for (let key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
         out[key] = Array.from(obj[key]);
       }
     }
@@ -281,6 +281,9 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
     }
 
     clearPlaceholderIfNeeded(categoryCell);
+    if (categoryCell.getValue() !== "") {
+      clearHighlight(categoryCell); // A category was chosen, so it is no longer pending
+    }
     if (subCategoryCell.getValue() !== DROPDOWN_CONFIG.UI.PLACEHOLDER_TEXT && subCategoryCell.getValue() !== "") {
         clearHighlight(subCategoryCell);
     }
@@ -425,39 +428,9 @@ FinancialPlanner.DropdownService = (function(utils, uiService, errorService, con
 
 // Backward compatibility layer for existing global functions
 
-/**
- * Global `onEdit` trigger function for Google Apps Script.
- * This version primarily delegates to `FinancialPlanner.DropdownService.handleEdit(e)`
- * if the edit occurs on the configured 'Transactions' sheet.
- * For a more robust solution with multiple modules needing `onEdit` handling, a central event dispatcher
- * (e.g., `FinancialPlanner.Controllers.onEdit`) should be used to route the event.
- * @param {GoogleAppsScript.Events.SheetsOnEdit} e The edit event object provided by Google Apps Script.
- * @global
- */
-function onEdit(e) {
-  const sheet = e.range.getSheet();
-  let transactionsSheetName = 'Transactions'; // Default
-  try {
-    if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.Config && FinancialPlanner.Config.get) {
-      transactionsSheetName = FinancialPlanner.Config.get().SHEETS.TRANSACTIONS || 'Transactions';
-    }
-  } catch (configError) {
-    Logger.log("Global onEdit: Error accessing FinancialPlanner.Config: " + configError.toString());
-  }
-
-  if (sheet.getName() === transactionsSheetName) {
-    if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.DropdownService && FinancialPlanner.DropdownService.handleEdit) {
-      FinancialPlanner.DropdownService.handleEdit(e);
-    } else {
-      Logger.log("Global onEdit: FinancialPlanner.DropdownService.handleEdit not available for delegation.");
-    }
-  }
-  // Consider calling a central dispatcher if other modules need onEdit:
-  // if (typeof FinancialPlanner !== 'undefined' && FinancialPlanner.Controllers && FinancialPlanner.Controllers.onEdit) {
-  //   FinancialPlanner.Controllers.onEdit(e); // This would then call DropdownService.handleEdit and others
-  // }
-}
-
+// The global `onEdit` trigger lives in core/controllers.js and routes edits on
+// the Transactions sheet to DropdownService.handleEdit. Apps Script keeps only
+// one global function per name, so it must not be redefined here.
 
 /**
  * Global function to manually refresh the dropdown cache.
