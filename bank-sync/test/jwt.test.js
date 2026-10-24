@@ -29,12 +29,31 @@ test('creates a verifiable RS256 JWT with the expected header and claims', () =>
   assert.ok(crypto.verify('sha256', Buffer.from(h + '.' + c), publicKey, Buffer.from(s, 'base64url')));
 });
 
-test('normalizePem converts literal \\n sequences and trims', () => {
-  assert.strictEqual(Jwt.normalizePem('  A\\nB  '), 'A\nB');
+test('normalizePem keeps a well-formed key byte-for-byte (apart from a trailing newline)', () => {
+  assert.strictEqual(Jwt.normalizePem(privateKey), privateKey.trim() + '\n');
 });
 
-test('signer receives the normalized PEM', () => {
-  let seen;
-  Jwt.create({ ...params, privateKey: 'X\\nY' }, { ...deps, signRs256: (d, k) => { seen = k; return Buffer.alloc(1); } });
-  assert.strictEqual(seen, 'X\nY');
+test('normalizePem repairs a key whose line breaks were pasted as spaces', () => {
+  const flattened = privateKey.trim().split('\n').join(' ');
+  assert.strictEqual(Jwt.normalizePem(flattened), privateKey.trim() + '\n');
+});
+
+test('normalizePem repairs literal \\n sequences and surrounding whitespace', () => {
+  const escaped = '  ' + privateKey.trim().split('\n').join('\\n') + '  ';
+  assert.strictEqual(Jwt.normalizePem(escaped), privateKey.trim() + '\n');
+});
+
+test('a key pasted as one line still signs a verifiable JWT', () => {
+  const flattened = privateKey.trim().split('\n').join(' ');
+  const [h, c, s] = Jwt.create({ ...params, privateKey: flattened }, deps).split('.');
+  assert.ok(crypto.verify('sha256', Buffer.from(h + '.' + c), publicKey, Buffer.from(s, 'base64url')));
+});
+
+test('normalizePem rejects text without a PEM block, without echoing it', () => {
+  assert.throws(() => Jwt.normalizePem('secret-ish-text'), (e) => /not a PEM key/.test(e.message) && !/secret-ish/.test(e.message));
+});
+
+test('normalizePem rejects a PKCS#1 key with a conversion hint', () => {
+  const pkcs1 = '-----BEGIN RSA PRIVATE KEY-----\nQUJD\n-----END RSA PRIVATE KEY-----';
+  assert.throws(() => Jwt.normalizePem(pkcs1), /PKCS#8[\s\S]*openssl pkcs8/);
 });

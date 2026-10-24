@@ -129,7 +129,7 @@ test('token provider caches the JWT and errors clearly on missing credentials', 
   });
   assert.throws(() => token.getToken(), /EB_APP_ID is not set/);
   props.setProperty('EB_APP_ID', 'id');
-  props.setProperty('EB_PRIVATE_KEY', 'k');
+  props.setProperty('EB_PRIVATE_KEY', '-----BEGIN PRIVATE KEY-----\nQUJD\n-----END PRIVATE KEY-----');
   assert.strictEqual(token.getToken(), token.getToken());
   assert.strictEqual(signed, 1);
 });
