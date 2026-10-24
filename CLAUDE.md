@@ -38,6 +38,7 @@ accurate when conventions change.
 namespace `BankSync`, Node tests via `node --test`). Run clasp from inside that
 folder. The rules above about load order and `src/`-prefixed `filePushOrder`
 entries apply to it too. CI runs its tests in the `Tests (bank-sync)` job.
+Current state, phases and deploy rules: `docs/BANK_SYNC_ROADMAP.md` (read it first).
 
 ## Conventions
 
