@@ -51,7 +51,8 @@
         const cell = cells[header.indexOf(c.header)];
         if (cell === undefined) row[c.key] = '';
         else if (cell instanceof Date) row[c.key] = cell.toISOString();
-        else row[c.key] = c.numeric ? Number(cell) : String(cell);
+        else if (c.numeric) row[c.key] = cell === '' ? '' : Number(cell);
+        else row[c.key] = String(cell);
       });
       return row;
     });

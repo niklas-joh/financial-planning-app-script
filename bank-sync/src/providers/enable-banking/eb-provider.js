@@ -25,7 +25,7 @@
      */
     function requireSession() {
       const session = deps.store.loadSession(deps.connection.key);
-      if (!session) throw ns.Errors.auth('Not authorized yet; run "Authorize" first');
+      if (!session) throw ns.Errors.auth('Not authorized yet; use "Connect a bank..." first');
       if (Date.parse(session.accessValidUntil) <= deps.nowMs()) {
         throw ns.Errors.auth('Consent has expired; re-authorize');
       }

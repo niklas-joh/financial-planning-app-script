@@ -74,6 +74,10 @@ own name from the API is deliberately not stored. A session created before 2.5 h
 `details`; run *Refresh account names* once (one bank call per account, so it is manual,
 never part of Sync all) and then *Sync all*.
 
+The first *Sync all* after upgrading replaces the old `raw_accounts` and `raw_balances` contents
+(rows from before labels existed are dropped as stale; anything you typed on those tabs is lost, so
+keep notes elsewhere). Later runs only replace the rows of connections that synced.
+
 The `transactions` tab is read by header name, so a tab from before 2.5 loads and is
 rewritten with the label columns on the next sync.
 
