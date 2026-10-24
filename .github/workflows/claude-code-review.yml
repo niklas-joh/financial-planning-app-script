@@ -148,7 +148,8 @@ jobs:
 
             Do not push commits, open issues or approve the PR.
 
-          # Write is needed to create the --body-file; without it the review is never posted.
-          claude_args: "--allowedTools Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Write,Glob,Grep"
+          # The list is quoted inside the string: unquoted, the shell splits it at the spaces in
+          # "Bash(gh pr diff:*)" and every tool is denied. Write creates the --body-file.
+          claude_args: '--allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Read,Write,Glob,Grep"'
           # Keep the agent transcript in the job log so a silent failure can be diagnosed.
           show_full_output: true

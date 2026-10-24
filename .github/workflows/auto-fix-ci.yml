@@ -80,4 +80,4 @@ jobs:
             - A failing PR title cannot be fixed by a commit — say so in a PR comment instead.
             - Do not modify package-lock.json, .github/workflows/, or anything under docs/.
 
-          claude_args: "--allowedTools Bash(git:*),Bash(gh run view:*),Bash(gh pr comment:*),Bash(npm run:*),Bash(npm test:*),Bash(npx eslint:*),Bash(node scripts/*),Read,Edit,MultiEdit,Write,Glob,Grep,LS"
+          claude_args: '--allowedTools "Bash(git:*),Bash(gh run view:*),Bash(gh pr comment:*),Bash(npm run:*),Bash(npm test:*),Bash(npx eslint:*),Bash(node scripts/*),Read,Edit,MultiEdit,Write,Glob,Grep,LS"'
