@@ -12,6 +12,7 @@
 //   undefined-namespace  code reads FinancialPlanner.X but nothing defines X
 //   load-order      a file reads FinancialPlanner.X at load time before X's file has loaded
 //   menu-handler    a menu item or google.script.run call names a function that doesn't exist
+//   unknown-member  code uses FinancialPlanner.X.y but module X has no member y
 //
 // Usage:
 //   node scripts/check-manifest.mjs                  # human-readable, exit 1 on errors
@@ -57,6 +58,32 @@ const isFunctionNode = (n) =>
   n.type === 'FunctionDeclaration' ||
   n.type === 'FunctionExpression' ||
   n.type === 'ArrowFunctionExpression';
+
+/** Key names of an object literal (identifier and string keys only). */
+function objectKeys(node) {
+  const keys = new Set();
+  for (const p of node.properties) {
+    if (p.type !== 'Property' || p.computed) return null; // spread etc.: shape unknown
+    if (p.key.type === 'Identifier') keys.add(p.key.name);
+    else if (p.key.type === 'Literal') keys.add(String(p.key.value));
+  }
+  return keys;
+}
+
+/**
+ * The members a module assignment exposes, when they can be read statically:
+ * `X = { ... }` or `X = (function () { ...; return { ... }; })(...)`.
+ * Returns null when the shape cannot be determined (e.g. `new Foo()`).
+ */
+function moduleShape(value) {
+  if (value.type === 'ObjectExpression') return objectKeys(value);
+  if (value.type === 'CallExpression' && isFunctionNode(value.callee) && value.callee.body.type === 'BlockStatement') {
+    const returns = value.callee.body.body.filter((n) => n.type === 'ReturnStatement');
+    const last = returns[returns.length - 1];
+    if (last && last.argument && last.argument.type === 'ObjectExpression') return objectKeys(last.argument);
+  }
+  return null;
+}
 
 /**
  * Visits only the code that runs when the file is loaded: top-level
@@ -156,6 +183,9 @@ export function analyse(root = REPO_ROOT) {
   const defined = new Map(); // namespace member -> first file (load order index)
   const reads = []; // { name, file }
   const loadTimeReads = []; // { name, file, index }
+  const shapes = new Map(); // module name -> Set of member names (or null if unknown)
+  const extraMembers = new Map(); // module name -> members added later via X.y = ...
+  const memberReads = []; // { module, member, file, line }
   const menuHandlers = []; // { name, file }
   const controllerActions = new Set();
   const wrappedKeys = new Set();
@@ -179,6 +209,19 @@ export function analyse(root = REPO_ROOT) {
       if (node.type === 'AssignmentExpression') {
         const name = namespaceMember(node.left);
         if (name && !defined.has(name)) defined.set(name, { file, index });
+        if (name) shapes.set(name, shapes.has(name) ? null : moduleShape(node.right));
+        // FinancialPlanner.X.y = ... adds a member after the fact.
+        if (node.left.type === 'MemberExpression' && !node.left.computed && node.left.property.type === 'Identifier') {
+          const owner = namespaceMember(node.left.object);
+          if (owner) {
+            if (!extraMembers.has(owner)) extraMembers.set(owner, new Set());
+            extraMembers.get(owner).add(node.left.property.name);
+          }
+        }
+      }
+      if (node.type === 'MemberExpression' && !node.computed && node.property.type === 'Identifier') {
+        const owner = namespaceMember(node.object);
+        if (owner) memberReads.push({ module: owner, member: node.property.name, file: `${file}:${node.loc.start.line}` });
       }
       const member = namespaceMember(node);
       if (member) reads.push({ name: member, file });
@@ -230,6 +273,17 @@ export function analyse(root = REPO_ROOT) {
     if (def && def.index > index) {
       add('load-order', `${file} reads ${NAMESPACE}.${name} while loading, but it is defined later in ${def.file}. Move ${def.file} earlier in filePushOrder.`, file);
     }
+  }
+
+  const reportedMembers = new Set();
+  for (const { module, member, file } of memberReads) {
+    const shape = shapes.get(module);
+    if (!shape) continue; // unknown shape (constructor, reassigned, etc.)
+    if (shape.has(member) || extraMembers.get(module)?.has(member)) continue;
+    const key = `${module}.${member}`;
+    if (reportedMembers.has(key)) continue;
+    reportedMembers.add(key);
+    add('unknown-member', `${NAMESPACE}.${module}.${member} is used, but ${module} has no member "${member}".`, file);
   }
 
   const callable = new Set([

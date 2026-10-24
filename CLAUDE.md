@@ -32,6 +32,13 @@ accurate when conventions change.
 
 `npm run check:manifest` enforces all of the above.
 
+### `bank-sync/` (separate project)
+
+`bank-sync/` is an independent Apps Script project (its own `.clasp.json`,
+namespace `BankSync`, Node tests via `node --test`). Run clasp from inside that
+folder. The rules above about load order and `src/`-prefixed `filePushOrder`
+entries apply to it too. CI runs its tests in the `Tests (bank-sync)` job.
+
 ## Conventions
 
 - Principles: see `docs/DEVELOPMENT_PRINCIPLES.md` (KISS, YAGNI, SRP, DRY).

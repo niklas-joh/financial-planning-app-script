@@ -73,6 +73,24 @@ export default [
     },
   },
   {
+    // bank-sync is a separate Apps Script project. Its files also export via
+    // `module.exports` when loaded in Node, so its tests can require them.
+    files: ['bank-sync/src/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'script',
+      globals: { ...appsScriptGlobals, module: 'readonly' },
+    },
+  },
+  {
+    files: ['bank-sync/test/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: globals.node,
+    },
+  },
+  {
     files: ['scripts/**/*.mjs', 'eslint.config.js'],
     languageOptions: {
       ecmaVersion: 2024,

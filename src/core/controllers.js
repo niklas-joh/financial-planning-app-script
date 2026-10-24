@@ -384,7 +384,7 @@ function createGlobalControllerAction(methodName) {
     } else {
       const msg = 'Controller action ' + methodName + '_Wrapped not available. Check if FinancialPlanner.Controllers is initialized.';
       console.error(msg);
-      if (FinancialPlanner && FinancialPlanner.Controllers && FinancialPlanner.Controllers.uiService && typeof FinancialPlanner.UIService.showErrorNotification === 'function') {
+      if (FinancialPlanner.UIService && typeof FinancialPlanner.UIService.showErrorNotification === 'function') {
         FinancialPlanner.UIService.showErrorNotification('Action Failed', msg);
       } else {
         SpreadsheetApp.getUi().alert(msg);
