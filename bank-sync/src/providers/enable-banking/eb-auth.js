@@ -1,6 +1,8 @@
 /**
  * @fileoverview The user-authorization flow: start (POST /auth) and complete
- * (POST /sessions). Consent expiry is requested here and persisted.
+ * (POST /sessions), plus a user-triggered refresh of account details. Consent
+ * expiry is requested here and persisted. Sessions are kept per connection
+ * (one login at one bank), so several people can use the same bank.
  */
 (function (ns) {
   const DAY_MS = 86400000;
@@ -48,17 +50,19 @@
   /**
    * Creates the auth flow.
    * @param {AuthDeps} deps - Injected services.
-   * @returns {{begin: function(Object): {url: string, state: string}, complete: function(string, string): Object}} Flow.
+   * @returns {{begin: function(Object): {url: string, state: string}, complete: function(string, string): Object,
+   *   refreshAccounts: function(Object): number}} Flow.
    */
   function create(deps) {
     return {
       /**
-       * Starts authorization for a bank.
-       * @param {import('../../core/config.js').BankConfig} bank - Bank to connect.
+       * Starts authorization for a connection.
+       * @param {import('../../core/config.js').ConnectionConfig} connection - Login to connect.
        * @returns {{url: string, state: string}} Login URL the user must open.
        * @throws {Error} ConfigError if the bank or redirect URL is unavailable.
        */
-      begin: function (bank) {
+      begin: function (connection) {
+        const bank = connection.bank;
         const redirectUrl = deps.getRedirectUrl();
         if (!redirectUrl) throw ns.Errors.config('Script Property EB_REDIRECT_URL is not set');
         const aspsp = findAspsp(deps.client.listAspsps(bank.country).aspsps, bank.aspspName);
@@ -72,7 +76,7 @@
           redirect_url: redirectUrl,
           psu_type: 'personal'
         });
-        deps.store.savePending(state, { bankKey: bank.key, validUntil: validUntil });
+        deps.store.savePending(state, { connectionKey: connection.key, validUntil: validUntil });
         return { url: response.url, state: state };
       },
 
@@ -80,21 +84,38 @@
        * Finishes authorization after the bank redirects back.
        * @param {string} code - `code` query parameter.
        * @param {string} state - `state` query parameter.
-       * @returns {{bankKey: string, accountCount: number, validUntil: string}} Non-secret summary.
+       * @returns {{connectionKey: string, accountCount: number, validUntil: string}} Non-secret summary.
        * @throws {Error} AuthError for an unknown/expired state.
        */
       complete: function (code, state) {
         const pending = deps.store.consumePending(state);
         const session = deps.client.createSession(code);
         const validUntil = (session.access && session.access.valid_until) || pending.validUntil;
-        const accounts = (session.accounts || []).map(ns.EbNormalize.normalizeAccount);
-        deps.store.saveSession(pending.bankKey, {
+        const accounts = (session.accounts || []).map(function (raw) { return ns.EbNormalize.normalizeAccount(raw); });
+        deps.store.saveSession(pending.connectionKey, {
           sessionId: session.session_id,
           accessValidUntil: validUntil,
           createdAt: new Date(deps.nowMs()).toISOString(),
           accounts: accounts
         });
-        return { bankKey: pending.bankKey, accountCount: accounts.length, validUntil: validUntil };
+        return { connectionKey: pending.connectionKey, accountCount: accounts.length, validUntil: validUntil };
+      },
+
+      /**
+       * Re-reads each account's details (names set by the user or bank) and stores them.
+       * One bank call per account, so it is user-triggered, never part of a scheduled sync.
+       * @param {import('../../core/config.js').ConnectionConfig} connection - Connected login.
+       * @returns {number} Accounts refreshed.
+       * @throws {Error} AuthError if the connection has no session.
+       */
+      refreshAccounts: function (connection) {
+        const session = deps.store.loadSession(connection.key);
+        if (!session) throw ns.Errors.auth('Not authorized yet; connect first');
+        const accounts = session.accounts.map(function (account) {
+          return ns.EbNormalize.normalizeAccount(deps.client.getAccountDetails(account.accountId));
+        });
+        deps.store.saveSession(connection.key, Object.assign({}, session, { accounts: accounts }));
+        return accounts.length;
       }
     };
   }

@@ -7,7 +7,7 @@
    * Creates a client.
    * @param {{request: function(Object): *}} http - JSON HTTP client.
    * @param {function(): string} getToken - Returns a valid JWT.
-   * @returns {Object} Client with listAspsps, startAuth, createSession, getSession, getBalances, getTransactions.
+   * @returns {Object} Client with listAspsps, startAuth, createSession, getSession, getBalances, getAccountDetails, getTransactions.
    */
   function create(http, getToken) {
     const base = ns.Config.ENABLE_BANKING.BASE_URL;
@@ -41,6 +41,10 @@
       /** @param {string} accountUid - Account uid. @returns {{balances: Array<Object>}} Balances. */
       getBalances: function (accountUid) {
         return call('GET', '/accounts/' + encodeURIComponent(accountUid) + '/balances');
+      },
+      /** @param {string} accountUid - Account uid. @returns {Object} AccountResource (name, details, product...). */
+      getAccountDetails: function (accountUid) {
+        return call('GET', '/accounts/' + encodeURIComponent(accountUid) + '/details');
       },
       /**
        * @param {string} accountUid - Account uid.

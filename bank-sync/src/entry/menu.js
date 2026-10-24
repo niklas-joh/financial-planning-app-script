@@ -3,8 +3,6 @@
  * are the only names Apps Script needs at top level.
  */
 (function (ns) {
-  const BANK = ns.Config.BANKS.REVOLUT;
-
   /**
    * Escapes text for safe inclusion in HTML.
    * @param {string} s - Raw text.
@@ -28,15 +26,36 @@
     }
   }
 
-  /** Starts Revolut authorization and shows the login link. */
-  function authorize() {
+  /**
+   * Lets the user pick one of several connections.
+   * @param {Array<import('../core/config.js').ConnectionConfig>} connections - Candidates.
+   * @param {string} title - Prompt title.
+   * @returns {?import('../core/config.js').ConnectionConfig} The choice, or null if cancelled.
+   * @throws {Error} InputError if the answer is not a listed number.
+   */
+  function pick(connections, title) {
+    if (connections.length === 1) return connections[0];
+    const ui = SpreadsheetApp.getUi();
+    const list = connections.map(function (c, i) { return (i + 1) + '. ' + ns.Connections.label(c); }).join('\n');
+    const answer = ui.prompt(title, 'Enter a number:\n' + list, ui.ButtonSet.OK_CANCEL);
+    if (answer.getSelectedButton() !== ui.Button.OK) return null;
+    const choice = connections[Number(answer.getResponseText()) - 1];
+    if (!choice) throw ns.Errors.create('InputError', 'Not a listed number');
+    return choice;
+  }
+
+  /** Starts authorization for a chosen connection and shows the login link. */
+  function connect() {
     guarded(function () {
-      const result = ns.Container.providerFor(BANK).authorize();
+      const connection = pick(ns.Connections.all(), 'Connect a bank');
+      if (!connection) return;
+      const result = ns.Container.providerFor(connection).authorize();
       const html = HtmlService.createHtmlOutput(
-        '<p>Open the link, log in to ' + escapeHtml(BANK.aspspName) + ', and approve access.</p>' +
+        '<p>Open the link, log in to ' + escapeHtml(connection.bank.aspspName) + ' as ' + escapeHtml(connection.holder) +
+        ', and approve access.</p>' +
         '<p><a href="' + escapeHtml(result.url) + '" target="_blank">Open bank login</a></p>')
         .setWidth(360).setHeight(140);
-      SpreadsheetApp.getUi().showModalDialog(html, 'Authorize ' + BANK.aspspName);
+      SpreadsheetApp.getUi().showModalDialog(html, 'Connect ' + ns.Connections.label(connection));
     });
   }
 
@@ -55,75 +74,86 @@
     }
   }
 
-  /** Refreshes the raw accounts and balances tabs. */
-  function refreshRaw() {
+  /** Syncs accounts, balances and transactions for every connected login. */
+  function syncAll() {
     guarded(function () {
       withLock(function () {
-        const writer = ns.RawWriter.create(SpreadsheetApp.getActiveSpreadsheet());
-        const counts = ns.RawSync.run(ns.Container.providerFor(BANK), writer);
-        SpreadsheetApp.getUi().alert('Wrote ' + counts.accounts + ' accounts and ' + counts.balances + ' balances.');
-      });
-    });
-  }
-
-  /** Syncs transactions into the transactions tab. */
-  function syncTransactions() {
-    guarded(function () {
-      withLock(function () {
+        const wired = ns.Container.services();
         const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
-        const result = ns.TxnSync.run({
-          provider: ns.Container.providerFor(BANK),
-          store: ns.TransactionsStore.create(SpreadsheetApp.getActiveSpreadsheet(), formatDate),
-          nowMs: function () { return Date.now(); },
+        const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+        const outcome = ns.SyncAll.run({
+          connections: ns.Connections.all(),
+          isConnected: function (c) { return Boolean(wired.store.loadSession(c.key)); },
+          providerFor: function (c) { return ns.Container.providerFor(c, wired); },
+          store: ns.TransactionsStore.create(spreadsheet, formatDate),
+          rawWriter: ns.RawWriter.create(spreadsheet),
+          nowMs: wired.nowMs,
           todayIso: function () { return formatDate(new Date()); }
         });
-        SpreadsheetApp.getUi().alert('Transactions: ' + result.added + ' added, ' + result.updated +
-          ' updated, ' + result.removed + ' pending removed.' +
-          (result.complete ? '' : '\nTime budget reached; run again to continue.'));
+        SpreadsheetApp.getUi().alert(ns.SyncAll.summarize(outcome));
       });
     });
   }
 
-  /** Shows non-secret setup status: which settings exist and when consent lapses. */
+  /** Re-reads account names from the bank for every connected login (one call per account). */
+  function refreshAccountNames() {
+    guarded(function () {
+      const wired = ns.Container.services();
+      const lines = ns.Connections.all().map(function (c) {
+        if (!wired.store.loadSession(c.key)) return c.key + ': not connected';
+        try {
+          return c.key + ': ' + wired.auth.refreshAccounts(c) + ' accounts refreshed';
+        } catch (e) {
+          return c.key + ': ' + ns.Redact.text(e.name + ': ' + e.message);
+        }
+      });
+      SpreadsheetApp.getUi().alert(lines.join('\n') + '\nRun "Sync all" to update the sheet.');
+    });
+  }
+
+  /** Shows non-secret setup status: which settings exist and when each consent lapses. */
   function status() {
     guarded(function () {
       const s = ns.Container.services();
       const keys = ns.Config.PROPERTY_KEYS;
       const yesNo = function (key) { return s.props.getProperty(key) ? 'set' : 'MISSING'; };
-      const session = s.store.loadSession(BANK.key);
-      const consent = session
-        ? session.accessValidUntil + ' (' + Math.floor((Date.parse(session.accessValidUntil) - s.nowMs()) / 86400000) + ' days left)'
-        : 'not authorized';
+      const connections = ns.Connections.all().map(function (c) {
+        const session = s.store.loadSession(c.key);
+        const consent = session
+          ? session.accessValidUntil + ' (' + Math.floor((Date.parse(session.accessValidUntil) - s.nowMs()) / 86400000) + ' days left)'
+          : 'not connected';
+        return ns.Connections.label(c) + ': ' + consent;
+      });
       SpreadsheetApp.getUi().alert([
         'EB_APP_ID: ' + yesNo(keys.EB_APP_ID),
         'EB_PRIVATE_KEY: ' + yesNo(keys.EB_PRIVATE_KEY),
-        'EB_REDIRECT_URL: ' + yesNo(keys.EB_REDIRECT_URL),
-        BANK.aspspName + ' consent: ' + consent
-      ].join('\n'));
+        'EB_REDIRECT_URL: ' + yesNo(keys.EB_REDIRECT_URL)
+      ].concat(connections).join('\n'));
     });
   }
 
-  ns.Menu = { authorize: authorize, refreshRaw: refreshRaw, syncTransactions: syncTransactions, status: status };
+  ns.Menu = { connect: connect, syncAll: syncAll, refreshAccountNames: refreshAccountNames, status: status };
 })(globalThis.BankSync);
 
 /** Adds the Bank Sync menu when the spreadsheet opens. */
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Bank Sync')
-    .addItem('Authorize Revolut', 'menuAuthorize')
-    .addItem('Refresh accounts & balances', 'menuRefreshRaw')
-    .addItem('Sync transactions', 'menuSyncTransactions')
+    .addItem('Connect a bank...', 'menuConnect')
+    .addItem('Sync all', 'menuSyncAll')
+    .addSeparator()
+    .addItem('Refresh account names', 'menuRefreshAccountNames')
     .addItem('Show status', 'menuStatus')
     .addToUi();
 }
 
-/** Menu entry: start authorization. */
-function menuAuthorize() { BankSync.Menu.authorize(); }
+/** Menu entry: connect a bank. */
+function menuConnect() { BankSync.Menu.connect(); }
 
-/** Menu entry: refresh raw tabs. */
-function menuRefreshRaw() { BankSync.Menu.refreshRaw(); }
+/** Menu entry: sync everything. */
+function menuSyncAll() { BankSync.Menu.syncAll(); }
 
-/** Menu entry: sync transactions. */
-function menuSyncTransactions() { BankSync.Menu.syncTransactions(); }
+/** Menu entry: refresh account names. */
+function menuRefreshAccountNames() { BankSync.Menu.refreshAccountNames(); }
 
 /** Menu entry: show setup status. */
 function menuStatus() { BankSync.Menu.status(); }

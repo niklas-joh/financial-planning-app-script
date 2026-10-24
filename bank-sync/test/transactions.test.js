@@ -9,7 +9,7 @@ const raw = (o) => ({
 });
 const norm = (list) => BS.EbNormalize.normalizeTransactions(list, 'a1');
 const tx = (o) => ({
-  provider: 'enablebanking', accountId: 'a1', transactionId: 't1', bookingDate: '2026-01-10', valueDate: '',
+  provider: 'enablebanking', bank: '', connection: '', accountName: '', ibanMasked: '', accountId: 'a1', transactionId: 't1', bookingDate: '2026-01-10', valueDate: '',
   status: 'booked', amount: -5, currency: 'EUR', amountEur: null, fxRate: null, fxRateDate: '',
   counterparty: '', description: '', ...o
 });
@@ -124,7 +124,7 @@ function providerWith(pages) {
   const session = { sessionId: 's', accessValidUntil: '2999-01-01T00:00:00Z', accounts: [] };
   const fakeStore = { loadSession: () => session };
   const provider = BS.EnableBankingProvider.create({
-    bank: BS.Config.BANKS.REVOLUT, client, store: fakeStore, auth: {}, nowMs: () => 0 });
+    connection: BS.Config.CONNECTIONS.REVOLUT_NIKLAS, client, store: fakeStore, auth: {}, nowMs: () => 0 });
   return { provider, calls };
 }
 
@@ -217,8 +217,26 @@ test('store: load fails loudly when the header was changed', () => {
   const book = fakeSheetBook();
   const store = BS.TransactionsStore.create(book, (d) => d.toISOString().slice(0, 10));
   store.save([tx({ transactionId: 'a' })]);
-  book.sheets.transactions.grid[0][2] = 'renamed';
-  assert.throws(() => store.load(), { name: 'DataError' });
+  const keys = BS.TransactionsStore.COLUMNS.map((c) => c.key);
+  book.sheets.transactions.grid[0][keys.indexOf('accountId')] = 'renamed';
+  assert.throws(() => store.load(), /accountId/);
+});
+
+test('store: an older tab without the label columns, or with reordered columns, still loads', () => {
+  const keys = BS.TransactionsStore.COLUMNS.map((c) => c.key);
+  const legacyKeys = keys.filter((k) => !['bank', 'connection', 'accountName', 'ibanMasked'].includes(k));
+  const row = tx({ transactionId: 'a', amount: -2 });
+  const cells = (order) => order.map((k) => (row[k] === null ? '' : row[k]));
+  const book = fakeSheetBook();
+  const sheet = book.insertSheet('transactions');
+  sheet.grid = [legacyKeys, cells(legacyKeys)];
+  const store = BS.TransactionsStore.create(book, (d) => d.toISOString());
+  assert.deepStrictEqual(store.load(), [row]);
+  const reversed = legacyKeys.slice().reverse();
+  sheet.grid = [reversed, cells(reversed)];
+  assert.deepStrictEqual(store.load(), [row]);
+  store.save([row]);
+  assert.deepStrictEqual(sheet.grid[0].slice(0, keys.length), keys);
 });
 
 function syncDeps(over) {
@@ -227,10 +245,10 @@ function syncDeps(over) {
   const fetches = [];
   const deps = {
     provider: {
-      listAccounts: () => [{ accountId: 'a1' }],
       getTransactions: (id, range) => { fetches.push(range); return [tx({ transactionId: 'n' + fetches.length, bookingDate: range.dateTo })]; }
     },
     store: { load: () => rows, save: (r) => { rows = r; saves.push(r.length); return r.length; } },
+    accounts: [{ accountId: 'a1', bank: 'Revolut', connection: 'revolut-niklas', accountName: 'Main', ibanMasked: '****1' }],
     nowMs: () => Date.parse('2026-04-01T12:00:00Z'),
     todayIso: () => '2026-04-01',
     ...over
@@ -271,7 +289,7 @@ test('sync: stops at the time budget, saves what it has, and the next run contin
 test('sync: with two accounts, an exhausted budget skips the second without saving it', () => {
   let now = Date.parse('2026-04-01T12:00:00Z');
   const base = syncDeps({ nowMs: () => { now += 100000; return now; } });
-  base.deps.provider.listAccounts = () => [{ accountId: 'a1' }, { accountId: 'a2' }];
+  base.deps.accounts = [{ accountId: 'a1' }, { accountId: 'a2' }];
   const result = BS.TxnSync.run(base.deps);
   assert.strictEqual(result.complete, false);
   assert.ok(base.rows().every((t) => t.accountId === 'a1'));
@@ -297,6 +315,6 @@ test('sync: undated pending rows survive early windows and are dropped only in t
 });
 
 test('sync: provider errors propagate', () => {
-  const { deps } = syncDeps({ provider: { listAccounts: () => { throw BS.Errors.auth('expired'); } } });
+  const { deps } = syncDeps({ provider: { getTransactions: () => { throw BS.Errors.auth('expired'); } } });
   assert.throws(() => BS.TxnSync.run(deps), { name: 'AuthError' });
 });

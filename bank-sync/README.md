@@ -50,16 +50,36 @@ Feature branch per module, small PRs, conventional commits, never push to main.
    that `/exec` URL.
 3. Add the three Script Properties (see above). `EB_REDIRECT_URL` must equal the URL from step 2.
 4. Reload the Sheet. In the **Bank Sync** menu: *Show status*, then
-   *Authorize Revolut*, open the link and log in. The redirect lands on the web app,
-   which stores the session and shows the consent expiry.
-5. *Refresh accounts & balances* writes the `raw_accounts` and `raw_balances` tabs
-   (IBANs are masked to the last four characters).
+   *Connect a bank...* (pick the connection if there are several), open the link and
+   log in. The redirect lands on the web app, which stores the session and shows the
+   consent expiry.
+5. *Sync all* refreshes the `raw_accounts` and `raw_balances` tabs and the
+   `transactions` tab for every connected login (IBANs are masked to the last four
+   characters). A login that is not connected or whose consent lapsed is reported and
+   skipped; the others still run.
 
 First run from the editor (e.g. `onOpen`) once so Google can ask you to grant the scopes.
 
+## Connections and labels (Phase 2.5)
+
+A **connection** is one login at one bank, keyed by bank plus holder (for example
+`revolut-niklas`), with its own session, consent expiry and accounts. They are listed in
+`CONNECTIONS` in `src/core/config.js`: adding another bank, or another person at a bank,
+is a new entry there plus *Connect a bank...* (the person logs in themselves).
+
+Every row on `raw_accounts`, `raw_balances` and `transactions` shows `bank`, `connection`,
+`accountName` and `ibanMasked` (last four characters). `accountName` is the name set by
+the user or bank (Enable Banking `details`), else the product name. The account holder's
+own name from the API is deliberately not stored. A session created before 2.5 has no
+`details`; run *Refresh account names* once (one bank call per account, so it is manual,
+never part of Sync all) and then *Sync all*.
+
+The `transactions` tab is read by header name, so a tab from before 2.5 loads and is
+rewritten with the label columns on the next sync.
+
 ## Transactions (Phase 2)
 
-*Bank Sync > Sync transactions* writes the `transactions` tab (one row per
+*Bank Sync > Sync all* writes the `transactions` tab (one row per
 provider + account + transaction id; amounts signed, expenses negative).
 
 - First run fetches the last 90 days; later runs restart each account at its

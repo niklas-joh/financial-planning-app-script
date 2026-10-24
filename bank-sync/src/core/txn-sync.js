@@ -8,6 +8,8 @@
   /**
    * @typedef {Object} TxnSyncDeps
    * @property {import('../providers/bank-provider.js').BankProvider} provider - Source.
+   * @property {Array<import('../providers/bank-provider.js').Account>} accounts - The provider's accounts.
+   * @property {number} [budgetMs] - Time allowed for this run (default `TIME_BUDGET_MS`).
    * @property {{load: function(): Array<Object>, save: function(Array<Object>): number}} store - Sheet store.
    * @property {function(): number} nowMs - Clock.
    * @property {function(): string} todayIso - Today's date (YYYY-MM-DD) in the configured time zone.
@@ -42,21 +44,25 @@
    */
   function run(deps) {
     const cfg = ns.Config.TRANSACTIONS;
+    const budgetMs = deps.budgetMs === undefined ? cfg.TIME_BUDGET_MS : deps.budgetMs;
+    const labelsFor = ns.AccountLabels.lookup(deps.accounts);
     const startedAt = deps.nowMs();
     const today = deps.todayIso();
     const result = { added: 0, updated: 0, removed: 0, complete: true };
-    let rows = deps.store.load();
+    let rows = deps.store.load().map(function (t) { return ns.AccountLabels.stamp(t, labelsFor); });
 
-    deps.provider.listAccounts().forEach(function (account) {
+    deps.accounts.forEach(function (account) {
       const start = ns.DateRange.startFor(latestBooked(rows, account.accountId), today, cfg);
       let dirty = false;
       try {
         ns.DateRange.planWindows(start, today, cfg.WINDOW_DAYS).forEach(function (window) {
-          if (!result.complete || deps.nowMs() - startedAt > cfg.TIME_BUDGET_MS) {
+          if (!result.complete || deps.nowMs() - startedAt > budgetMs) {
             result.complete = false;
             return;
           }
-          const incoming = deps.provider.getTransactions(account.accountId, { dateFrom: window.from, dateTo: window.to });
+          const incoming = deps.provider
+            .getTransactions(account.accountId, { dateFrom: window.from, dateTo: window.to })
+            .map(function (t) { return ns.AccountLabels.stamp(t, labelsFor); });
           const merged = ns.TxnMerge.merge(rows, incoming, [{
             accountId: account.accountId, from: window.from, to: window.to, includesUndated: window.to === today
           }]);

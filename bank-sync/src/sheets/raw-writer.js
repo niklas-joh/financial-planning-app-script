@@ -9,11 +9,13 @@
    */
 
   /** @type {Array<Column>} */
-  const ACCOUNT_COLUMNS = ['provider', 'accountId', 'name', 'currency', 'ibanMasked', 'accountType', 'product']
+  const ACCOUNT_COLUMNS = ['provider', 'bank', 'connection', 'accountId', 'accountName', 'currency', 'ibanMasked',
+    'accountType', 'product']
     .map(function (k) { return { header: k, key: k }; });
 
   /** @type {Array<Column>} */
-  const BALANCE_COLUMNS = ['provider', 'accountId', 'balanceType', 'name', 'amount', 'currency',
+  const BALANCE_COLUMNS = ['provider', 'bank', 'connection', 'accountName', 'ibanMasked', 'accountId',
+    'balanceType', 'name', 'amount', 'currency',
     'referenceDate', 'lastChange', 'fetchedAt']
     .map(function (k) { return { header: k, key: k }; });
 

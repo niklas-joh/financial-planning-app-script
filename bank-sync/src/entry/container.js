@@ -3,8 +3,9 @@
  */
 (function (ns) {
   /**
-   * Builds the object graph for Enable Banking.
-   * @returns {{store: Object, auth: Object, client: Object, props: Object}} Wired services.
+   * Builds the object graph for Enable Banking. Sessions stored under an older
+   * key are moved to their connection key (idempotent, cheap).
+   * @returns {{store: Object, auth: Object, client: Object, props: Object, nowMs: function(): number}} Wired services.
    */
   function services() {
     const props = ns.Gas.props();
@@ -17,6 +18,9 @@
     });
     const client = ns.EbClient.create(ns.Gas.http(), token.getToken);
     const store = ns.EbSessionStore.create(props, nowMs);
+    ns.Connections.all().forEach(function (connection) {
+      if (connection.legacySessionKey) store.migrateKey(connection.legacySessionKey, connection.key);
+    });
     const auth = ns.EbAuth.create({
       client: client,
       store: store,
@@ -28,14 +32,15 @@
   }
 
   /**
-   * Builds a provider for one configured bank.
-   * @param {import('../core/config.js').BankConfig} bank - Bank to serve.
+   * Builds a provider for one connection.
+   * @param {import('../core/config.js').ConnectionConfig} connection - Login to serve.
+   * @param {Object} [wired] - Services from `services()`, to avoid wiring twice.
    * @returns {import('../providers/bank-provider.js').BankProvider} Provider.
    */
-  function providerFor(bank) {
-    const s = services();
+  function providerFor(connection, wired) {
+    const s = wired || services();
     return ns.EnableBankingProvider.create({
-      bank: bank, client: s.client, store: s.store, auth: s.auth, nowMs: s.nowMs
+      connection: connection, client: s.client, store: s.store, auth: s.auth, nowMs: s.nowMs
     });
   }
 

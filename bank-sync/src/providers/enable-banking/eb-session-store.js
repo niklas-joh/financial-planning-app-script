@@ -18,7 +18,7 @@
    * Creates a store.
    * @param {{getProperty: function(string): ?string, setProperty: function(string, string): *}} props - Script Properties.
    * @param {function(): number} nowMs - Clock in epoch milliseconds.
-   * @returns {Object} Store with savePending, consumePending, saveSession, loadSession.
+   * @returns {Object} Store with savePending, consumePending, saveSession, loadSession, migrateKey.
    */
   function create(props, nowMs) {
     function readMap(key) {
@@ -64,7 +64,7 @@
       },
 
       /**
-       * @param {string} bankKey - Bank key from Config.BANKS.
+       * @param {string} bankKey - Connection key from Config.CONNECTIONS.
        * @param {StoredSession} session - Session to persist.
        */
       saveSession: function (bankKey, session) {
@@ -74,11 +74,27 @@
       },
 
       /**
-       * @param {string} bankKey - Bank key from Config.BANKS.
+       * @param {string} bankKey - Connection key from Config.CONNECTIONS.
        * @returns {?StoredSession} The session, or null if never authorized.
        */
       loadSession: function (bankKey) {
         return readMap(KEYS.EB_SESSIONS)[bankKey] || null;
+      },
+
+      /**
+       * Moves a session stored under an old key to its new key. Idempotent; never
+       * overwrites a session that already exists under the new key.
+       * @param {string} fromKey - Old key.
+       * @param {string} toKey - New key.
+       * @returns {boolean} True if a session was moved.
+       */
+      migrateKey: function (fromKey, toKey) {
+        const map = readMap(KEYS.EB_SESSIONS);
+        if (!map[fromKey] || map[toKey]) return false;
+        map[toKey] = map[fromKey];
+        delete map[fromKey];
+        writeMap(KEYS.EB_SESSIONS, map);
+        return true;
       }
     };
   }

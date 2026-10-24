@@ -12,6 +12,8 @@
     "src/lib/jwt.js",
     "src/lib/http.js",
     "src/lib/hash.js",
+    "src/core/connections.js",
+    "src/core/account-labels.js",
     "src/core/date-range.js",
     "src/core/txn-merge.js",
     "src/lib/gas-adapters.js",
@@ -26,6 +28,7 @@
     "src/sheets/transactions-store.js",
     "src/core/raw-sync.js",
     "src/core/txn-sync.js",
+    "src/core/sync-all.js",
     "src/entry/container.js",
     "src/entry/menu.js",
     "src/entry/web-app.js"

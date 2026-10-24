@@ -5,7 +5,9 @@
   const PROVIDER_ID = ns.Config.ENABLE_BANKING.PROVIDER_ID;
 
   /**
-   * Maps an Enable Banking AccountResource to an Account.
+   * Maps an Enable Banking AccountResource to an Account. The API's `name` is the
+   * account holder's own name and is not kept; `details` is the label set by the
+   * user or bank. `bank` and `connection` are stamped later by the provider.
    * @param {Object} raw - AccountResource (needs `uid` and `currency`).
    * @returns {import('../bank-provider.js').Account} Normalized account; IBAN masked.
    * @throws {Error} If `uid` is missing.
@@ -15,7 +17,9 @@
     return {
       provider: PROVIDER_ID,
       accountId: raw.uid,
-      name: raw.name || raw.product || '',
+      bank: '',
+      connection: '',
+      accountName: raw.details || '',
       currency: raw.currency || '',
       ibanMasked: ns.Redact.maskIban(raw.account_id && raw.account_id.iban),
       accountType: raw.cash_account_type || '',
@@ -95,6 +99,10 @@
   function toTransaction(raw, accountId, status) {
     return {
       provider: PROVIDER_ID,
+      bank: '',
+      connection: '',
+      accountName: '',
+      ibanMasked: '',
       accountId: accountId,
       transactionId: '',
       bookingDate: raw.booking_date || '',

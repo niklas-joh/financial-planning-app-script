@@ -8,13 +8,16 @@ const memProps = () => {
   return { getProperty: (k) => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = v; } };
 };
 
-test('normalizeAccount masks the IBAN and requires uid', () => {
+test('normalizeAccount masks the IBAN, keeps the user-set label, drops the holder name, requires uid', () => {
   const a = BS.EbNormalize.normalizeAccount({
-    uid: 'u1', name: 'Main', currency: 'EUR', cash_account_type: 'CACC',
-    account_id: { iban: 'GB82WEST12345698765432' }
+    uid: 'u1', name: 'Jane Holder', details: 'Holiday pot', product: 'Savings', currency: 'EUR',
+    cash_account_type: 'CACC', account_id: { iban: 'GB82WEST12345698765432' }
   });
   assert.strictEqual(a.ibanMasked, '****5432');
+  assert.strictEqual(a.accountName, 'Holiday pot');
+  assert.strictEqual(a.product, 'Savings');
   assert.ok(!JSON.stringify(a).includes('GB82'));
+  assert.ok(!JSON.stringify(a).includes('Jane'));
   assert.throws(() => BS.EbNormalize.normalizeAccount({}), { name: 'DataError' });
 });
 
@@ -63,6 +66,7 @@ function wired(overrides) {
       accounts: [{ uid: 'a1', currency: 'EUR', name: 'Main', account_id: { iban: 'GB82WEST12345698765432' } }]
     }),
     getSession: () => ({ status: 'AUTHORIZED' }),
+    getAccountDetails: (uid) => ({ uid, currency: 'EUR', details: 'Renamed', account_id: { iban: 'GB82WEST12345698765432' } }),
     getBalances: () => ({ balances: [{ name: 'b', balance_type: 'CLBD', balance_amount: { amount: '5', currency: 'EUR' } }] }),
     ...overrides
   };
@@ -70,9 +74,9 @@ function wired(overrides) {
     client, store, nowMs: () => NOW, uuid: () => 'state-1',
     getRedirectUrl: () => 'https://script.example/exec'
   });
-  const bank = BS.Config.BANKS.REVOLUT;
-  const provider = BS.EnableBankingProvider.create({ bank, client, store, auth, nowMs: () => NOW });
-  return { provider, store, calls, client };
+  const connection = BS.Config.CONNECTIONS.REVOLUT_NIKLAS;
+  const provider = BS.EnableBankingProvider.create({ connection, client, store, auth, nowMs: () => NOW });
+  return { provider, store, calls, client, auth, connection };
 }
 
 test('authorize builds the /auth body and stores the pending state', () => {
@@ -81,7 +85,7 @@ test('authorize builds the /auth body and stores the pending state', () => {
   assert.deepStrictEqual(r, { url: 'https://bank.example/login', state: 'state-1' });
   assert.strictEqual(calls[0].redirect_url, 'https://script.example/exec');
   assert.strictEqual(calls[0].psu_type, 'personal');
-  assert.strictEqual(store.consumePending('state-1').bankKey, 'revolut');
+  assert.strictEqual(store.consumePending('state-1').connectionKey, 'revolut-niklas');
 });
 
 test('complete persists the session with masked accounts; list/balances then work', () => {
@@ -89,25 +93,26 @@ test('complete persists the session with masked accounts; list/balances then wor
   const auth = BS.EbAuth.create({
     client: wired().client, store, nowMs: () => NOW, uuid: () => 's', getRedirectUrl: () => 'x'
   });
-  store.savePending('st', { bankKey: 'revolut', validUntil: '2026-02-01T00:00:00Z' });
+  store.savePending('st', { connectionKey: 'revolut-niklas', validUntil: '2026-02-01T00:00:00Z' });
   const summary = auth.complete('code', 'st');
   assert.strictEqual(summary.accountCount, 1);
   assert.strictEqual(summary.validUntil, '2026-03-01T00:00:00Z');
   const accounts = provider.listAccounts();
   assert.strictEqual(accounts[0].ibanMasked, '****5432');
+  assert.deepStrictEqual([accounts[0].bank, accounts[0].connection], ['Revolut', 'revolut-niklas']);
   const balances = provider.getBalances('a1');
   assert.strictEqual(balances[0].amount, 5);
-  assert.ok(!JSON.stringify(store.loadSession('revolut')).includes('GB82'));
+  assert.ok(!JSON.stringify(store.loadSession('revolut-niklas')).includes('GB82'));
 });
 
 test('provider rejects use before authorization, after expiry, and when revoked', () => {
   const { provider, store } = wired();
   assert.throws(() => provider.listAccounts(), { name: 'AuthError' });
-  store.saveSession('revolut', { sessionId: 's', accessValidUntil: '2025-01-01T00:00:00Z', accounts: [] });
+  store.saveSession('revolut-niklas', { sessionId: 's', accessValidUntil: '2025-01-01T00:00:00Z', accounts: [] });
   assert.throws(() => provider.listAccounts(), /expired/);
-  store.saveSession('revolut', { sessionId: 's', accessValidUntil: '2027-01-01T00:00:00Z', accounts: [] });
+  store.saveSession('revolut-niklas', { sessionId: 's', accessValidUntil: '2027-01-01T00:00:00Z', accounts: [] });
   const revoked = wired({ getSession: () => ({ status: 'CLOSED' }) });
-  revoked.store.saveSession('revolut', { sessionId: 's', accessValidUntil: '2027-01-01T00:00:00Z', accounts: [] });
+  revoked.store.saveSession('revolut-niklas', { sessionId: 's', accessValidUntil: '2027-01-01T00:00:00Z', accounts: [] });
   assert.throws(() => revoked.provider.listAccounts(), /CLOSED/);
 });
 
@@ -130,15 +135,17 @@ test('token provider caches the JWT and errors clearly on missing credentials', 
   assert.strictEqual(signed, 1);
 });
 
-test('raw sync writes both tabs in single batched writes', () => {
+test('raw sync collects balances per account and writes both tabs with labels', () => {
   const written = {};
   const writer = { writeTable: (tab, cols, rows) => { written[tab] = rows; return rows.length; } };
-  const provider = {
-    listAccounts: () => [{ accountId: 'a1' }, { accountId: 'a2' }],
-    getBalances: (id) => [{ accountId: id }]
-  };
-  assert.deepStrictEqual(BS.RawSync.run(provider, writer), { accounts: 2, balances: 2 });
-  assert.strictEqual(written.raw_balances.length, 2);
+  const accounts = [
+    { accountId: 'a1', bank: 'Revolut', connection: 'revolut-niklas', accountName: 'Main', ibanMasked: '****1', product: '' },
+    { accountId: 'a2', bank: 'Revolut', connection: 'revolut-niklas', accountName: '', ibanMasked: '****1', product: 'Savings' }];
+  const provider = { getBalances: (id) => [{ accountId: id }] };
+  const data = BS.RawSync.collect(provider, accounts);
+  assert.deepStrictEqual(BS.RawSync.write(writer, data), { accounts: 2, balances: 2 });
+  assert.deepStrictEqual(written.raw_balances.map((b) => [b.connection, b.accountName]),
+    [['revolut-niklas', 'Main'], ['revolut-niklas', 'Savings']]);
 });
 
 test('toMatrix emits a header row and blanks for missing values', () => {

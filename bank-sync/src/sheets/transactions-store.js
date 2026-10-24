@@ -9,11 +9,16 @@
    * @property {string} key - Transaction property.
    * @property {boolean} [text] - Stored as plain text.
    * @property {boolean} [nullable] - Empty cell reads back as null.
+   * @property {boolean} [optional] - May be missing from an older tab; reads back as ''.
    */
 
   /** @type {Array<TxnColumn>} */
   const COLUMNS = [
     { key: 'provider', text: true },
+    { key: 'bank', text: true, optional: true },
+    { key: 'connection', text: true, optional: true },
+    { key: 'accountName', text: true, optional: true },
+    { key: 'ibanMasked', text: true, optional: true },
     { key: 'accountId', text: true },
     { key: 'transactionId', text: true },
     { key: 'bookingDate', text: true },
@@ -45,13 +50,17 @@
   /**
    * Converts a data matrix to transactions.
    * @param {Array<Array<*>>} matrix - Rows without the header.
+   * @param {Object<string,number>} index - Column position of each key (from `indexByHeader`).
    * @param {function(Date): string} formatDate - Date formatter.
    * @returns {Array<import('../providers/bank-provider.js').Transaction>} Transactions.
    */
-  function fromMatrix(matrix, formatDate) {
+  function fromMatrix(matrix, index, formatDate) {
     return matrix.map(function (row) {
       const t = {};
-      COLUMNS.forEach(function (column, i) { t[column.key] = fromCell(column, row[i], formatDate); });
+      COLUMNS.forEach(function (column) {
+        const position = index[column.key];
+        t[column.key] = fromCell(column, position === undefined ? '' : row[position], formatDate);
+      });
       return t;
     });
   }
@@ -70,16 +79,25 @@
   }
 
   /**
-   * Fails loudly if the header row was changed, instead of misreading columns.
+   * Finds where each column sits, so older tabs without the label columns (or with
+   * reordered columns) still load. Fails loudly if a required column is missing.
    * @param {Array<*>} header - First row as read from the sheet.
-   * @throws {Error} DataError if the header does not match `COLUMNS`.
+   * @returns {Object<string,number>} Column position by key.
+   * @throws {Error} DataError naming the missing required columns.
    */
-  function assertHeader(header) {
-    const matches = COLUMNS.every(function (column, i) { return header[i] === column.key; });
-    if (!matches) {
+  function indexByHeader(header) {
+    const index = {};
+    COLUMNS.forEach(function (column) {
+      const position = header.indexOf(column.key);
+      if (position !== -1) index[column.key] = position;
+    });
+    const missing = COLUMNS.filter(function (c) { return !c.optional && index[c.key] === undefined; })
+      .map(function (c) { return c.key; });
+    if (missing.length) {
       throw ns.Errors.create('DataError', 'The ' + ns.Config.TABS.TRANSACTIONS +
-        ' tab header was changed; restore it or delete the tab to rebuild it');
+        ' tab is missing columns (' + missing.join(', ') + '); restore the header or delete the tab to rebuild it');
     }
+    return index;
   }
 
   /**
@@ -105,8 +123,7 @@
         const existing = spreadsheet.getSheetByName(tab);
         if (!existing || existing.getLastRow() < 1) return [];
         const data = existing.getRange(1, 1, existing.getLastRow(), COLUMNS.length).getValues();
-        assertHeader(data[0]);
-        return fromMatrix(data.slice(1), formatDate);
+        return fromMatrix(data.slice(1), indexByHeader(data[0]), formatDate);
       },
 
       /**

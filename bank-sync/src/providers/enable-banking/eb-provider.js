@@ -5,7 +5,7 @@
 (function (ns) {
   /**
    * @typedef {Object} EbProviderDeps
-   * @property {import('../../core/config.js').BankConfig} bank - Bank this instance serves.
+   * @property {import('../../core/config.js').ConnectionConfig} connection - Login this instance serves.
    * @property {Object} client - EbClient.
    * @property {Object} store - EbSessionStore.
    * @property {Object} auth - EbAuth flow.
@@ -13,7 +13,7 @@
    */
 
   /**
-   * Creates a provider for one bank.
+   * Creates a provider for one connection (one login at one bank).
    * @param {EbProviderDeps} deps - Injected services.
    * @returns {import('../bank-provider.js').BankProvider} The provider.
    */
@@ -24,7 +24,7 @@
      * @throws {Error} AuthError if never authorized, lapsed or revoked.
      */
     function requireSession() {
-      const session = deps.store.loadSession(deps.bank.key);
+      const session = deps.store.loadSession(deps.connection.key);
       if (!session) throw ns.Errors.auth('Not authorized yet; run "Authorize" first');
       if (Date.parse(session.accessValidUntil) <= deps.nowMs()) {
         throw ns.Errors.auth('Consent has expired; re-authorize');
@@ -32,9 +32,18 @@
       return session;
     }
 
+    /**
+     * Adds the bank and connection this provider serves.
+     * @param {import('../bank-provider.js').Account} account - Stored account.
+     * @returns {import('../bank-provider.js').Account} Account with `bank` and `connection` set.
+     */
+    function stampAccount(account) {
+      return Object.assign({}, account, { bank: deps.connection.bank.aspspName, connection: deps.connection.key });
+    }
+
     return ns.BankProvider.assertBankProvider({
       authorize: function () {
-        return deps.auth.begin(deps.bank);
+        return deps.auth.begin(deps.connection);
       },
 
       listAccounts: function () {
@@ -43,7 +52,7 @@
         if (state.status && state.status !== 'AUTHORIZED') {
           throw ns.Errors.auth('Session status is ' + state.status + '; re-authorize');
         }
-        return session.accounts;
+        return session.accounts.map(stampAccount);
       },
 
       getBalances: function (accountId) {

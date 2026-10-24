@@ -7,7 +7,10 @@
    * @typedef {Object} Account
    * @property {string} provider - Provider id, e.g. 'enablebanking'.
    * @property {string} accountId - Provider-scoped account identifier.
-   * @property {string} name - Display name.
+   * @property {string} bank - Bank name, e.g. 'Revolut'. Set by the provider.
+   * @property {string} connection - Connection key (bank plus holder). Set by the provider.
+   * @property {string} accountName - Name set by the user or bank (Enable Banking `details`), or ''.
+   *   The account holder's own name is deliberately not stored.
    * @property {string} currency - ISO 4217 code.
    * @property {string} ibanMasked - IBAN reduced to last four characters, or ''.
    * @property {string} accountType - Provider account type (e.g. ISO cash account type).
@@ -30,6 +33,10 @@
   /**
    * @typedef {Object} Transaction
    * @property {string} provider
+   * @property {string} bank - Label, filled from the account list at sync time.
+   * @property {string} connection - Label, as above.
+   * @property {string} accountName - Label, as above.
+   * @property {string} ibanMasked - Label, as above.
    * @property {string} accountId
    * @property {string} transactionId
    * @property {string} bookingDate

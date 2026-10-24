@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-24.
+Last updated: 2026-10-25.
 
 ## Setup in one paragraph
 
@@ -24,8 +24,8 @@ Two independent Apps Script projects, each bound to its own Sheet:
 |---|---|---|
 | 0 | Setup, folder layout, config, secrets handling | Merged (#40) |
 | 1 | Enable Banking auth (RS256 JWT, redirect web app), Revolut accounts and balances to raw tabs | Merged (#42), live |
-| 2 | Transactions: paginated fetch, normalization, idempotent upsert, `transactions` tab | PR #44 open, CI green, live-tested on Revolut (sync twice gives 0 added/updated/removed) |
-| 2.5 | Connections, generic menu, bank/account labels (details below) | Next |
+| 2 | Transactions: paginated fetch, normalization, idempotent upsert, `transactions` tab | Merged (#44), live-tested on Revolut (sync twice gives 0 added/updated/removed). Hardened in #48 after the first Claude review |
+| 2.5 | Connections, generic menu, bank/account labels (details below) | PR open, not yet deployed or live-tested |
 | 3 | FX (ECB via Frankfurter) | Planned |
 | 4 | Automation and consent-expiry warnings | Planned |
 | 5 | Trading212 provider | Planned |
@@ -86,7 +86,7 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
 - Not yet verified: whether restricted mode lets a second person authorize their own login
   under this application (matters for Phase 8), and how far back Revolut serves history.
 
-## Phase 2.5: connections, generic menu, labels (next)
+## Phase 2.5: connections, generic menu, labels
 
 Motivation, from live use of Phase 2:
 
@@ -97,7 +97,17 @@ Motivation, from live use of Phase 2:
    config entry.
 3. Tabs do not show which bank, connection or account a row belongs to.
 
-Scope:
+As built (see `bank-sync/README.md` for use): `CONNECTIONS` in config; sessions keyed by
+connection (the old `revolut` session is moved to `revolut-niklas` automatically);
+menu = *Connect a bank...*, *Sync all*, *Refresh account names*, *Show status*; labels
+`bank`, `connection`, `accountName`, `ibanMasked` on all three tabs, joined from the
+accounts list and stored on each transaction row so one connection's sync never blanks
+another's; the tab loads by header name so older layouts still load. Verified in the API
+reference: `name` is the account **holder's** name (no longer stored), `details` is the
+user/bank-set label, `product` the product type, and `GET /sessions/{id}` returns only
+account ids, so names refresh through `GET /accounts/{id}/details` on demand.
+
+Original scope notes:
 
 - Config: `CONNECTIONS` (key, bank, holder label), replacing the single-bank assumption.
   Session store and pending-auth state keyed by connection key (migrate the existing
@@ -155,6 +165,14 @@ is a new connection and a separate consent (their own login). Blocked on confirm
 Enable Banking's restricted mode allows it; if not, it needs its own application or
 another route. Decide only when this phase starts.
 
+## Review workflow
+
+`claude-code-review.yml` now posts a review on every non-doc PR (#46, #47 fixed it: the
+tool allowlist was unquoted, so every tool was denied, and it had no Write tool). Read the
+review before merging; #44 and #48 both had useful findings. A PR that edits the workflow
+itself is skipped by design; test those with `gh workflow run claude-code-review.yml -f pr_number=N`
+after merging.
+
 ## Open decisions (raise, do not act)
 
 - **One sheet:** move toward a single sheet. Options once Phase 2 is in: migrate the legacy
@@ -162,10 +180,6 @@ another route. Decide only when this phase starts.
 - **Retire Plaid and SaltEdge** from `src/`: propose a removal PR.
 - **`deploy.yml`** pushes only the legacy `src/` project. Do not extend it to bank-sync
   without asking.
-- **Claude review workflow** (`claude-code-review.yml`): on PRs #42-#44 it ran but posted no
-  review. The `--body-file` post step may be blocked because the tool allowlist has no
-  Write tool, and its prompt still describes the Plaid/SaltEdge project. Needs a fix PR;
-  a workflow PR cannot be reviewed by the workflow it changes.
 
 ## Deploy rules (learned the hard way)
 
