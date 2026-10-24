@@ -189,7 +189,7 @@ FinancialPlanner.SaltEdgeClient = (function() {
     const flat = {};
     
     for (const key in obj) {
-      if (!obj.hasOwnProperty(key)) continue;
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
       
       const value = obj[key];
       const newKey = prefix ? prefix + '.' + key : key;
@@ -215,25 +215,23 @@ FinancialPlanner.SaltEdgeClient = (function() {
    * @private
    * @param {Object} account - Account object from SaltEdge API
    * @param {string} account.nature - Account nature (e.g., 'checking', 'investment', 'loan')
+   * @param {string} [account.id] - Account ID (used in log details)
+   * @param {string} [account.name] - Account name (used in log details)
    * @returns {boolean} True if account should be imported, false otherwise
    */
   function shouldImportAccount(account) {
     // Handle invalid account object
     if (!account || typeof account !== 'object') {
-      FinancialPlanner.ErrorService.logError(
-        'shouldImportAccount',
-        new Error('Invalid account object provided'),
-        { account: account }
+      FinancialPlanner.ErrorService.log(
+        FinancialPlanner.ErrorService.create('shouldImportAccount: invalid account object provided', { severity: 'low' })
       );
       return false;
     }
     
     // Handle missing nature property
     if (!account.nature) {
-      FinancialPlanner.ErrorService.logError(
-        'shouldImportAccount',
-        new Error('Account nature is missing'),
-        { account_id: account.id, account_name: account.name }
+      FinancialPlanner.ErrorService.log(
+        FinancialPlanner.ErrorService.create('shouldImportAccount: account nature is missing', { account_id: account.id, severity: 'low' })
       );
       return false;
     }
@@ -532,8 +530,6 @@ FinancialPlanner.SaltEdgeClient = (function() {
    * @memberof FinancialPlanner.SaltEdgeClient
    */
   function listTransactions(connectionId, accountId, options) {
-    options = options || {};
-    
     try {
       let allTransactions = [];
       let nextId = getStoredCursor(connectionId, accountId);

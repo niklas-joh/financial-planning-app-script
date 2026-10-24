@@ -1,0 +1,83 @@
+name: Auto-fix CI Failures
+
+# When CI fails on a PR branch, Claude reads the failing logs, fixes the code
+# and pushes to the same branch. Never runs on main, on forks, or on its own
+# commits (to avoid fix loops).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+jobs:
+  autofix:
+    name: Claude CI Auto-fix
+    if: |
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_branch != 'main' &&
+      github.event.workflow_run.head_commit.author.name != 'claude[bot]' &&
+      github.event.workflow_run.head_repository.id == github.repository_id
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+      id-token: write # claude-code-action verifies the workflow via OIDC
+
+    steps:
+      - name: Sanitize workflow_run inputs
+        id: sanitize
+        env:
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          # Branch names are user-controlled; allow only safe characters.
+          if [[ ! "$HEAD_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::Refusing to auto-fix unexpected branch name."
+            exit 1
+          fi
+          echo "head_branch=${HEAD_BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "id=${RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.sanitize.outputs.head_branch }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - uses: anthropics/claude-code-action@16f9f71ab9c490faf367f94dd294897edc25be33 # v1.0.261
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            The CI workflow just failed on branch `${{ steps.sanitize.outputs.head_branch }}`,
+            which is already checked out with dependencies installed.
+
+            Steps:
+            1. Run `gh run view ${{ steps.sanitize.outputs.id }} --log-failed --repo ${{ github.repository }}`
+               to read the exact error output.
+            2. Identify the root cause (ESLint, Apps Script check, tests, type check,
+               or the PR-title commit convention).
+            3. Fix only the failing code — do not refactor unrelated areas. Follow CLAUDE.md.
+            4. Re-run the failing check locally (`npm run lint`, `npm run check:manifest`,
+               `npm test`, `npm run typecheck`) and make sure it passes.
+            5. Commit with a Conventional Commit message and push to the same branch:
+               `git push origin HEAD:${{ steps.sanitize.outputs.head_branch }}`
+               Do NOT create a new branch or a new pull request.
+
+            Constraints:
+            - Tests: fix the code under test, not the test, unless the assertion is clearly wrong.
+              Never skip or delete a test to make CI pass.
+            - Type check: never add entries to scripts/typecheck-baseline.json for new code.
+            - A failing PR title cannot be fixed by a commit — say so in a PR comment instead.
+            - Do not modify package-lock.json, .github/workflows/, or anything under docs/.
+
+          claude_args: "--allowedTools Bash(git:*),Bash(gh run view:*),Bash(gh pr comment:*),Bash(npm run:*),Bash(npm test:*),Bash(npx eslint:*),Bash(node scripts/*),Read,Edit,MultiEdit,Write,Glob,Grep,LS"

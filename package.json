@@ -1,0 +1,29 @@
+{
+  "name": "financial-planning-app-script",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Dev tooling (lint, tests, checks) for the Financial Planning Google Apps Script project. Nothing here is pushed to Apps Script.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "prepare": "node scripts/install-hooks.mjs",
+    "lint": "eslint .",
+    "check:manifest": "node scripts/check-manifest.mjs",
+    "test": "node scripts/run-tests.mjs",
+    "typecheck": "node scripts/typecheck.mjs",
+    "check": "npm run lint && npm run check:manifest && npm run test && npm run typecheck"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@eslint/js": "^10.0.1",
+    "@google/clasp": "^3.4.1",
+    "@types/google-apps-script": "^2.0.13",
+    "eslint": "^10.13.0",
+    "espree": "^11.2.0",
+    "globals": "^17.13.0",
+    "typescript": "^7.0.2"
+  }
+}

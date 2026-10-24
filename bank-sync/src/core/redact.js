@@ -5,7 +5,7 @@
   const PATTERNS = [
     [/-----BEGIN [A-Z ]+-----[\s\S]*?-----END [A-Z ]+-----/g, '[REDACTED:pem]'],
     [/eyJ[\w-]+\.[\w-]+\.[\w-]+/g, '[REDACTED:jwt]'],
-    [/Bearer\s+[\w.~+\/-]+=*/gi, 'Bearer [REDACTED]'],
+    [/Bearer\s+[\w.~+/-]+=*/gi, 'Bearer [REDACTED]'],
     [/\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g, '[REDACTED:iban]']
   ];
 

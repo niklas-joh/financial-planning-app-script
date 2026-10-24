@@ -48,13 +48,14 @@ FinancialPlanner.Utils = (function() {
     /**
      * Gets the full English name of a month from its 0-based index.
      * @param {number} monthIndex - The month index (0 for January, 1 for February, etc.).
-     * @return {string | undefined} The full name of the month (e.g., "January"), or `undefined` for invalid indices.
+     * @return {string} The full name of the month (e.g., "January"), or an empty string for invalid indices.
      * @memberof FinancialPlanner.Utils
      * @example
      * const month = FinancialPlanner.Utils.getMonthName(0); // Returns 'January'
      */
     getMonthName: function(monthIndex) {
-      return months[monthIndex];
+      // '' rather than undefined, so callers building labels never print "undefined".
+      return months[monthIndex] || '';
     },
 
     /**

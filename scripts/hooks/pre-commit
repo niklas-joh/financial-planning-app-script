@@ -1,0 +1,27 @@
+#!/bin/sh
+# Pre-commit checks for staged Apps Script changes. Installed by `npm install`
+# (scripts/install-hooks.mjs). Skip once with `git commit --no-verify`.
+
+STAGED_SRC=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(src/|\.clasp\.json$|appsscript\.json$|\.claspignore$)')
+STAGED_JS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(js|mjs)$')
+
+[ -z "$STAGED_SRC$STAGED_JS" ] && exit 0
+
+if [ ! -d node_modules ]; then
+  echo "pre-commit: node_modules missing — run 'npm install' to enable checks. Skipping."
+  exit 0
+fi
+
+if [ -n "$STAGED_JS" ]; then
+  echo "pre-commit: ESLint on staged files..."
+  # shellcheck disable=SC2086
+  npx eslint --max-warnings=0 $STAGED_JS || exit 1
+fi
+
+if [ -n "$STAGED_SRC" ]; then
+  echo "pre-commit: Apps Script check..."
+  node scripts/check-manifest.mjs || exit 1
+  echo "pre-commit: tests..."
+  node scripts/run-tests.mjs > /tmp/fp-pre-commit-tests.log 2>&1 || { tail -40 /tmp/fp-pre-commit-tests.log; exit 1; }
+  tail -1 /tmp/fp-pre-commit-tests.log
+fi

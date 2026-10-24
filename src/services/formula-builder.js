@@ -202,7 +202,6 @@ FinancialPlanner.FormulaBuilder = (function() {
       const categoryColumn = params.categoryColumn;
       const subcategoryColumn = params.subcategoryColumn;
       const dateColumn = params.dateColumn;
-      const typeValue = params.typeValue;
       const categoryValue = params.categoryValue;
       const subcategoryValue = params.subcategoryValue;
       const monthDate = params.monthDate;
