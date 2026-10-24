@@ -7,4 +7,4 @@ This is a private, non-commercial personal tool, used by one household to view i
 - The tool is read-only: it does not initiate payments or change anything at the bank.
 - The source code is provided as is, without warranty.
 
-**Contact:** niklas@hjuvik.net
+**Contact:** niklas [at] hjuvik [dot] net

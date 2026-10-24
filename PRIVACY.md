@@ -12,4 +12,4 @@ This is a private, non-commercial personal tool. It is not offered to anyone els
 
 **This repository** contains source code only and holds no bank data or credentials.
 
-**Contact:** niklas@hjuvik.net
+**Contact:** niklas [at] hjuvik [dot] net
