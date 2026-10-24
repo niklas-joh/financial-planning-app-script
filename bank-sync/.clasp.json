@@ -1,0 +1,11 @@
+{
+  "scriptId": "1Jmay1K4HuhWXYIK8rQClbkHl1AzJm7ojkHvER-qzZYib0U8ZKS7DHd4d",
+  "rootDir": "src",
+  "parentId": [
+    "1C9Jlvvz1_r8c323sk1Gsktdgq2Gq7hxUCDZ4o-jCEEM"
+  ],
+  "filePushOrder": [
+    "00_namespace.js",
+    "core/config.js"
+  ]
+}
