@@ -1,6 +1,6 @@
 /**
  * @fileoverview EnableBankingProvider: implements the BankProvider contract
- * for one bank over Enable Banking. Transactions arrive in Phase 2.
+ * for one bank over Enable Banking.
  */
 (function (ns) {
   /**
@@ -54,8 +54,30 @@
         });
       },
 
-      getTransactions: function () {
-        throw ns.Errors.notImplemented('getTransactions');
+      /**
+       * Fetches every page of an account's transactions for a date range.
+       * @param {string} accountId - Account uid.
+       * @param {{dateFrom: string, dateTo: string}} range - Inclusive ISO dates (UTC).
+       * @returns {Array<import('../bank-provider.js').Transaction>} Normalized transactions.
+       * @throws {Error} AuthError without a usable session; DataError if pagination
+       *   does not end within the page cap.
+       */
+      getTransactions: function (accountId, range) {
+        requireSession();
+        const maxPages = ns.Config.TRANSACTIONS.MAX_PAGES;
+        let raw = [];
+        let key;
+        let pages = 0;
+        do {
+          const page = deps.client.getTransactions(accountId, {
+            date_from: range.dateFrom, date_to: range.dateTo, continuation_key: key
+          });
+          raw = raw.concat(page.transactions || []);
+          key = page.continuation_key || undefined;
+          pages++;
+        } while (key && pages < maxPages);
+        if (key) throw ns.Errors.create('DataError', 'Transactions did not end within ' + maxPages + ' pages');
+        return ns.EbNormalize.normalizeTransactions(raw, accountId).transactions;
       }
     });
   }

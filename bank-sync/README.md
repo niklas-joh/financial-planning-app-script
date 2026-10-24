@@ -56,3 +56,20 @@ Feature branch per module, small PRs, conventional commits, never push to main.
    (IBANs are masked to the last four characters).
 
 First run from the editor (e.g. `onOpen`) once so Google can ask you to grant the scopes.
+
+## Transactions (Phase 2)
+
+*Bank Sync > Sync transactions* writes the `transactions` tab (one row per
+provider + account + transaction id; amounts signed, expenses negative).
+
+- First run fetches the last 90 days; later runs restart each account at its
+  latest booked date minus 7 days, so late-booked items and pending to booked
+  changes are picked up. Re-running never duplicates rows.
+- Fetches go oldest to newest in 31-day windows and the tab is saved after each,
+  so a run that reaches the time budget (4.5 min) loses nothing. Run it again to
+  continue.
+- Pending rows inside a re-fetched window that the bank no longer returns are
+  removed (they booked under a new id or were cancelled).
+- `amountEur`, `fxRate` and `fxRateDate` stay empty until the FX phase and are
+  preserved on re-sync.
+- Ids: `entry_reference`, else `transaction_id`, else a content hash.

@@ -111,10 +111,6 @@ test('provider rejects use before authorization, after expiry, and when revoked'
   assert.throws(() => revoked.provider.listAccounts(), /CLOSED/);
 });
 
-test('getTransactions is explicitly not implemented yet', () => {
-  assert.throws(() => wired().provider.getTransactions(), { name: 'NotImplementedError' });
-});
-
 test('assertBankProvider names missing methods', () => {
   assert.throws(() => BS.BankProvider.assertBankProvider({ authorize() {} }), /listAccounts/);
 });
