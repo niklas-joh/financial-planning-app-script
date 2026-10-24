@@ -6,6 +6,23 @@
   ],
   "filePushOrder": [
     "00_namespace.js",
-    "core/config.js"
+    "core/config.js",
+    "core/errors.js",
+    "core/redact.js",
+    "lib/jwt.js",
+    "lib/http.js",
+    "lib/gas-adapters.js",
+    "providers/bank-provider.js",
+    "providers/enable-banking/eb-normalize.js",
+    "providers/enable-banking/eb-session-store.js",
+    "providers/enable-banking/eb-token.js",
+    "providers/enable-banking/eb-client.js",
+    "providers/enable-banking/eb-auth.js",
+    "providers/enable-banking/eb-provider.js",
+    "sheets/raw-writer.js",
+    "core/raw-sync.js",
+    "entry/container.js",
+    "entry/menu.js",
+    "entry/web-app.js"
   ]
 }

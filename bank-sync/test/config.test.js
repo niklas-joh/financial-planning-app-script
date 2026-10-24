@@ -1,8 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-
-require('../src/00_namespace.js');
-const Config = require('../src/core/config.js');
+const { Config } = require('./load');
 
 test('config is frozen, including nested sections', () => {
   assert.ok(Object.isFrozen(Config));
@@ -15,7 +13,6 @@ test('reporting currency is EUR', () => {
 });
 
 test('config holds property key names only, never secret material', () => {
-  const dump = JSON.stringify(Config);
-  assert.ok(!dump.includes('BEGIN'), 'no PEM material in config');
+  assert.ok(!JSON.stringify(Config).includes('BEGIN'));
   assert.strictEqual(Config.PROPERTY_KEYS.EB_PRIVATE_KEY, 'EB_PRIVATE_KEY');
 });

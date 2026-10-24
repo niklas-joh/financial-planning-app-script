@@ -38,3 +38,21 @@ them in the repo, logs, sheets or chat. `.gitignore` excludes `*.pem`, `*.key`,
 ## Workflow
 
 Feature branch per module, small PRs, conventional commits, never push to main.
+
+## Connecting Revolut (Phase 1)
+
+1. `clasp push`, then `clasp deploy` once. The web app runs as you and is
+   accessible only by you. Its redirect URL is
+   `https://script.google.com/macros/s/<DEPLOYMENT_ID>/exec`.
+   After later code changes, redeploy to the *same* deployment with
+   `clasp deploy -i <DEPLOYMENT_ID>`, otherwise `/exec` keeps serving the old version.
+2. In the Enable Banking Control Panel, set the application's redirect URL to
+   that `/exec` URL.
+3. Add the three Script Properties (see above). `EB_REDIRECT_URL` must equal the URL from step 2.
+4. Reload the Sheet. In the **Bank Sync** menu: *Show status*, then
+   *Authorize Revolut*, open the link and log in. The redirect lands on the web app,
+   which stores the session and shows the consent expiry.
+5. *Refresh accounts & balances* writes the `raw_accounts` and `raw_balances` tabs
+   (IBANs are masked to the last four characters).
+
+First run from the editor (e.g. `onOpen`) once so Google can ask you to grant the scopes.
