@@ -1,6 +1,7 @@
 /**
  * @fileoverview Syncs every configured connection in turn: raw accounts, balances and
- * (for providers that hold investments) holdings, then transactions; then converts
+ * (for providers that hold investments) holdings, then transactions; then adds the details
+ * some providers give for other providers' rows (e.g. card merchants from a CSV report); then converts
  * balances and holdings (latest rate) and the stored
  * transactions that have no EUR amount yet (booking-date rate) to EUR, fetching rates once for the whole run.
  * One connection failing (e.g. a lapsed consent) never stops the others, and the
@@ -45,7 +46,8 @@
    * @param {SyncAllDeps} deps - Services.
    * @param {number} budgetMs - Time left for it.
    * @param {number} startedAt - When the whole run started (epoch ms).
-   * @returns {{data: import('./raw-sync.js').RawData, transactions: Object}} What was read and the counts.
+   * @returns {{data: import('./raw-sync.js').RawData, transactions: Object,
+   *   enrichments: Array<import('./txn-merge.js').Enrichment>}} What was read and the counts.
    */
   function syncOne(connection, deps, budgetMs, startedAt) {
     const provider = deps.providerFor(connection);
@@ -56,21 +58,44 @@
       provider: provider, accounts: accounts, store: deps.store,
       nowMs: deps.nowMs, todayIso: deps.todayIso, budgetMs: budgetMs
     });
-    return { data: data, transactions: transactions };
+    const enrichments = typeof provider.getEnrichments === 'function' ? provider.getEnrichments() : [];
+    return { data: data, transactions: transactions, enrichments: enrichments };
+  }
+
+  /**
+   * Applies the details read in this run to the stored rows (after every connection, so rows fetched
+   * in the same run are there). A failure is reported, never thrown: the rest of the run still lands.
+   * @param {Array<import('./txn-merge.js').Enrichment>} details - Details from all providers.
+   * @param {SyncAllDeps} deps - Services.
+   * @returns {?{read: number, enriched: number, error: (string|undefined)}} Counts, or null if none were read.
+   */
+  function applyEnrichments(details, deps) {
+    if (!details.length) return null;
+    const outcome = { read: details.length, enriched: 0 };
+    try {
+      const done = ns.TxnMerge.enrich(deps.store.load(), details);
+      if (done.enriched) deps.store.save(done.rows);
+      outcome.enriched = done.enriched;
+    } catch (e) {
+      outcome.error = ns.Redact.text(e.name + ': ' + e.message);
+    }
+    return outcome;
   }
 
   /**
    * Runs the sync for all connections.
    * @param {SyncAllDeps} deps - Injected services.
-   * @returns {{results: Array<ConnectionResult>, raw: ?Object, fx: ?FxOutcome}}
-   *   Per-connection outcome, the row counts from `RawSync.write` (null if no connection could be read) and the EUR
-   *   conversion counts (null without `deps.fx`). No transaction content.
+   * @returns {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome}}
+   *   Per-connection outcome, the row counts from `RawSync.write` (null if no connection could be read), the
+   *   details applied (null if none were read) and the EUR conversion counts (null without `deps.fx`). No
+   *   transaction content.
    */
   function run(deps) {
     const cfg = ns.Config.TRANSACTIONS;
     const startedAt = deps.nowMs();
     const collected = { accounts: [], balances: [], transactions: [], holdings: [], holdingConnections: [] };
     const refreshed = [];
+    let enrichments = [];
 
     const results = deps.connections.map(function (connection) {
       const result = { connection: connection.key, status: 'ok' };
@@ -89,6 +114,7 @@
             collected.holdings = collected.holdings.concat(done.data.holdings);
             collected.holdingConnections.push(connection.key);
           }
+          enrichments = enrichments.concat(done.enrichments);
           result.transactions = Object.assign({}, done.transactions);
           delete result.transactions.rawRows;
           refreshed.push(connection.key);
@@ -119,6 +145,7 @@
       });
     }
     const raw = refreshed.length ? ns.RawSync.write(deps.rawWriter, collected, refreshed, deps.todayIso()) : null;
+    const details = applyEnrichments(enrichments, deps);
     if (fx) {
       guardFx(fx, function () {
         const converted = deps.fx.convertTransactions(deps.store.load());
@@ -129,7 +156,7 @@
         fx.failed = converted.failed;
       });
     }
-    return { results: results, raw: raw, fx: fx };
+    return { results: results, raw: raw, details: details, fx: fx };
   }
 
   /**
@@ -148,7 +175,7 @@
 
   /**
    * Turns a run into the text shown to the user. Counts only, no transaction content.
-   * @param {{results: Array<ConnectionResult>, raw: ?Object, fx: ?FxOutcome}} outcome - From `run`.
+   * @param {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome}} outcome - From `run`.
    * @returns {string} Multi-line summary.
    */
   function summarize(outcome) {
@@ -164,6 +191,11 @@
     if (raw) lines.push('Raw tabs: ' + raw.accounts + ' accounts, ' + raw.balances + ' balances, ' + raw.transactions + ' transactions' +
       (raw.holdings === undefined ? '' : ', ' + raw.holdings + ' holdings') +
       (raw.dailyValues === undefined ? '' : ', ' + raw.dailyValues + ' daily values') + '.');
+    const details = outcome.details;
+    if (details) {
+      lines.push('Details from reports: ' + details.enriched + ' transactions updated (' + details.read + ' read).' +
+        (details.error ? ' Failed (' + details.error + ')' : ''));
+    }
     const fx = outcome.fx;
     if (fx) {
       lines.push('EUR conversion: ' + fx.changed + ' transactions converted' +

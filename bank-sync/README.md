@@ -2,8 +2,8 @@
 
 Modular Apps Script project that pulls bank data via
 [Enable Banking](https://enablebanking.com), and cash, holdings and history from
-[Trading 212](https://docs.trading212.com/api), and CSV exports from a Drive folder (BIL),
-into a dedicated Google Sheet ("Bank Sync"). Independent of the legacy `src/` project in this repo.
+[Trading 212](https://docs.trading212.com/api), and CSV exports from a Drive folder (BIL, and the
+Trading 212 report for card details), into a dedicated Google Sheet ("Bank Sync"). Independent of the legacy `src/` project in this repo.
 
 ## Layout
 
@@ -212,9 +212,8 @@ What it writes:
 Notes:
 
 - Card payments are in the API only as plain `WITHDRAW` rows (cashback as small `DEPOSIT` rows), with no
-  card type, merchant or category, so they cannot be told apart from other withdrawals and deposits. The
-  Trading 212 CSV report does carry them (`Card debit` with merchant name and category); see the roadmap,
-  "Card spending". A transfer from a bank account to Trading 212 currently shows up twice in
+  card type, merchant or category, so they cannot be told apart from other withdrawals and deposits. Dropping
+  the Trading 212 report in your CSV folder adds the merchant and category to them (see "CSV import"). A transfer from a bank account to Trading 212 currently shows up twice in
   `transactions` (the bank's outflow and the Trading 212 deposit).
 - Rate limits are per Trading 212 account, whatever the key: summary 1 per 5 s, positions 1 per s,
   history 20 per minute. A sync makes about four calls per account. On HTTP 429 the call waits until
@@ -249,7 +248,14 @@ Supported exports:
   `DD/MM/YYYY`; amounts signed (money out negative) with `.` as decimal mark and `,` between thousands
   (`8,828.03`, `-1,500`). Spreadsheet apps that open the file as comma-separated split those amounts
   across two columns; the import reads the raw text, so they are read correctly. UTF-8, else Windows-1252.
-  The file has no currency column: BIL accounts are taken as EUR.
+  The file has no currency column; BIL accounts are EUR.
+- **Trading 212 report** (exported from the Trading 212 app's history, any period, CSV): adds details to rows
+  that *Sync all* already reads from the Trading 212 API, matched on the report's `ID` (the API's reference). It
+  never adds rows. `Card debit` rows give the API's `WITHDRAW` row its merchant (`counterparty`) and merchant
+  category (`category`, e.g. `SERVICE_PROVIDERS`); `Spending cashback` gives the `DEPOSIT` row the category
+  `SPENDING_CASHBACK`. Other actions (deposits, interest, orders, dividends) are complete from the API and
+  are left alone. A report row whose API row is not there yet is applied on a later sync. Comma-separated,
+  UTF-8, times in UTC.
 
 What it writes:
 
@@ -259,6 +265,9 @@ What it writes:
   payer or the card merchant when the message names one. Account and card numbers inside the texts are
   masked to their last four digits. EUR at the booking-date rate, like every other row.
 - `raw_accounts` and `raw_transactions`: the account and every CSV column as `api.*` (masked the same way).
+- `transactions` has a new last column `category`, filled only by details such as the Trading 212 report. A
+  later sync that re-reads a row without a counterparty or category keeps the ones already stored. The summary
+  says how many rows got details: "Details from reports: N transactions updated (M read)."
 - The `accountId` is the source plus a hash of the account number (`bil-1a2b3c4d`).
 
 Re-importing is safe. Without a bank id, a row's id is its date, a hash of its identifying columns and a

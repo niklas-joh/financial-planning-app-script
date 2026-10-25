@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const BS = require('./load.js');
+const { fakeSheetBook } = require('./fake-sheet');
 
 const P = BS.CsvParse;
 const NOW = Date.parse('2026-09-01T08:00:00Z');
@@ -224,4 +225,65 @@ test('csv registry: one connection per folder property; status without a folder;
   const provider = R.create(conns[1], wired, { driveFolder: () => ({ files: () => [] }) });
   assert.throws(() => provider.authorize(), /set CSV_FOLDER_ALEX to its id/);
   assert.deepStrictEqual(provider.listAccounts(), []);
+});
+
+// --- Trading 212 report: details for the rows the API already stores ---
+
+const REPORT_HEAD = 'Action,Time (UTC),Notes,ID,Total,Currency (Total),Currency conversion fee,Currency (Currency conversion fee),Merchant name,Merchant category';
+const REPORT = [
+  REPORT_HEAD,
+  'Spending cashback,2026-08-19 01:12:04+00:00,,id-cashback-1,0.31,"EUR",,,,',
+  'Card debit,2026-08-21 09:27:53+00:00,,id-card-1,-53.46,"EUR",0.00,"USD","DEMO CAFE","RESTAURANTS"',
+  'Deposit,2026-08-22 09:15:28+00:00,"Bank Transfer",id-deposit-1,100.00,"EUR",,,,',
+  'Card debit,2026-08-22 09:25:18+00:00,,id-card-2,-20.00,"EUR",,,"DEMO SCHOOL, LUX","SERVICE_PROVIDERS"'
+].join('\n') + '\n';
+
+test('csv t212 report: card debits give merchant and category, cashback a category, other actions nothing', () => {
+  const found = BS.CsvNormalize.detect(utf8(REPORT));
+  assert.deepStrictEqual([found.format.id, found.format.kind, found.format.enriches], ['trading212-report', 'details', 'trading212']);
+  assert.deepStrictEqual(BS.CsvNormalize.details(found), [
+    { provider: 'trading212', transactionId: 'id-cashback-1', counterparty: '', category: 'SPENDING_CASHBACK', date: '2026-08-19' },
+    { provider: 'trading212', transactionId: 'id-card-1', counterparty: 'DEMO CAFE', category: 'RESTAURANTS', date: '2026-08-21' },
+    { provider: 'trading212', transactionId: 'id-card-2', counterparty: 'DEMO SCHOOL, LUX', category: 'SERVICE_PROVIDERS', date: '2026-08-22' }
+  ]);
+  const short = 'Action,Time (UTC),Notes,ID,Total,Currency (Total)\nSpending cashback,2026-08-23 01:08:44+00:00,,id-cashback-2,0.80,"EUR"\n';
+  assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(short))).map((d) => d.transactionId), ['id-cashback-2']);
+  const noId = REPORT_HEAD + '\nCard debit,2026-08-21 09:27:53+00:00,,,-1.00,"EUR",,,"X","Y"\n';
+  assert.throws(() => BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(noId))), /Record 1: A Trading 212 report row has no ID/);
+});
+
+test('csv t212 report: Sync all adds merchant and category to the API rows, adds no rows, and later API syncs keep them', () => {
+  const api = (id, type, amount) => ({ provider: 'trading212', accountId: '1234567', transactionId: id, bookingDate: '2026-08-21', valueDate: '2026-08-21',
+    status: 'booked', amount, currency: 'EUR', amountEur: null, fxRate: null, fxRateDate: '', counterparty: '', description: type });
+  // Built by the real module from a property name, as in production.
+  const t212 = BS.T212Credentials.connections(fakeProps({ T212_API_KEY_ALEX: 'x' }))[0];
+  const r = folderRun([file('report.csv', REPORT), file('bil.csv', bil(ROWS.rent))]);
+  r.deps.store = BS.TransactionsStore.create(fakeSheetBook(), (d) => d.toISOString().slice(0, 10));
+  const csvProviderFor = r.deps.providerFor;
+  r.deps.connections = [t212].concat(r.deps.connections);
+  r.deps.isConnected = (c) => c === t212 || BS.ProviderRegistry.isConnected(c, r.wired);
+  r.deps.providerFor = (c) => (c !== t212 ? csvProviderFor(c) : {
+    listAccounts: () => [{ provider: 'trading212', accountId: '1234567', bank: 'Trading 212', connection: t212.key, currency: 'EUR' }],
+    getBalances: () => [],
+    maxWindowDays: Infinity,
+    getTransactions: () => [api('id-card-1', 'WITHDRAW', -53.46), api('id-cashback-1', 'DEPOSIT', 0.31), api('id-deposit-1', 'DEPOSIT', 100)]
+  });
+
+  const first = r.run();
+  assert.deepStrictEqual(first.results.map((x) => [x.connection, x.transactions.added]), [['trading212-alex', 3], ['csv-alex', 1]]);
+  assert.deepStrictEqual(first.details, { read: 3, enriched: 2 });
+  assert.match(BS.SyncAll.summarize(first), /Details from reports: 2 transactions updated \(3 read\)\./);
+  const byId = () => Object.fromEntries(r.deps.store.load().map((t) => [t.transactionId, t]));
+  assert.strictEqual(r.deps.store.load().length, 4);
+  assert.deepStrictEqual([byId()['id-card-1'].counterparty, byId()['id-card-1'].category, byId()['id-card-1'].description],
+    ['DEMO CAFE', 'RESTAURANTS', 'WITHDRAW']);
+  assert.deepStrictEqual([byId()['id-cashback-1'].category, byId()['id-deposit-1'].category], ['SPENDING_CASHBACK', '']);
+
+  const second = r.run();
+  assert.deepStrictEqual(second.results.map((x) => [x.transactions.added, x.transactions.updated]), [[0, 0], [0, 0]]);
+  assert.deepStrictEqual(second.details, { read: 3, enriched: 0 });
+  assert.strictEqual(byId()['id-card-1'].counterparty, 'DEMO CAFE');
+
+  const record = JSON.parse(r.props.map.CSV_IMPORTS_ALEX);
+  assert.deepStrictEqual(record.sources['trading212-report'], { files: 1, rows: 3, from: '2026-08-19', to: '2026-08-22' });
 });

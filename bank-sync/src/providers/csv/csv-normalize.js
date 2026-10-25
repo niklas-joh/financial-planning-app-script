@@ -1,5 +1,6 @@
 /**
- * @fileoverview Pure: one CSV file to the normalized account and transactions. Finds the file's
+ * @fileoverview Pure: one CSV file to the normalized account and transactions, or (for a details
+ * format) to details for rows another provider stores. Finds the file's
  * format by its header, masks account and card numbers in every text that is stored, and gives
  * each row a stable id: the file's own id when it has one, else the date, a content hash and an
  * occurrence counter (so identical rows on the same day stay distinct). Exports cover whole days, so the same
@@ -54,6 +55,41 @@
   }
 
   /**
+   * Runs the format over every record.
+   * @param {{format: import('./csv-formats.js').CsvFormat, parsed: Object}} found - From `detect`.
+   * @returns {Array<?Object>} The format's result per record (null where it has none).
+   * @throws {Error} DataError naming the record (never its content) that cannot be read.
+   */
+  function rowsOf(found) {
+    return found.parsed.records.map(function (record, i) {
+      try {
+        return found.format.row(record);
+      } catch (e) {
+        throw ns.Errors.create('DataError', 'Record ' + (i + 1) + ': ' + e.message);
+      }
+    });
+  }
+
+  /**
+   * Turns a detected details file into details for another provider's rows.
+   * @param {{format: import('./csv-formats.js').CsvFormat, parsed: Object}} found - From `detect` (kind 'details').
+   * @returns {Array<import('../../core/txn-merge.js').Enrichment>} One per record that carries details, with its
+   *   `date` (for the last-read record); texts masked.
+   * @throws {Error} DataError naming the record that cannot be read.
+   */
+  function details(found) {
+    return rowsOf(found).filter(Boolean).map(function (d) {
+      return {
+        provider: found.format.enriches,
+        transactionId: d.id,
+        counterparty: maskNumbers(d.counterparty),
+        category: d.category,
+        date: d.date
+      };
+    });
+  }
+
+  /**
    * Turns a detected file into the account and its transactions.
    * @param {{format: import('./csv-formats.js').CsvFormat, parsed: Object}} found - From `detect`.
    * @param {import('../../core/config.js').ConnectionConfig} connection - CSV connection (folder).
@@ -79,13 +115,8 @@
       detailsAt: ''
     };
     const seen = {};
-    const transactions = found.parsed.records.map(function (record, i) {
-      let row;
-      try {
-        row = format.row(record);
-      } catch (e) {
-        throw ns.Errors.create('DataError', 'Record ' + (i + 1) + ': ' + e.message);
-      }
+    const records = found.parsed.records;
+    const transactions = rowsOf(found).map(function (row, i) {
       let id = row.id;
       if (!id) {
         const print = JSON.stringify(row.fingerprint);
@@ -107,11 +138,11 @@
         fxRateDate: '',
         counterparty: maskNumbers(row.counterparty),
         description: maskNumbers(row.description),
-        apiFields: apiFields(record)
+        apiFields: apiFields(records[i])
       };
     });
     return { account: account, transactions: transactions };
   }
 
-  ns.CsvNormalize = { detect: detect, file: file, maskNumbers: maskNumbers };
+  ns.CsvNormalize = { detect: detect, file: file, details: details, maskNumbers: maskNumbers };
 })(globalThis.BankSync);

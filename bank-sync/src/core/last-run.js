@@ -37,7 +37,7 @@
     const f = outcome.fx;
     const fx = f ? { changed: f.changed, missing: f.missing, waiting: f.waiting, failed: f.failed.length, error: f.error } : null;
     const ok = !connections.some(function (c) { return c.status === 'error'; }) &&
-      !(fx && (fx.error || fx.failed)) && !meta.warningsError;
+      !(fx && (fx.error || fx.failed)) && !(outcome.details && outcome.details.error) && !meta.warningsError;
     return {
       at: meta.at, source: meta.source, ok: ok, connections: connections, fx: fx,
       warningsSent: meta.warningsSent, warningsError: meta.warningsError, followUp: meta.followUp, chain: meta.chain
