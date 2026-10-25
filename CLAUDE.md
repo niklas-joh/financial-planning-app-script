@@ -119,9 +119,21 @@ use it after *removing* errors; never baseline a new error.
 
 ## Deploying
 
-Deploys are manual. Locally: `npx clasp push` (uses the clasp version pinned in
-`package.json`). From GitHub: run **Deploy to Apps Script** on `main`; it runs
-the checks, pushes, and can create a version and point a deployment (e.g. the
-SaltEdge callback web app) at it. It needs the `CLASPRC_JSON` secret — the
-contents of `~/.clasprc.json` after `npx clasp login` — in the `apps-script`
-environment.
+Deploys are manual. Locally use the globally installed `clasp` (`clasp push`), never
+`npx clasp`. Rules, learned the hard way:
+
+- Run clasp from the folder of the project you mean: the repo root for the legacy
+  `src/` project, `bank-sync/` for bank-sync. Never from the other one.
+- Before every push, check the checked-out branch contains the code you intend to
+  deploy; pushing from a branch without it overwrites the live script.
+- After a bank-sync change that affects the web app, also run
+  `clasp deploy -i <deployment id>` (see `clasp deployments`), otherwise `/exec` keeps
+  serving the old version.
+- Run `npm run check` (repo root) and `npm test` (`bank-sync/`) before every push.
+- If `clasp push` asks to overwrite a changed manifest, diff the remote one first.
+
+From GitHub: run **Deploy to Apps Script** on `main`; it runs the checks, pushes
+the legacy project, and can create a version and point a deployment (e.g. the SaltEdge
+callback web app) at it. It needs the `CLASPRC_JSON` secret — the contents of
+`~/.clasprc.json` after `clasp login` — in the `apps-script` environment. It does not
+deploy `bank-sync/`.
