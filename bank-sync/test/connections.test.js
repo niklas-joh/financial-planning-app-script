@@ -469,6 +469,27 @@ test('sync all: raw_transactions shows each connection\'s latest fetch with api.
   assert.strictEqual(by('revolut-niklas')[header.indexOf('accountName')], 'Main');
 });
 
+test('sync all: raw_transactions accumulates across runs, newest first, and a refetched row replaces its older copy', () => {
+  const book = fakeSheetBook();
+  const fetchOf = (rows) => (c) => ({
+    listAccounts: () => [acct({ accountId: 'a-' + c.key, connection: c.key })],
+    getBalances: () => [],
+    getTransactions: (id) => rows.map((r) => ({ ...txn({ accountId: id, transactionId: r.id, bookingDate: r.date }),
+      apiFields: { note: r.note } }))
+  });
+  const run = (rows) => {
+    const r = runAll({ rawWriter: BS.RawWriter.create(book), isConnected: () => true, providerFor: fetchOf(rows) });
+    r.deps.connections = r.deps.connections.slice(0, 1);
+    BS.SyncAll.run(r.deps);
+  };
+  run([{ id: 'old', date: '2026-01-05', note: 'first' }, { id: 'same', date: '2026-02-01', note: 'first' }]);
+  run([{ id: 'same', date: '2026-02-01', note: 'second' }, { id: 'new', date: '2026-03-01', note: 'second' }]);
+  const [header, ...rows] = book.sheets.raw_transactions.grid;
+  const col = (name) => header.indexOf(name);
+  assert.deepStrictEqual(rows.map((r) => r[col('transactionId')]), ['new', 'same', 'old']);
+  assert.deepStrictEqual(rows.map((r) => r[col('api.note')]), ['second', 'second', 'first']);
+});
+
 test('raw writer: no column for an API field that is only a null parent of nested fields', () => {
   const book = fakeSheetBook();
   const mk = (api) => BS.RawWriter.toRow({ provider: 'p', connection: 'c', accountId: 'x' + Math.random(), apiFields: api });

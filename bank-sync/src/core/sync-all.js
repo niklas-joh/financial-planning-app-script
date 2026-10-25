@@ -83,7 +83,7 @@
       return result;
     });
 
-    return { results: results, raw: refreshed.length ? ns.RawSync.write(deps.rawWriter, collected, refreshed) : null };
+    return { results: results, raw: refreshed.length ? ns.RawSync.write(deps.rawWriter, collected, refreshed, deps.todayIso()) : null };
   }
 
   /**

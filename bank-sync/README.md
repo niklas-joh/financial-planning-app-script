@@ -82,9 +82,9 @@ characters), so you can group and total by any of them.
 
 `raw_accounts`, `raw_balances` and `raw_transactions` also show **every field the API returns**, one `api.*`
 column per field (nested fields use dotted names, e.g. `api.balance_amount.amount`,
-`api.postal_address.country`). Values that look like an IBAN are masked. `raw_transactions` holds what the latest sync fetched for each connection (the last
-week or so after the first run, which reads 90 days), not the full history; the full history is
-on the `transactions` tab. Account details are
+`api.postal_address.country`). Values that look like an IBAN are masked. `raw_transactions` accumulates: every sync adds the rows it fetched (the last week or so after
+the first run, which reads 90 days) and replaces older copies of the same transaction, newest first, so the raw
+API fields are kept; rows older than 365 days (`RAW_RETENTION_DAYS`) are dropped. Rows fetched before this was introduced are not recoverable. Account details are
 read automatically the first time and then every 7 days (one bank call per account), so names
 and fields stay current without a manual step.
 

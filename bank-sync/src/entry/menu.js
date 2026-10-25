@@ -72,7 +72,9 @@
       const connection = ns.Connections.build({ bankName: bank.bankName, country: bank.country, holder: holder });
       let result;
       try {
-        result = ns.Container.providerFor(connection, wired).authorize();
+        result = ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, function () {
+          return ns.Container.providerFor(connection, wired).authorize();
+        });
       } catch (e) {
         const advice = ns.Connections.explainNotEnabled(e);
         if (advice) {
@@ -96,13 +98,7 @@
    * @throws {Error} LockError if another sync holds the lock.
    */
   function withLock(action) {
-    const lock = LockService.getScriptLock();
-    if (!lock.tryLock(ns.Config.TRANSACTIONS.LOCK_WAIT_MS)) throw ns.Errors.create('LockError', 'Another sync is running');
-    try {
-      action();
-    } finally {
-      lock.releaseLock();
-    }
+    ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, action);
   }
 
   /** Syncs accounts, balances and transactions for every connected login. */

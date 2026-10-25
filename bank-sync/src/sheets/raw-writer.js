@@ -110,6 +110,46 @@
   }
 
   /**
+   * Stored rows of connections that were not refreshed, followed by the fresh rows.
+   * @param {Array<Object>} stored - Rows read from the tab.
+   * @param {Array<Object>} fresh - Fresh flat rows.
+   * @param {Array<string>} [refreshed] - Connection keys the fresh rows replace; none means replace the tab.
+   * @returns {Array<Object>} Rows to write.
+   */
+  function keepOthers(stored, fresh, refreshed) {
+    const kept = refreshed
+      ? stored.filter(function (r) { return r.connection && refreshed.indexOf(r.connection) === -1; })
+      : [];
+    return kept.concat(fresh);
+  }
+
+  /**
+   * @typedef {Object} Accumulate
+   * @property {function(Object): string} keyOf - Identity of a row; '' means it has none and is kept as it is.
+   * @property {function(Object, Object): number} compare - Order of the written rows.
+   * @property {function(Object): boolean} keep - False for rows that have aged out and are dropped.
+   */
+
+  /**
+   * Stored rows plus fresh ones, one row per key (the fresh copy wins), aged-out rows dropped,
+   * in the requested order.
+   * @param {Array<Object>} stored - Rows read from the tab.
+   * @param {Array<Object>} fresh - Fresh flat rows.
+   * @param {Accumulate} how - Identity, retention and order.
+   * @returns {Array<Object>} Rows to write.
+   */
+  function accumulated(stored, fresh, how) {
+    const byKey = {};
+    const unkeyed = [];
+    stored.concat(fresh).forEach(function (row) {
+      const key = how.keyOf(row);
+      if (key) byKey[key] = row;
+      else unkeyed.push(row);
+    });
+    return Object.keys(byKey).map(function (key) { return byKey[key]; }).concat(unkeyed).filter(how.keep).sort(how.compare);
+  }
+
+  /**
    * Creates a writer.
    * @param {Object} spreadsheet - Spreadsheet-like (getSheetByName, insertSheet).
    * @returns {{writeTable: function(string, Array<Column>, Array<Object>, Array<string>=): number}} Writer.
@@ -126,14 +166,14 @@
        * @param {Array<Column>} fixed - Fixed columns; API columns are added from the rows.
        * @param {Array<Object>} rows - Fresh flat rows (see `toRow`).
        * @param {Array<string>} [refreshed] - Connection keys the fresh rows replace.
+       * @param {Accumulate} [accumulate] - Keep rows across runs instead: a fresh row replaces the stored row
+       *   with the same key, other stored rows stay until `keep` says they have aged out, and the result is
+       *   ordered by `compare`. Replaces the `refreshed` behaviour.
        * @returns {number} Number of data rows now on the tab.
        */
-      writeTable: function (tabName, fixed, rows, refreshed) {
+      writeTable: function (tabName, fixed, rows, refreshed, accumulate) {
         const sheet = spreadsheet.getSheetByName(tabName) || spreadsheet.insertSheet(tabName);
-        const kept = refreshed
-          ? readRows(sheet, fixed).filter(function (r) { return r.connection && refreshed.indexOf(r.connection) === -1; })
-          : [];
-        const all = kept.concat(rows);
+        const all = accumulate ? accumulated(readRows(sheet, fixed), rows, accumulate) : keepOthers(readRows(sheet, fixed), rows, refreshed);
         const columns = withApiColumns(fixed, all);
         const matrix = toMatrix(columns, all);
         const previousRows = sheet.getLastRow();
