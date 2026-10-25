@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-25 (phase 3, FX, in review; not deployed).
+Last updated: 2026-10-25 (after phase 3, FX, went live).
 
 ## Setup in one paragraph
 
@@ -26,7 +26,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 1 | Enable Banking auth (RS256 JWT, redirect web app), Revolut accounts and balances to raw tabs | Merged (#42), live |
 | 2 | Transactions: paginated fetch, normalization, idempotent upsert, `transactions` tab | Merged (#44), live-tested on Revolut (sync twice gives 0 added/updated/removed). Hardened in #48 after the first Claude review |
 | 2.5 | Connections, Connect flow with live bank list, labels, `raw_*` tabs with every API field | Merged (#49), live on the Bank Sync sheet (Revolut and Danske Bank SE) |
-| 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Built, in review, not deployed |
+| 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Merged (#56), live: first sync converted the full history, a second converted 0 |
 | 4 | Automation and consent-expiry warnings | Planned |
 | 5 | Trading212 provider | Planned |
 | 6 | CSV import provider (Avanza, BIL) | Planned |
@@ -45,13 +45,13 @@ body, open as draft and mark ready when CI is green (that starts the review), as
   account sends a real name ("Danske Konto"); Revolut sends none, so its accounts show
   "Current account EUR" and "Current account SEK" (fallback: type and currency).
 - Tabs on the Bank Sync sheet: `raw_accounts`, `raw_balances`, `raw_transactions` (every API
-  field as `api.*` columns; transactions show only the latest fetch per connection) and
-  `transactions` (the full deduplicated history, signed amounts, label columns; `amountEur`/`fxRate`/`fxRateDate`
-  are filled once Phase 3 is deployed, together with the same columns on `raw_balances` and a new `rates` tab).
+  field as `api.*` columns; `raw_transactions` accumulates, see below), `transactions` (the full deduplicated
+  history, signed amounts, label columns, `amountEur`/`fxRate`/`fxRateDate` filled), and `rates` (ECB rates per
+  currency and date). `raw_balances` also carries `amountEur`/`fxRate`/`fxRateDate` at the latest rate.
 - Menu: *Connect a bank...*, *Sync all*, *Show status*. Sync all is idempotent: a second run
-  reports 0 added, 0 updated, 0 removed.
+  reports 0 added, 0 updated, 0 removed, and 0 transactions converted to EUR.
 - Apps Script: web-app deployment (the redirect `/exec`) is pinned to version 3; the script
-  itself is pushed from `main` after #49. The web app only changes when `auth.complete`,
+  itself is pushed from `main` after #56 (Phase 3 did not change the web app, so no redeploy). The web app only changes when `auth.complete`,
   `doGet` or what they call change: then run `clasp deploy -i <deployment id>`.
 - Known data quirks: Revolut returns one transaction in 90 days (a zero-amount card check);
   its SEK balance has a reference date in 2024 (dormant). Danske history starts at the 90-day
@@ -166,7 +166,7 @@ Original scope notes:
 - Design for Phase 8 now: the holder is part of the connection key, labels show it, and
   nothing assumes one holder per bank.
 
-## Phase 3: FX (built, in review)
+## Phase 3: FX (live)
 
 As built (see `bank-sync/README.md`, "EUR conversion"): at the end of *Sync all*, `SyncAll` converts the fresh
 balances (latest rate) before writing the raw tabs, then loads `transactions`, converts only the rows with
