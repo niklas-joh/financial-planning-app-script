@@ -44,5 +44,22 @@
     });
   }
 
-  ns.Container = { services: services, providerFor: providerFor };
+  /**
+   * Builds the FX service for one run: ECB rates from Frankfurter, kept on the Rates tab
+   * and in the script cache.
+   * @param {Object} spreadsheet - The Bank Sync spreadsheet.
+   * @param {function(Date): string} formatDate - Date to ISO date in the configured time zone.
+   * @param {function(): string} todayIso - Today's date.
+   * @returns {Object} FxService.
+   */
+  function fxService(spreadsheet, formatDate, todayIso) {
+    return ns.FxService.create({
+      fetchRates: ns.Frankfurter.create(ns.Gas.http()).fetchRates,
+      rates: ns.RatesStore.create(spreadsheet, formatDate),
+      cache: ns.Gas.cache(),
+      todayIso: todayIso
+    });
+  }
+
+  ns.Container = { services: services, providerFor: providerFor, fxService: fxService };
 })(globalThis.BankSync);

@@ -24,6 +24,9 @@
    * @property {Object<string,number>} TRANSACTIONS - Sync tuning: first-run lookback and
    *   re-fetch overlap in days, fetch window size in days, page cap per fetch, and the
    *   run time budget in ms (kept under the 6-minute Apps Script limit).
+   * @property {Object} FX - Exchange rates: Frankfurter v2 base URL and rate provider (ECB), how many
+   *   days a rate may be older than the date it converts (weekends and holidays), how long CacheService
+   *   keeps the rates and the "already checked" markers, and the largest cache value in characters.
    */
 
   /** @type {BankSyncConfig} */
@@ -55,7 +58,8 @@
       RAW_ACCOUNTS: 'raw_accounts',
       RAW_BALANCES: 'raw_balances',
       RAW_TRANSACTIONS: 'raw_transactions',
-      TRANSACTIONS: 'transactions'
+      TRANSACTIONS: 'transactions',
+      RATES: 'rates'
     }),
     TRANSACTIONS: Object.freeze({
       INITIAL_LOOKBACK_DAYS: 90,
@@ -67,6 +71,14 @@
       RAW_RETENTION_DAYS: 365,
       DETAILS_MAX_AGE_DAYS: 7,
       TIME_BUDGET_MS: 270000
+    }),
+    FX: Object.freeze({
+      BASE_URL: 'https://api.frankfurter.dev/v2',
+      RATE_PROVIDER: 'ecb',
+      SOURCE_LABEL: 'ECB',
+      MAX_FALLBACK_DAYS: 7,
+      CACHE_SECONDS: 21600,
+      CACHE_MAX_CHARS: 90000
     })
   });
 })(globalThis.BankSync);

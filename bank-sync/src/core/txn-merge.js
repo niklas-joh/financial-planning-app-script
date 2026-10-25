@@ -56,7 +56,8 @@
   /**
    * Combines an incoming transaction with the stored one it replaces. A booked
    * row is never downgraded to pending, and derived FX columns survive as long
-   * as the original amount and currency are unchanged.
+   * as the amount, currency and date the rate depends on are unchanged; otherwise
+   * they are left empty so the row is converted again.
    * @param {import('../providers/bank-provider.js').Transaction} previous - Stored row.
    * @param {import('../providers/bank-provider.js').Transaction} incoming - Fetched row.
    * @returns {import('../providers/bank-provider.js').Transaction} Row to store.
@@ -64,7 +65,8 @@
   function combine(previous, incoming) {
     if (previous.status === 'booked' && incoming.status === 'pending') return previous;
     const next = Object.assign({}, incoming);
-    const sameMoney = previous.amount === incoming.amount && previous.currency === incoming.currency;
+    const sameMoney = previous.amount === incoming.amount && previous.currency === incoming.currency &&
+      effectiveDate(previous) === effectiveDate(incoming);
     FX_FIELDS.forEach(function (field) {
       const empty = next[field] === null || next[field] === undefined || next[field] === '';
       if (sameMoney && empty) next[field] = previous[field];

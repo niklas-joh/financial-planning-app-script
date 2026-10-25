@@ -1,7 +1,9 @@
 /**
  * @fileoverview Syncs every configured connection in turn: raw accounts and
- * balances, then transactions. One connection failing (e.g. a lapsed consent)
- * never stops the others, and the time budget is shared.
+ * balances, then transactions; then converts balances (latest rate) and the stored
+ * transactions that have no EUR amount yet (booking-date rate) to EUR, fetching rates once for the whole run.
+ * One connection failing (e.g. a lapsed consent) never stops the others, and the
+ * time budget is shared.
  */
 (function (ns) {
   /**
@@ -13,6 +15,18 @@
    * @property {{writeTable: function(string, Array<Object>, Array<Object>, Array<string>=): number}} rawWriter - Raw tab writer.
    * @property {function(): number} nowMs - Clock.
    * @property {function(): string} todayIso - Today's date in the configured time zone.
+   * @property {{convertTransactions: function(Array<Object>): Object, convertBalances: function(Array<Object>): Object}} [fx]
+   *   FX service for this run; without it the EUR columns are left as they are.
+   */
+
+  /**
+   * @typedef {Object} FxOutcome
+   * @property {number} changed - Transactions whose EUR columns were set or corrected.
+   * @property {number} missing - Transactions still without a rate.
+   * @property {number} waiting - Transactions dated today whose rate is not published yet.
+   * @property {number} balancesMissing - Fresh balances without a rate.
+   * @property {Array<string>} failed - Redacted per-currency fetch errors.
+   * @property {string} [error] - Redacted message if the FX step itself failed.
    */
 
   /**
@@ -46,8 +60,9 @@
   /**
    * Runs the sync for all connections.
    * @param {SyncAllDeps} deps - Injected services.
-   * @returns {{results: Array<ConnectionResult>, raw: ?{accounts: number, balances: number, transactions: number}}} Per-connection
-   *   outcome and the raw rows written (null if no connection could be read). No transaction content.
+   * @returns {{results: Array<ConnectionResult>, raw: ?{accounts: number, balances: number, transactions: number}, fx: ?FxOutcome}}
+   *   Per-connection outcome, the raw rows written (null if no connection could be read) and the EUR
+   *   conversion counts (null without `deps.fx`). No transaction content.
    */
   function run(deps) {
     const cfg = ns.Config.TRANSACTIONS;
@@ -83,12 +98,46 @@
       return result;
     });
 
-    return { results: results, raw: refreshed.length ? ns.RawSync.write(deps.rawWriter, collected, refreshed, deps.todayIso()) : null };
+    const fx = deps.fx ? { changed: 0, missing: 0, waiting: 0, balancesMissing: 0, failed: [] } : null;
+    if (fx && refreshed.length) {
+      guardFx(fx, function () {
+        const converted = deps.fx.convertBalances(collected.balances);
+        collected.balances = converted.rows;
+        fx.balancesMissing = converted.missing;
+        fx.failed = converted.failed;
+      });
+    }
+    const raw = refreshed.length ? ns.RawSync.write(deps.rawWriter, collected, refreshed, deps.todayIso()) : null;
+    if (fx) {
+      guardFx(fx, function () {
+        const converted = deps.fx.convertTransactions(deps.store.load());
+        if (converted.changed) deps.store.save(converted.rows);
+        fx.changed = converted.changed;
+        fx.missing = converted.missing;
+        fx.waiting = converted.waiting;
+        fx.failed = converted.failed;
+      });
+    }
+    return { results: results, raw: raw, fx: fx };
+  }
+
+  /**
+   * Runs one FX step so that a failure (e.g. the Rates tab cannot be written) is reported
+   * instead of stopping the sync; the EUR columns are then simply left as they were.
+   * @param {FxOutcome} fx - Outcome to record the error on.
+   * @param {function(): void} step - The step.
+   */
+  function guardFx(fx, step) {
+    try {
+      step();
+    } catch (e) {
+      fx.error = ns.Redact.text(e.name + ': ' + e.message);
+    }
   }
 
   /**
    * Turns a run into the text shown to the user. Counts only, no transaction content.
-   * @param {{results: Array<ConnectionResult>, raw: ?{accounts: number, balances: number, transactions: number}}} outcome - From `run`.
+   * @param {{results: Array<ConnectionResult>, raw: ?Object, fx: ?FxOutcome}} outcome - From `run`.
    * @returns {string} Multi-line summary.
    */
   function summarize(outcome) {
@@ -102,6 +151,15 @@
     });
     if (outcome.raw) lines.push('Raw tabs: ' + outcome.raw.accounts + ' accounts, ' + outcome.raw.balances + ' balances, ' +
       outcome.raw.transactions + ' transactions.');
+    const fx = outcome.fx;
+    if (fx) {
+      lines.push('EUR conversion: ' + fx.changed + ' transactions converted' +
+        (fx.missing ? ', ' + fx.missing + ' without a rate' : '') +
+        (fx.waiting ? ', ' + fx.waiting + " waiting for today's rate" : '') +
+        (fx.balancesMissing ? ', ' + fx.balancesMissing + ' balances without a rate' : '') + '.');
+      fx.failed.forEach(function (f) { lines.push('Rates unavailable for ' + f); });
+      if (fx.error) lines.push('EUR conversion failed (' + fx.error + ')');
+    }
     return lines.join('\n');
   }
 

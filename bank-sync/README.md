@@ -108,6 +108,26 @@ provider + account + transaction id; amounts signed, expenses negative).
   continue.
 - Pending rows inside a re-fetched window that the bank no longer returns are
   removed (they booked under a new id or were cancelled).
-- `amountEur`, `fxRate` and `fxRateDate` stay empty until the FX phase and are
-  preserved on re-sync.
+- `amountEur`, `fxRate` and `fxRateDate` are filled by the EUR conversion (below).
 - Ids: `entry_reference`, else `transaction_id`, else a content hash.
+
+## EUR conversion (Phase 3)
+
+At the end of every *Sync all*, amounts are converted to EUR with ECB reference rates
+from [Frankfurter](https://frankfurter.dev) (`/v2/rates?...&providers=ecb`, no API key).
+
+- `transactions`: each row without an EUR amount gets `amountEur` (rounded to cents, same sign as `amount`),
+  `fxRate` (units of the currency per 1 EUR, so `amountEur = amount / fxRate`) and
+  `fxRateDate` (the date of the rate used). The rate is that of the booking date (else
+  the value date; undated pending rows use the latest rate). Weekends and ECB holidays
+  use the previous business day, never more than 7 days back. EUR rows get rate 1.
+  Only new rows are converted: a row that already has `amountEur` is never recalculated,
+  unless a re-fetch changes its amount, currency or date (then its EUR columns are cleared
+  and it is converted again).
+- `raw_balances`: the same three columns, at the latest rate.
+- Rates are kept on the `rates` tab (date, base, currency, rate, source) and in the script
+  cache for 6 hours. A run fetches only what the new rows need and is not stored yet, once
+  per currency (one call for the whole range, never per row). A row dated today stays empty
+  until today's rate is published (around 16:00 CET) and is converted on a later sync.
+- A currency the ECB does not publish (or a failed fetch) leaves those rows' EUR columns
+  as they were; *Sync all* names the currency in its summary.

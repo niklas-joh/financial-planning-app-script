@@ -101,13 +101,14 @@
     ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, action);
   }
 
-  /** Syncs accounts, balances and transactions for every connected login. */
+  /** Syncs accounts, balances and transactions for every connected login, then fills the EUR columns. */
   function syncAll() {
     guarded(function () {
       withLock(function () {
         const wired = ns.Container.services();
         const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
         const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+        const todayIso = function () { return formatDate(new Date()); };
         const outcome = ns.SyncAll.run({
           connections: wired.connections.all(),
           isConnected: function (c) { return Boolean(wired.store.loadSession(c.key)); },
@@ -115,7 +116,8 @@
           store: ns.TransactionsStore.create(spreadsheet, formatDate),
           rawWriter: ns.RawWriter.create(spreadsheet),
           nowMs: wired.nowMs,
-          todayIso: function () { return formatDate(new Date()); }
+          todayIso: todayIso,
+          fx: ns.Container.fxService(spreadsheet, formatDate, todayIso)
         });
         SpreadsheetApp.getUi().alert(ns.SyncAll.summarize(outcome));
       });
