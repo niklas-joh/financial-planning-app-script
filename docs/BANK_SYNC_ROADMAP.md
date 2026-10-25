@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-25 (after phase 2.5 went live).
+Last updated: 2026-10-25 (phase 3, FX, in review; not deployed).
 
 ## Setup in one paragraph
 
@@ -26,7 +26,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 1 | Enable Banking auth (RS256 JWT, redirect web app), Revolut accounts and balances to raw tabs | Merged (#42), live |
 | 2 | Transactions: paginated fetch, normalization, idempotent upsert, `transactions` tab | Merged (#44), live-tested on Revolut (sync twice gives 0 added/updated/removed). Hardened in #48 after the first Claude review |
 | 2.5 | Connections, Connect flow with live bank list, labels, `raw_*` tabs with every API field | Merged (#49), live on the Bank Sync sheet (Revolut and Danske Bank SE) |
-| 3 | FX (ECB via Frankfurter) | Planned |
+| 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Built, in review, not deployed |
 | 4 | Automation and consent-expiry warnings | Planned |
 | 5 | Trading212 provider | Planned |
 | 6 | CSV import provider (Avanza, BIL) | Planned |
@@ -46,8 +46,8 @@ body, open as draft and mark ready when CI is green (that starts the review), as
   "Current account EUR" and "Current account SEK" (fallback: type and currency).
 - Tabs on the Bank Sync sheet: `raw_accounts`, `raw_balances`, `raw_transactions` (every API
   field as `api.*` columns; transactions show only the latest fetch per connection) and
-  `transactions` (the full deduplicated history, signed amounts, label columns, empty
-  `amountEur`/`fxRate`/`fxRateDate` waiting for Phase 3).
+  `transactions` (the full deduplicated history, signed amounts, label columns; `amountEur`/`fxRate`/`fxRateDate`
+  are filled once Phase 3 is deployed, together with the same columns on `raw_balances` and a new `rates` tab).
 - Menu: *Connect a bank...*, *Sync all*, *Show status*. Sync all is idempotent: a second run
   reports 0 added, 0 updated, 0 removed.
 - Apps Script: web-app deployment (the redirect `/exec`) is pinned to version 3; the script
@@ -71,6 +71,9 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
 - `lib/`: `jwt`, `http` (retry/backoff, carries the API error code), `hash` (FNV-1a),
   `flatten` (API object to dotted keys, account numbers masked), `gas-adapters` (the only
   place touching Apps Script services directly).
+- `fx/`: `fx` (pure: rate lookup with previous-business-day fallback, conversion, missing
+  ranges), `frankfurter` (rates client), `fx-service` (injectable: rates tab + cache + fetch,
+  converts transactions and balances). `sheets/rates-store` reads and writes the `rates` tab.
 - `providers/bank-provider.js`: the contract (`authorize`, `listAccounts`, `getBalances`,
   `getTransactions`) and the `Account`, `Balance`, `Transaction` typedefs.
 - `providers/enable-banking/`: `eb-client` (one method per endpoint), `eb-auth`,
@@ -163,29 +166,45 @@ Original scope notes:
 - Design for Phase 8 now: the holder is part of the connection key, labels show it, and
   nothing assumes one holder per bank.
 
-## Phase 3: FX
+## Phase 3: FX (built, in review)
 
-Injectable `FxService`; ECB reference rates via Frankfurter (verify the current endpoint
-before coding). Each transaction converts at its booking-date rate, falling back to the
-previous business day for weekends and holidays; balances use the latest rate. Cache in a
-`Rates` tab plus `CacheService`; one fetch per date range, never per row. Fills `amountEur`,
-`fxRate`, `fxRateDate`. Pure conversion logic is tested in Node.
+As built (see `bank-sync/README.md`, "EUR conversion"): at the end of *Sync all*, `SyncAll` converts the fresh
+balances (latest rate) before writing the raw tabs, then loads `transactions`, converts only the rows with
+no `amountEur` at their booking-date rate (else value date, else latest) and saves only if something changed.
+Converted rows are never recalculated; `txn-merge` clears the EUR columns when a re-fetch changes the amount,
+currency or date, so such a row counts as new. `FxService` gets the rates
+source, the `rates` tab store, the cache and the clock injected; the pure logic is in `fx/fx.js` and Node-tested
+(`test/fx.test.js`). `amountEur = amount / fxRate`, rounded to cents; EUR rows get rate 1 and their own date.
 
-Starting points for the next session:
-- `Transaction.amountEur/fxRate/fxRateDate` already exist; `txn-merge` preserves them while
-  amount and currency are unchanged, and `transactions-store` already writes the columns.
-- Balances: add the EUR value as derived columns on `raw_balances` (latest rate); the reporting
-  currency is `Config.REPORTING_CURRENCY` ('EUR'); accounts are EUR and SEK so far.
-- Verify the current Frankfurter endpoint and its date semantics before coding; fetch one date
-  range per currency per run, never per row; keep `FxService` injectable (rates fetcher and
-  cache passed in) so the conversion and fallback logic are pure and Node-tested.
-- Wire it into `TxnSync` (convert new/changed rows before saving) and `SyncAll`; keep every
-  Apps Script service behind `gas-adapters`/`container`.
+- Fallback: the latest rate on or before the date, at most `FX.MAX_FALLBACK_DAYS` (7) older; else the row stays
+  as it was and counts as "without a rate". Easter (Good Friday and Easter Monday) is the longest regular gap (4 days).
+- Fetching: the stored series per currency is one contiguous block; a run fetches only its missing edges (older
+  than the first stored date, or newer than the last up to today), one call each. A range asked for in the last
+  6 hours is not asked again (CacheService marker), so weekends and runs before the afternoon publication do not
+  refetch. Only the dates of rows being converted count, so old converted rows never widen a fetch.
+- A row dated today (or later) is stored only with that day's own rate; until it is published it stays empty and
+  counts as "waiting". A past date with no rate (weekend, holiday) is final with the previous business day.
+- Cache: the whole rate table is cached as JSON for 6 hours (skipped above 90,000 characters); the `rates` tab is
+  the durable copy.
+- A failed fetch (e.g. HTTP 422 for a currency the ECB does not publish) is reported per currency in the summary;
+  an FX error never stops the rest of the sync.
+- The web app is unchanged (no `auth.complete`/`doGet` change): after `clasp push` no `clasp deploy` is needed.
+  No new OAuth scope (`script.external_request` already covers UrlFetchApp). The first *Sync all* after the push
+  fills the EUR columns for the whole history and adds three columns to `raw_balances`.
+
+Frankfurter facts (verified live on 2026-10-25):
+- Current API is v2: `GET https://api.frankfurter.dev/v2/rates?from=&to=&base=EUR&quotes=SEK&providers=ecb`
+  returns a JSON array of `{date, base, quote, rate}`, one entry per ECB business day, `rate` = units of the quote
+  per 1 base. v1 (`/v1/...`, ECB only) is deprecated but still works; `api.frankfurter.app` redirects.
+- Without `providers=ecb`, v2 blends rates from many central banks and returns weekend dates, so it is required.
+- A `from` on a weekend or holiday starts at the previous business day; a `to` after the latest publication is
+  clipped; a range with no data (e.g. before 1999) returns `[]`; an unknown currency returns HTTP 422.
+- ECB rates are published once a day around 16:00 CET; before that, today's date has no rate yet.
 
 Observed on live Danske data: cross-border credits (EUR sent to the SEK account) state the bank's
 own conversion only inside the description text ("Amount received: EUR 500.00 ... Exchange rate:
-EUR/SEK ..."); the API's `exchange_rate` field is empty. Phase 3 keeps the planned ECB rate per
-booking date; the bank's stated rate is a possible cross-check, not a source.
+EUR/SEK ..."); the API's `exchange_rate` field is empty. Phase 3 uses the ECB rate per booking date;
+the bank's stated rate is a possible cross-check, not a source.
 
 ## Phase 4: automation and consent expiry
 

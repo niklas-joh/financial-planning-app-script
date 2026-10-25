@@ -21,8 +21,8 @@
 
   /** @type {Array<Column>} */
   const BALANCE_COLUMNS = ['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
-    'balanceType', 'description', 'amount', 'currency', 'referenceDate', 'lastChange', 'fetchedAt']
-    .map(function (k) { return { header: k, key: k, numeric: k === 'amount' }; });
+    'balanceType', 'description', 'amount', 'currency', 'amountEur', 'fxRate', 'fxRateDate', 'referenceDate', 'lastChange', 'fetchedAt']
+    .map(function (k) { return { header: k, key: k, numeric: k === 'amount' || k === 'amountEur' || k === 'fxRate' }; });
 
   /** @type {Array<Column>} */
   const TRANSACTION_COLUMNS = ['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
