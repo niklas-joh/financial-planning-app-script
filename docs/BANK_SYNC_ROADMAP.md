@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-25.
+Last updated: 2026-10-25 (after phase 2.5 went live).
 
 ## Setup in one paragraph
 
@@ -25,12 +25,12 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 0 | Setup, folder layout, config, secrets handling | Merged (#40) |
 | 1 | Enable Banking auth (RS256 JWT, redirect web app), Revolut accounts and balances to raw tabs | Merged (#42), live |
 | 2 | Transactions: paginated fetch, normalization, idempotent upsert, `transactions` tab | Merged (#44), live-tested on Revolut (sync twice gives 0 added/updated/removed). Hardened in #48 after the first Claude review |
-| 2.5 | Connections, generic menu, bank/account labels (details below) | PR open, not yet deployed or live-tested |
+| 2.5 | Connections, Connect flow with live bank list, labels, `raw_*` tabs with every API field | Merged (#49), live on the Bank Sync sheet (Revolut and Danske Bank SE) |
 | 3 | FX (ECB via Frankfurter) | Planned |
 | 4 | Automation and consent-expiry warnings | Planned |
 | 5 | Trading212 provider | Planned |
 | 6 | CSV import provider (Avanza, BIL) | Planned |
-| 7 | Danske Bank (Sweden) via config only | Planned, any time after 2.5 |
+| 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
@@ -38,19 +38,45 @@ commit to `main`, conventional-commit PR title with a lowercase subject (e.g.
 `feat(bank-sync): add transactions writer (phase 2)`), summary and test plan in the PR
 body, CI green, ask before merging, and stop after each phase for review.
 
+## Live state (2026-10-25)
+
+- Connections: `revolut-niklas` (EUR and SEK accounts on one masked IBAN, consent until
+  2027-01-22) and `danske-bank-niklas` (one SEK account, consent until 2027-01-23). The Danske
+  account sends a real name ("Danske Konto"); Revolut sends none, so its accounts show
+  "Current account EUR" and "Current account SEK" (fallback: type and currency).
+- Tabs on the Bank Sync sheet: `raw_accounts`, `raw_balances`, `raw_transactions` (every API
+  field as `api.*` columns; transactions show only the latest fetch per connection) and
+  `transactions` (the full deduplicated history, signed amounts, label columns, empty
+  `amountEur`/`fxRate`/`fxRateDate` waiting for Phase 3).
+- Menu: *Connect a bank...*, *Sync all*, *Show status*. Sync all is idempotent: a second run
+  reports 0 added, 0 updated, 0 removed.
+- Apps Script: web-app deployment (the redirect `/exec`) is pinned to version 3; the script
+  itself is pushed from `main` after #49. The web app only changes when `auth.complete`,
+  `doGet` or what they call change: then run `clasp deploy -i <deployment id>`.
+- Known data quirks: Revolut returns one transaction in 90 days (a zero-amount card check);
+  its SEK balance has a reference date in 2024 (dormant). Danske history starts at the 90-day
+  lookback; older history may need a longer `INITIAL_LOOKBACK_DAYS` (check what the bank serves).
+- `clasp push` asks about the manifest every time because the live manifest says
+  Europe/Brussels; the repo says Europe/Luxembourg. Diff it, then `clasp push --force`.
+
 ## Current architecture (bank-sync)
 
 Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`).
 
-- `core/`: `config` (static, non-secret), `errors`, `redact`, `raw-sync` (accounts and
-  balances), `date-range` (pure windows), `txn-merge` (pure upsert), `txn-sync`.
-- `lib/`: `jwt`, `http` (retry/backoff), `hash` (FNV-1a), `gas-adapters` (the only place
-  touching Apps Script services directly).
+- `core/`: `config` (static, non-secret), `errors`, `redact`, `connections` (bank picker
+  helpers and the connection store in Script Properties), `account-labels` (labels joined from
+  the accounts list), `raw-sync` (collect and write the three raw tabs), `date-range` (pure
+  windows), `txn-merge` (pure upsert), `txn-sync`, `sync-all` (all connections, shared time
+  budget, failures isolated).
+- `lib/`: `jwt`, `http` (retry/backoff, carries the API error code), `hash` (FNV-1a),
+  `flatten` (API object to dotted keys, account numbers masked), `gas-adapters` (the only
+  place touching Apps Script services directly).
 - `providers/bank-provider.js`: the contract (`authorize`, `listAccounts`, `getBalances`,
   `getTransactions`) and the `Account`, `Balance`, `Transaction` typedefs.
 - `providers/enable-banking/`: `eb-client` (one method per endpoint), `eb-auth`,
   `eb-token`, `eb-session-store`, `eb-normalize`, `eb-provider`.
-- `sheets/`: `raw-writer`, `transactions-store`.
+- `sheets/`: `raw-writer` (fixed columns plus one `api.*` column per API field, per-connection
+  replace, never a whole-tab clear), `transactions-store` (loads by header name).
 - `entry/`: `container` (composition root), `menu`, `web-app`. Only these touch globals.
 - Tests: `bank-sync/test/*.test.js` (`npm test` in `bank-sync/`), using the real modules
   loaded in push order by `test/load.js`.
@@ -145,6 +171,17 @@ previous business day for weekends and holidays; balances use the latest rate. C
 `Rates` tab plus `CacheService`; one fetch per date range, never per row. Fills `amountEur`,
 `fxRate`, `fxRateDate`. Pure conversion logic is tested in Node.
 
+Starting points for the next session:
+- `Transaction.amountEur/fxRate/fxRateDate` already exist; `txn-merge` preserves them while
+  amount and currency are unchanged, and `transactions-store` already writes the columns.
+- Balances: add the EUR value as derived columns on `raw_balances` (latest rate); the reporting
+  currency is `Config.REPORTING_CURRENCY` ('EUR'); accounts are EUR and SEK so far.
+- Verify the current Frankfurter endpoint and its date semantics before coding; fetch one date
+  range per currency per run, never per row; keep `FxService` injectable (rates fetcher and
+  cache passed in) so the conversion and fallback logic are pure and Node-tested.
+- Wire it into `TxnSync` (convert new/changed rows before saving) and `SyncAll`; keep every
+  Apps Script service behind `gas-adapters`/`container`.
+
 Observed on live Danske data: cross-border credits (EUR sent to the SEK account) state the bank's
 own conversion only inside the description text ("Amount received: EUR 500.00 ... Exchange rate:
 EUR/SEK ..."); the API's `exchange_rate` field is empty. Phase 3 keeps the planned ECB rate per
@@ -166,12 +203,12 @@ explicitly, not as transactions. Adding it must not touch existing providers.
 `CsvImportProvider` for banks Enable Banking does not cover: Avanza (not supported) and
 BIL (not supported, parked). Same normalized `Transaction` model and the same upsert.
 
-## Phase 7: Danske Bank (Sweden)
+## Phase 7: Danske Bank (Sweden): done
 
-Already linked in the Enable Banking Control Panel. After 2.5 it should be added through
-config only (a connection plus a bank entry), with no change to existing providers. Verify
-the flow generalizes with SEK data. BGL, Spuerkeess, Raiffeisen and SEB will be linked
-later and follow the same route.
+Danske connected through *Connect a bank...* (country SE, bank picked from the live list,
+holder label) with no code or config change, and synced with SEK data. BGL, Spuerkeess,
+Raiffeisen and SEB follow the same route once they are linked in the Enable Banking Control
+Panel (the Connect flow explains it when a bank is not yet enabled).
 
 ## Phase 8: second holder at the same bank (last)
 
@@ -179,6 +216,16 @@ A partner's own accounts at a bank already connected. With the 2.5 connection mo
 is a new connection and a separate consent (their own login). Blocked on confirming that
 Enable Banking's restricted mode allows it; if not, it needs its own application or
 another route. Decide only when this phase starts.
+
+## Starting a new session
+
+1. Read `CLAUDE.md`, this file, then `docs/HANDOFF.md`.
+2. `git fetch`, branch off `origin/main` (never commit to `main`), run `npm test` in
+   `bank-sync/` and `npm run check` at the root to confirm a green baseline.
+3. Do the next phase in one small PR; read the Claude review comment on the PR before merging
+   (it now posts on every non-doc PR and has found real bugs twice); stop after the phase.
+4. Deploy only when asked: `clasp push --force` from `bank-sync/` after diffing the manifest,
+   and `clasp deploy -i <deployment id>` only if the web-app path changed.
 
 ## Review workflow
 
