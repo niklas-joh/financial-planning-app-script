@@ -158,7 +158,10 @@ test('store round-trips rows, forces text format on text columns, tolerates Date
   assert.deepStrictEqual(store.load(), []);
   const rows = [tx({ transactionId: '007', description: '=SUM(A1)', amountEur: -0.5, fxRate: 0.1 })];
   assert.strictEqual(store.save(rows), 1);
-  assert.deepStrictEqual(store.load(), rows);
+  // A row without a category reads back with an empty one.
+  assert.deepStrictEqual(store.load(), rows.map((r) => ({ ...r, category: '' })));
+  store.save([{ ...rows[0], category: 'GROCERIES' }]);
+  assert.strictEqual(store.load()[0].category, 'GROCERIES');
   const sheet = book.sheets.transactions;
   assert.strictEqual(sheet.frozen, 1);
   const textCols = sheet.formats.map((f) => f[0]);
@@ -192,10 +195,10 @@ test('store: load fails loudly when the header was changed', () => {
   assert.throws(() => store.load(), /accountId/);
 });
 
-test('store: an older tab without the label columns, or with reordered columns, still loads', () => {
+test('store: an older tab without the label or category columns, or with reordered columns, still loads', () => {
   const keys = BS.TransactionsStore.COLUMNS.map((c) => c.key);
-  const legacyKeys = keys.filter((k) => !['bank', 'connection', 'holderName', 'accountName', 'ibanMasked'].includes(k));
-  const row = tx({ transactionId: 'a', amount: -2 });
+  const legacyKeys = keys.filter((k) => !['bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'category'].includes(k));
+  const row = tx({ transactionId: 'a', amount: -2, category: '' });
   const cells = (order) => order.map((k) => (row[k] === null ? '' : row[k]));
   const book = fakeSheetBook();
   const sheet = book.insertSheet('transactions');
@@ -309,4 +312,33 @@ test('merge: a row whose keys come in another order than the stored copy is not 
   assert.deepStrictEqual([again.added, again.updated, again.removed], [0, 0, 0]);
   const amountChanged = Object.assign(fetched(), { amount: 6 });
   assert.strictEqual(BS.TxnMerge.merge(store.load(), [amountChanged], range).updated, 1, 'a real change still counts');
+});
+
+test('merge: a re-fetch without counterparty or category keeps the stored ones (details from another source)', () => {
+  const stored = tx({ transactionId: 'a', counterparty: 'Demo Cafe', category: 'RESTAURANTS' });
+  const again = BS.TxnMerge.merge([stored], [tx({ transactionId: 'a' })], []);
+  assert.deepStrictEqual([again.added, again.updated], [0, 0]);
+  assert.deepStrictEqual([again.rows[0].counterparty, again.rows[0].category], ['Demo Cafe', 'RESTAURANTS']);
+  // A row read back from the sheet has category '' where the provider's row has none: not a change.
+  const fromSheet = BS.TxnMerge.merge([tx({ transactionId: 'b', category: '' })], [tx({ transactionId: 'b' })], []);
+  assert.strictEqual(fromSheet.updated, 0);
+  const renamed = BS.TxnMerge.merge([stored], [tx({ transactionId: 'a', counterparty: 'Other' })], []);
+  assert.deepStrictEqual([renamed.updated, renamed.rows[0].counterparty, renamed.rows[0].category], [1, 'Other', 'RESTAURANTS']);
+});
+
+test('enrich: details fill the empty fields of rows with the same provider and id, never replace a value, idempotent', () => {
+  const rows = [tx({ transactionId: 'a', provider: 'trading212' }), tx({ transactionId: 'a' }), tx({ transactionId: 'b', provider: 'trading212', counterparty: 'Kept' })];
+  const details = [
+    { provider: 'trading212', transactionId: 'a', counterparty: 'Demo Cafe', category: 'RESTAURANTS', date: '2026-01-10' },
+    { provider: 'trading212', transactionId: 'b', counterparty: 'Report name', category: 'SPENDING_CASHBACK' },
+    { provider: 'trading212', transactionId: 'missing', counterparty: 'X', category: 'Y' }
+  ];
+  const once = BS.TxnMerge.enrich(rows, details);
+  assert.strictEqual(once.enriched, 2);
+  assert.deepStrictEqual(once.rows.map((t) => [t.provider, t.counterparty, t.category]), [
+    ['trading212', 'Demo Cafe', 'RESTAURANTS'], ['enablebanking', '', undefined], ['trading212', 'Kept', 'SPENDING_CASHBACK']
+  ]);
+  assert.ok(!('date' in once.rows[0]));
+  assert.strictEqual(rows[0].counterparty, '');
+  assert.strictEqual(BS.TxnMerge.enrich(once.rows, details).enriched, 0);
 });

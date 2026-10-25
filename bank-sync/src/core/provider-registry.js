@@ -15,6 +15,7 @@
    * @property {function(string): string} base64 - Base64 encoder (UTF-8).
    * @property {function(string): string} toLocalDate - ISO date-time to YYYY-MM-DD in the Bank Sync time zone.
    * @property {function(): number} [msLeft] - Time left in the current sync run.
+   * @property {function(string): {files: function(): Array<Object>}} [driveFolder] - Drive folder by id (CSV import).
    */
 
   /**
@@ -80,7 +81,24 @@
     }
   };
 
-  const ENTRIES = [enableBanking, trading212];
+  /** @type {ProviderEntry} CSV exports in a Drive folder per holder; read by every Sync all. */
+  const csv = {
+    id: ns.Config.CSV.PROVIDER_ID,
+    connections: function (wired) { return ns.CsvFolders.connections(wired.props); },
+    isConnected: function (c, wired) { return Boolean(ns.CsvFolders.folderId(wired.props, c)); },
+    create: function (c, wired, env) {
+      return ns.CsvImportProvider.create({
+        connection: c,
+        folder: env.driveFolder(ns.CsvFolders.folderId(wired.props, c)),
+        record: ns.CsvFolders.imports(wired.props, c),
+        nowMs: wired.nowMs
+      });
+    },
+    consents: function () { return []; },
+    statusLines: function (wired) { return ns.CsvFolders.statusLines(wired.props); }
+  };
+
+  const ENTRIES = [enableBanking, trading212, csv];
 
   /**
    * @param {import('./config.js').ConnectionConfig} connection - Connection.
@@ -121,7 +139,7 @@
     /**
      * @param {import('./config.js').ConnectionConfig} c - Connection.
      * @param {Object} wired - Services.
-     * @param {ProviderEnv} [env] - Apps Script helpers (needed by Trading 212).
+     * @param {ProviderEnv} [env] - Apps Script helpers (needed by Trading 212 and CSV import).
      * @returns {import('../providers/bank-provider.js').BankProvider} Provider.
      */
     create: function (c, wired, env) { return entryFor(c).create(c, wired, env); }

@@ -32,7 +32,8 @@
   }
 
   /**
-   * Apps Script helpers a provider may need (Trading 212: HTTP with its rate-limit hook, Base64, local dates).
+   * Apps Script helpers a provider may need (Trading 212: HTTP with its rate-limit hook, Base64, local dates;
+   * CSV import: its Drive folder).
    * @param {function(): number} [msLeft] - Time left in the current sync run.
    * @returns {import('../core/provider-registry.js').ProviderEnv} Helpers.
    */
@@ -42,7 +43,8 @@
       http: ns.Gas.http,
       base64: ns.Gas.base64,
       toLocalDate: function (iso) { return formatDate(new Date(iso)); },
-      msLeft: msLeft
+      msLeft: msLeft,
+      driveFolder: ns.Gas.driveFolder
     };
   }
 

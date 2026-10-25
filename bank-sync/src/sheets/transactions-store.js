@@ -31,7 +31,8 @@
     { key: 'fxRate', nullable: true },
     { key: 'fxRateDate', text: true },
     { key: 'counterparty', text: true },
-    { key: 'description', text: true }
+    { key: 'description', text: true },
+    { key: 'category', text: true, optional: true }
   ];
 
   /**

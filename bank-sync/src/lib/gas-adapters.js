@@ -51,6 +51,32 @@
       return function (date) { return Utilities.formatDate(date, timeZone, 'yyyy-MM-dd'); };
     },
 
+    /**
+     * Read-only view of one Drive folder (the only DriveApp use; needs `drive.readonly`). Google Docs
+     * formats are left out: a CSV converted to a Sheet on upload has no CSV content to read.
+     * @param {string} id - Folder id.
+     * @returns {{files: function(): Array<import('../providers/csv/csv-provider.js').CsvFile>}} Its files,
+     *   each decoded on demand.
+     */
+    driveFolder: function (id) {
+      return {
+        files: function () {
+          const out = [];
+          const it = DriveApp.getFolderById(id).getFiles();
+          while (it.hasNext()) {
+            const file = it.next();
+            if (file.getMimeType().indexOf('application/vnd.google-apps') === 0) continue;
+            out.push({
+              name: file.getName(),
+              size: file.getSize(),
+              text: function (charset) { return file.getBlob().getDataAsString(charset); }
+            });
+          }
+          return out;
+        }
+      };
+    },
+
     /** @returns {Object} Script cache service. */
     cache: function () {
       return CacheService.getScriptCache();
