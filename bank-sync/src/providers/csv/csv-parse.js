@@ -1,7 +1,8 @@
 /**
  * @fileoverview Pure CSV reading: splits text into rows (quoted fields, CRLF, BOM), finds the
- * header row below any preamble lines, and parses numbers and dates in the layout a format
- * declares. Nothing here guesses a layout; the format (`csv-formats.js`) states it.
+ * header row below any preamble lines, parses numbers and dates in the layout a format declares,
+ * and has the small text helpers the formats share. Nothing here guesses a layout; the format
+ * (`csv-formats.js`) states it.
  */
 (function (ns) {
   /**
@@ -149,5 +150,21 @@
     return d.toISOString().slice(0, 10);
   }
 
-  ns.CsvParse = { rows: rows, table: table, number: number, date: date };
+  /**
+   * @param {*} text - Text.
+   * @returns {string} Trimmed, with runs of white space collapsed to one space.
+   */
+  function squeeze(text) {
+    return String(text === undefined || text === null ? '' : text).replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * @param {*} text - Label, e.g. 'Spending cashback'.
+   * @returns {string} Upper-case code, e.g. 'SPENDING_CASHBACK'.
+   */
+  function code(text) {
+    return squeeze(text).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+
+  ns.CsvParse = { rows: rows, table: table, number: number, date: date, squeeze: squeeze, code: code };
 })(globalThis.BankSync);

@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-25 (phase 6, the CSV import provider with BIL and Trading 212 card details, as it stands once merged and deployed).
+Last updated: 2026-10-25 (phase 6 live; BIL message fields and non-blocking summaries, as they stand once merged and deployed).
 
 ## Setup in one paragraph
 
@@ -31,7 +31,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Merged (#56), live: first sync converted the full history, a second converted 0 |
 | 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
 | 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#65): daily total from Trading 212's own total, one-time full history backfill |
-| 6 | CSV import provider: Drive folder per holder, BIL export, Trading 212 card details (B3) | Merged, live once deployed (see Phase 6). Avanza follows after B1 |
+| 6 | CSV import provider: Drive folder per holder, BIL export, Trading 212 card details (B3) | Merged (#68), live since 2026-10-25 (first import: 159 BIL rows; report details on 8 Trading 212 rows; a second run changed nothing). BIL message fields and per-bank format files follow-up. Avanza follows after B1 |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
 
@@ -87,7 +87,13 @@ quirks) goes into the next phase's PR.
   its SEK balance has a reference date in 2024 (dormant). Danske history starts at the 90-day
   lookback; older history may need a longer `INITIAL_LOOKBACK_DAYS` (check what the bank serves).
 - `clasp push` asks about the manifest every time because the live manifest says
-  Europe/Brussels; the repo says Europe/Luxembourg. Diff it, then `clasp push --force`.
+  Europe/Brussels; the repo says Europe/Luxembourg. Diff it, then `clasp push --force`. A push left waiting at that
+  prompt pushes nothing: the first Phase 6 test ran the old code until it was answered.
+- CSV import (Phase 6): `csv-niklas` is live (folder set 2026-10-25). The first *Import CSV files* added 159 BIL
+  rows (converted to EUR) and gave 8 Trading 212 rows their report details; a repeat run reported 0 added, 0
+  updated and "0 transactions updated (8 read)". The summary alert kept the run open until it was clicked, which
+  is why the summaries now open in a modeless window. BIL descriptions were the whole message; the follow-up
+  splits them on BIL's labels (below), so the next import reports the 159 BIL rows as updated once (ids unchanged).
 
 ## Current architecture (bank-sync)
 
@@ -117,9 +123,10 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   `x-ratelimit-reset`, plugged into `lib/http` as `retryDelayMs`), `t212-credentials` (key pairs in Script
   Properties), `t212-client` (one method per endpoint, Basic auth), `t212-provider`.
 - `providers/csv/`: `csv-parse` (pure: rows, header below a preamble, numbers and dates in a declared layout),
-  `csv-formats` (one entry per export, written from a real sample; `kind` 'transactions' or 'details'),
-  `csv-normalize` (pure: format detection, account, stable ids, details, number masking), `csv-folders` (folder per holder and the last-read record in Script
-  Properties), `csv-provider`. `lib/gas-adapters` `driveFolder` is the only DriveApp use.
+  `formats/` (one file per export, written from a real sample: `bil`, `trading212-report`; all write to the same
+  tabs), `csv-formats` (the shared shapes and the list; `kind` 'transactions' or 'details'), `csv-normalize` (pure:
+  format detection, account, stable ids, details, number masking), `csv-folders` (folder per holder and the
+  last-read record in Script Properties), `csv-provider`. `lib/gas-adapters` `driveFolder` is the only DriveApp use.
 - `providers/enable-banking/`: `eb-client` (one method per endpoint), `eb-auth`,
   `eb-token`, `eb-session-store`, `eb-normalize`, `eb-provider`.
 - `sheets/`: `raw-writer` (fixed columns plus one `api.*` column per API field, per-connection
@@ -368,10 +375,20 @@ As built (see `bank-sync/README.md`, "CSV import"):
   line, then the header `Date;Value date;Name;Message;Amount`; dates `DD/MM/YYYY`; amounts signed (out negative),
   `.` decimal mark and `,` thousands separator (`8,828.03`, `-1,500`); some messages are in double quotes, some
   not (both are read); no id column (identifying columns: both dates, `Name`, `Message`, `Amount`); no currency
-  column (the owner's BIL accounts are EUR, confirmed 2026-10-25). Opening the file in a spreadsheet app as comma-separated splits amounts with a thousands
-  comma across two columns: an artefact of the viewer, not of the file. `Name` is the movement type (`Payment
-  order`, `Credit`, `Card payment`); the counterparty comes from `Beneficiary:` / `By order of:` in the message,
-  or the merchant text before the date for card payments.
+  column (the owner's BIL accounts are EUR, confirmed 2026-10-25). Opening the file in a spreadsheet app as
+  comma-separated splits amounts with a thousands comma across two columns: an artefact of the viewer, not of the
+  file. `Name` is BIL's movement type (`Payment order`, `Credit`, `Card payment`). The `Message` is
+  `<kind> Remittance Info: <text> [Beneficiary: ..] [Beneficiary account: ..] [At: <BIC - bank>] [By order of: ..]
+  [Paying bank: ..] [End-to-end Identification: ..] [Payment initiation reference: ..]` (kinds seen: `Standing
+  order`, `Instant Payment`, `Credit`); card payments are `<merchant> <country> DD/MM/YYYY HH:MM <card>`. It is
+  split on those labels only (a remittance may contain its own "LABEL: value" text, e.g. from the health fund):
+  `description` = remittance text, `counterparty` = beneficiary or payer (card: merchant), `category` = the kind as
+  a code (card: `CARD_PAYMENT`; no label: the `Name`), `counterpartyAccount` (masked), `counterpartyBank`,
+  `reference` (end-to-end id, else payment reference); all parts also as `api.parsed.*` on `raw_transactions`. The
+  id uses the raw columns, so changing how the message is split never changes ids.
+- `transactions` gained optional last columns `counterpartyAccount`, `counterpartyBank` and `reference` (after
+  `category`). `TxnMerge.changed` treats a field a provider does not set as equal to the empty cell read back, so
+  providers that do not fill them never count rows as updated.
 - New OAuth scope `drive.readonly` (in `bank-sync/src/appsscript.json` and `scripts/allowed-scopes.json`): DriveApp
   needs a Drive scope to read files the script did not create (`drive.file` covers only files the script created
   or the user picked in a Google Picker, not a folder filled by hand). There is no per-folder scope, so it grants
@@ -505,7 +522,9 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
     API and an API key; whether picking a folder exposes its files is not documented (to verify), so likely one
     pick per file.
   - **Keep `drive.readonly`** (current).
-- **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer.
+- **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer. BIL has no balance in
+  its export, so it cannot appear in `daily_values` (total wealth) without another source: check whether BILnet
+  offers a balance or statement export, or record an opening balance and sum the movements.
 - **Old portfolio sheet:** it calls Trading 212 with the legacy key and shares the per-account rate limit; retire
   it or move what is still used.
 

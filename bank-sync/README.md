@@ -249,7 +249,16 @@ Supported exports:
   `DD/MM/YYYY`; amounts signed (money out negative) with `.` as decimal mark and `,` between thousands
   (`8,828.03`, `-1,500`). Spreadsheet apps that open the file as comma-separated split those amounts
   across two columns; the import reads the raw text, so they are read correctly. UTF-8, else Windows-1252.
-  The file has no currency column; BIL accounts are EUR.
+  The file has no currency column; BIL accounts are EUR. The `Message` is split on BIL's own labels
+  (`Remittance Info`, `Beneficiary`, `Beneficiary account`, `At`, `By order of`, `Paying bank`, `End-to-end
+  Identification`, `Payment initiation reference`), never on any colon, so text such as "DATE CISS: 19.08.2026"
+  inside a remittance stays in it:
+  - `description`: the remittance text (e.g. "Rent for August"); card payments keep the whole message;
+  - `counterparty`: the beneficiary, the payer (`By order of`) or the card merchant;
+  - `category`: the kind of movement as a code: `STANDING_ORDER`, `INSTANT_PAYMENT`, `CREDIT`, `CARD_PAYMENT`, ...;
+  - `counterpartyAccount` (masked), `counterpartyBank` (`At` / `Paying bank`), `reference` (end-to-end id, else
+    the payment reference);
+  - every labelled part also as `api.parsed.<label>` on `raw_transactions`.
 - **Trading 212 report** (exported from the Trading 212 app's history, any period, CSV): adds details to rows
   that *Sync all* already reads from the Trading 212 API, matched on the report's `ID` (the API's reference). It
   never adds rows. Each report row gives its API row a `category`: the merchant category for card payments
@@ -263,16 +272,18 @@ What it writes:
 
 - `transactions`: one booked row per movement, `provider` `csv`, `bank` the source (`BIL`),
   `connection` the folder (`csv-niklas`), `accountName` the product from the account line, `ibanMasked`
-  its last four characters, `description` the type and message, `counterparty` the beneficiary, the
-  payer or the card merchant when the message names one. Account and card numbers inside the texts are
+  its last four characters, and the columns above per source. Account and card numbers inside the texts are
   masked to their last four digits. EUR at the booking-date rate, like every other row.
 - `raw_accounts` and `raw_transactions`: the account and every CSV column as `api.*` (masked the same way).
-- `transactions` has a new last column `category`, filled only by details such as the Trading 212 report. A
-  later sync that re-reads a row without a counterparty or category keeps the ones already stored. The summary
-  says how many rows got details: "Details from reports: N transactions updated (M read)."
-- The daily sync shows no popup (a time-driven run has no screen). *Sync all* and *Import CSV files* from the
-  menu show their summary after the sync has finished and released the script lock, so a popup left open never
-  holds up the daily run.
+- `transactions` ends with four columns that only some sources fill: `category` (BIL, the Trading 212 report),
+  `counterpartyAccount`, `counterpartyBank` and `reference` (BIL). A later sync that re-reads a row without a
+  counterparty or category keeps the ones already stored. The summary says how many rows got details from a
+  report: "Details from reports: N transactions updated (M read)."
+- Each source's parsing lives in its own file (`src/providers/csv/formats/bil.js`, `trading212-report.js`), but
+  all of them write to the same tabs, so totals across banks stay one sum.
+- The daily sync shows no window (a time-driven run has no screen). *Sync all*, *Import CSV files* and *Show
+  status* show their summary in a window that does not keep the run waiting: the run ends as soon as the work
+  is done, and the window stays until you close it.
 - The `accountId` is the source plus a hash of the account number (`bil-1a2b3c4d`).
 
 Re-importing is safe. Without a bank id, a row's id is its date, a hash of its identifying columns and a
