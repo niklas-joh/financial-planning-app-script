@@ -75,13 +75,15 @@
   }
 
   /**
-   * Whether two stored rows differ in any field.
+   * Whether two rows differ in any field. Compares values field by field, so the order the keys
+   * were set in (a provider's row vs. a row read back from the sheet) does not count as a change.
    * @param {Object} a - First row.
    * @param {Object} b - Second row.
    * @returns {boolean} True if any field differs.
    */
   function changed(a, b) {
-    return JSON.stringify(a) !== JSON.stringify(b);
+    const keys = Object.keys(a).concat(Object.keys(b));
+    return keys.some(function (k) { return JSON.stringify(a[k]) !== JSON.stringify(b[k]); });
   }
 
   /**
