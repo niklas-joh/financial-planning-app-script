@@ -36,7 +36,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
 commit to `main`, conventional-commit PR title with a lowercase subject (e.g.
 `feat(bank-sync): add transactions writer (phase 2)`), summary and test plan in the PR
-body, CI green, ask before merging, and stop after each phase for review.
+body, open as draft and mark ready when CI is green (that starts the review), ask before merging, and stop after each phase for review.
 
 ## Current architecture (bank-sync)
 
@@ -162,10 +162,10 @@ another route. Decide only when this phase starts.
 - **Retire Plaid and SaltEdge** from `src/`: propose a removal PR.
 - **`deploy.yml`** pushes only the legacy `src/` project. Do not extend it to bank-sync
   without asking.
-- **Claude review workflow** (`claude-code-review.yml`): on PRs #42-#44 it ran but posted no
-  review. The `--body-file` post step may be blocked because the tool allowlist has no
-  Write tool, and its prompt still describes the Plaid/SaltEdge project. Needs a fix PR;
-  a workflow PR cannot be reviewed by the workflow it changes.
+- **Claude review workflow** (`claude-code-review.yml`): fixed. It runs once, when a PR is
+  marked ready for review (PRs start as drafts), runs the checks on the PR head, and files
+  findings as `code-review` issues. A workflow PR cannot be reviewed by the workflow it
+  changes.
 
 ## Deploy rules (learned the hard way)
 
