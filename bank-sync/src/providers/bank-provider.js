@@ -53,6 +53,7 @@
    * @property {string} fxRateDate
    * @property {string} counterparty
    * @property {string} description
+   * @property {Object<string,*>} [apiFields] - Every API field, flattened (raw tab only; never stored on `transactions`).
    */
 
   /**

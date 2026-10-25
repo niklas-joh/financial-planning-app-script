@@ -8,9 +8,23 @@
    * @property {string} bank - Bank name.
    * @property {string} connection - Connection key (bank plus holder).
    * @property {string} holderName - Account holder's name as the bank reports it, or ''.
-   * @property {string} accountName - The name set by the user or bank, else the product name, else ''.
+   * @property {string} accountName - The name set by the user or bank, else the product name, else account type and currency (e.g. 'Current account EUR').
    * @property {string} ibanMasked - IBAN reduced to its last four characters, or ''.
    */
+
+  /** Readable names for ISO 20022 cash account type codes; unknown codes are shown as they are. */
+  const TYPE_NAMES = { CACC: 'Current account', SVGS: 'Savings', CARD: 'Card', CASH: 'Cash', LOAN: 'Loan', TRAN: 'Transacting account' };
+
+  /**
+   * Best display name: the name set by the user or bank, else the product, else the account
+   * type and currency (banks such as Revolut send no name), so rows can still be grouped.
+   * @param {import('../providers/bank-provider.js').Account} a - Account.
+   * @returns {string} Display name, '' only if nothing is known.
+   */
+  function displayName(a) {
+    const type = TYPE_NAMES[a.accountType] || a.accountType || '';
+    return a.accountName || a.product || [type, a.currency].filter(Boolean).join(' ');
+  }
 
   /**
    * Builds a lookup from account id to its labels.
@@ -24,7 +38,7 @@
         bank: a.bank || '',
         connection: a.connection || '',
         holderName: a.holderName || '',
-        accountName: a.accountName || a.product || '',
+        accountName: displayName(a),
         ibanMasked: a.ibanMasked || ''
       };
     });

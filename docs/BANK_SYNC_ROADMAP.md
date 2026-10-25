@@ -191,7 +191,8 @@ after merging.
   separate step in `SyncAll` before `listAccounts`.
 - Enable Banking keeps no list of enabled banks, so "not enabled" is detected after the fact;
   confirm live which error a restricted application gets for an unlinked bank.
-- A `raw_transactions` tab with every transaction API field is not built; add it if needed.
+- `raw_transactions` shows only what the latest sync fetched per connection; cancelled, rejected and
+  scheduled rows are skipped by the normalizer, so they do not appear there either.
 
 ## Open decisions (raise, do not act)
 

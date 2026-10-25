@@ -76,12 +76,15 @@ told to link it first.
 
 Every row on `raw_accounts`, `raw_balances` and `transactions` shows `bank`, `connection`,
 `holderName` (the holder's name as the bank reports it), `accountName` (the name set by the
-user or bank, Enable Banking `details`, else the product name) and `ibanMasked` (last four
+user or bank, Enable Banking `details`, else the product name, else the account type and
+currency such as "Current account EUR", because banks like Revolut send no name) and `ibanMasked` (last four
 characters), so you can group and total by any of them.
 
-`raw_accounts` and `raw_balances` also show **every field the API returns**, one `api.*`
+`raw_accounts`, `raw_balances` and `raw_transactions` also show **every field the API returns**, one `api.*`
 column per field (nested fields use dotted names, e.g. `api.balance_amount.amount`,
-`api.postal_address.country`). Values that look like an IBAN are masked. Account details are
+`api.postal_address.country`). Values that look like an IBAN are masked. `raw_transactions` holds what the latest sync fetched for each connection (the last
+week or so after the first run, which reads 90 days), not the full history; the full history is
+on the `transactions` tab. Account details are
 read automatically the first time and then every 7 days (one bank call per account), so names
 and fields stay current without a manual step.
 

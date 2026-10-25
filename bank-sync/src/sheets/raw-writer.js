@@ -24,9 +24,14 @@
     'balanceType', 'name', 'amount', 'currency', 'referenceDate', 'lastChange', 'fetchedAt']
     .map(function (k) { return { header: k, key: k, numeric: k === 'amount' }; });
 
+  /** @type {Array<Column>} */
+  const TRANSACTION_COLUMNS = ['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
+    'transactionId', 'status', 'bookingDate', 'valueDate', 'amount', 'currency', 'counterparty', 'description']
+    .map(function (k) { return { header: k, key: k, numeric: k === 'amount' }; });
+
   /**
-   * Turns an account or balance into a flat row: its own fields, plus each API field as `api.<name>`.
-   * @param {Object} item - Account or Balance, optionally with `apiFields`.
+   * Turns an account, balance or transaction into a flat row: its own fields, plus each API field as `api.<name>`.
+   * @param {Object} item - Account, Balance or Transaction, optionally with `apiFields`.
    * @returns {Object} Flat row.
    */
   function toRow(item) {
@@ -148,6 +153,7 @@
     toMatrix: toMatrix,
     ACCOUNT_COLUMNS: ACCOUNT_COLUMNS,
     BALANCE_COLUMNS: BALANCE_COLUMNS,
+    TRANSACTION_COLUMNS: TRANSACTION_COLUMNS,
     API_PREFIX: API_PREFIX
   };
 })(globalThis.BankSync);

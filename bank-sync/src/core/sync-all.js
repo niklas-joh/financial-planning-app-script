@@ -45,13 +45,13 @@
   /**
    * Runs the sync for all connections.
    * @param {SyncAllDeps} deps - Injected services.
-   * @returns {{results: Array<ConnectionResult>, raw: ?{accounts: number, balances: number}}} Per-connection
+   * @returns {{results: Array<ConnectionResult>, raw: ?{accounts: number, balances: number, transactions: number}}} Per-connection
    *   outcome and the raw rows written (null if no connection could be read). No transaction content.
    */
   function run(deps) {
     const cfg = ns.Config.TRANSACTIONS;
     const startedAt = deps.nowMs();
-    const collected = { accounts: [], balances: [] };
+    const collected = { accounts: [], balances: [], transactions: [] };
     const refreshed = [];
 
     const results = deps.connections.map(function (connection) {
@@ -66,7 +66,9 @@
           const done = syncOne(connection, deps, left, startedAt);
           collected.accounts = collected.accounts.concat(done.data.accounts);
           collected.balances = collected.balances.concat(done.data.balances);
-          result.transactions = done.transactions;
+          collected.transactions = collected.transactions.concat(done.transactions.rawRows);
+          result.transactions = Object.assign({}, done.transactions);
+          delete result.transactions.rawRows;
           refreshed.push(connection.key);
         } catch (e) {
           if (e.name === 'TimeBudget') {
@@ -85,7 +87,7 @@
 
   /**
    * Turns a run into the text shown to the user. Counts only, no transaction content.
-   * @param {{results: Array<ConnectionResult>, raw: ?{accounts: number, balances: number}}} outcome - From `run`.
+   * @param {{results: Array<ConnectionResult>, raw: ?{accounts: number, balances: number, transactions: number}}} outcome - From `run`.
    * @returns {string} Multi-line summary.
    */
   function summarize(outcome) {
@@ -97,7 +99,8 @@
       }
       return r.connection + ': ' + r.status + (r.error ? ' (' + r.error + ')' : '');
     });
-    if (outcome.raw) lines.push('Raw tabs: ' + outcome.raw.accounts + ' accounts, ' + outcome.raw.balances + ' balances.');
+    if (outcome.raw) lines.push('Raw tabs: ' + outcome.raw.accounts + ' accounts, ' + outcome.raw.balances + ' balances, ' +
+      outcome.raw.transactions + ' transactions.');
     return lines.join('\n');
   }
 

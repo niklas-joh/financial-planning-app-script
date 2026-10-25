@@ -208,7 +208,8 @@ test('sync all: one lapsed connection does not stop the others; statuses are rep
   assert.strictEqual(rows()[0].accountName, 'Main');
   assert.strictEqual(raw.raw_accounts.length, 1);
   assert.strictEqual(raw.raw_balances[0].connection, 'revolut-niklas');
-  assert.deepStrictEqual(outcome.raw, { accounts: 1, balances: 1 });
+  // The fake provider returns one row per fetch window and the 90-day first run has three windows.
+  assert.deepStrictEqual(outcome.raw, { accounts: 1, balances: 1, transactions: 3 });
 });
 
 test('sync all: rows of a connection that is not synced keep their labels', () => {
@@ -238,7 +239,7 @@ test('sync all: the summary has counts per connection and no row content', () =>
   assert.match(text, /revolut-niklas: 1 added, 0 updated, 0 pending removed/);
   assert.match(text, /revolut-partner: error \(AuthError: Consent has expired/);
   assert.match(text, /other-niklas: not connected/);
-  assert.match(text, /Raw tabs: 1 accounts, 1 balances\./);
+  assert.match(text, /Raw tabs: 1 accounts, 1 balances, 3 transactions\./);
   assert.ok(!text.includes('x-a-'));
 });
 
@@ -405,4 +406,65 @@ test('sync all: a connection that fails while reading balances writes nothing fo
   const grid = book.sheets.raw_accounts.grid;
   const col = grid[0].indexOf('connection');
   assert.ok(grid.slice(1).some((r) => r[col] === 'revolut-partner'), 'its earlier raw row is still there');
+});
+
+test('account name falls back to the readable type and currency when the bank sends no name', () => {
+  const labelsFor = BS.AccountLabels.lookup([
+    acct({ accountId: 'x', accountName: '', product: '', accountType: 'CACC', currency: 'SEK' }),
+    acct({ accountId: 'y', accountName: '', product: '', accountType: 'ZZZZ', currency: 'EUR' }),
+    acct({ accountId: 'z', accountName: 'Mine', product: 'P', accountType: 'CACC' })]);
+  assert.strictEqual(labelsFor('x').accountName, 'Current account SEK');
+  assert.strictEqual(labelsFor('y').accountName, 'ZZZZ EUR');
+  assert.strictEqual(labelsFor('z').accountName, 'Mine');
+});
+
+test('transactions keep every API field (account numbers masked) for the raw tab', () => {
+  const { transactions } = BS.EbNormalize.normalizeTransactions([{
+    entry_reference: 'e1', status: 'BOOK', booking_date: '2026-03-01', credit_debit_indicator: 'DBIT',
+    transaction_amount: { amount: '5.00', currency: 'EUR' }, creditor: { name: 'Shop' },
+    creditor_account: { iban: 'GB82WEST12345698765432' }, bank_transaction_code: { code: 'PMNT' }, merchant_category_code: '5411'
+  }], 'a1');
+  const f = transactions[0].apiFields;
+  assert.strictEqual(f['creditor.name'], 'Shop');
+  assert.strictEqual(f['creditor_account.iban'], '****5432');
+  assert.strictEqual(f['bank_transaction_code.code'], 'PMNT');
+  assert.strictEqual(f.merchant_category_code, '5411');
+  assert.ok(!JSON.stringify(f).includes('GB82'));
+});
+
+test('sync: raw rows carry API fields and labels; the stored rows never get apiFields', () => {
+  let stored = [];
+  const rows = [{ ...txn({ transactionId: 'r1', bookingDate: '2026-03-30' }), apiFields: { 'creditor.name': 'Shop' } }];
+  const result = BS.TxnSync.run({
+    provider: { getTransactions: () => rows },
+    accounts: [acct({})],
+    store: { load: () => stored, save: (r) => { stored = r; return r.length; } },
+    nowMs: () => NOW, todayIso: () => '2026-04-01'
+  });
+  assert.ok(result.rawRows.length >= 1);
+  assert.deepStrictEqual([result.rawRows[0].apiFields['creditor.name'], result.rawRows[0].connection], ['Shop', 'revolut-niklas']);
+  assert.ok(stored.length >= 1 && stored.every((t) => t.apiFields === undefined));
+});
+
+test('sync all: raw_transactions shows each connection\'s latest fetch with api.* columns and keeps the others', () => {
+  const book = fakeSheetBook();
+  const provider = (field) => (c) => ({
+    listAccounts: () => [acct({ accountId: 'a-' + c.key, connection: c.key })],
+    getBalances: () => [],
+    getTransactions: (id) => [{ ...txn({ accountId: id, transactionId: 't-' + id }), apiFields: { 'creditor.name': field } }]
+  });
+  const first = runAll({ rawWriter: BS.RawWriter.create(book), isConnected: () => true, providerFor: provider('First') });
+  first.deps.connections = first.deps.connections.slice(0, 2);
+  BS.SyncAll.run(first.deps);
+  const second = runAll({
+    rawWriter: BS.RawWriter.create(book), isConnected: (c) => c.key === 'revolut-niklas', providerFor: provider('Second')
+  });
+  second.deps.connections = second.deps.connections.slice(0, 2);
+  BS.SyncAll.run(second.deps);
+  const [header, ...rows] = book.sheets.raw_transactions.grid;
+  const by = (conn) => rows.find((r) => r[header.indexOf('connection')] === conn);
+  assert.ok(header.includes('api.creditor.name'));
+  assert.strictEqual(by('revolut-niklas')[header.indexOf('api.creditor.name')], 'Second');
+  assert.strictEqual(by('revolut-partner')[header.indexOf('api.creditor.name')], 'First');
+  assert.strictEqual(by('revolut-niklas')[header.indexOf('accountName')], 'Main');
 });

@@ -121,7 +121,8 @@
       fxRate: null,
       fxRateDate: '',
       counterparty: counterpartyName(raw),
-      description: descriptionOf(raw)
+      description: descriptionOf(raw),
+      apiFields: ns.Flatten.flat(raw)
     };
   }
 
@@ -139,7 +140,8 @@
    * Maps all raw transactions of one fetch. The id is `entry_reference` (documented
    * as unique and immutable per account), else `transaction_id`, else a content hash
    * with an occurrence counter so genuinely identical rows stay distinct.
-   * Cancelled, rejected, scheduled and unknown-status rows are skipped.
+   * Cancelled, rejected, scheduled and unknown-status rows are skipped. Every API field is
+   * kept (flattened, account numbers masked) in `apiFields`; callers strip it before storing.
    * @param {Array<Object>} rawList - Enable Banking transactions (all pages of one fetch).
    * @param {string} accountId - Account the transactions belong to.
    * @returns {{transactions: Array<import('../bank-provider.js').Transaction>, skipped: number}}

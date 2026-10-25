@@ -7,6 +7,8 @@
    * @typedef {Object} RawData
    * @property {Array<import('../providers/bank-provider.js').Account>} accounts
    * @property {Array<import('../providers/bank-provider.js').Balance>} balances
+   * @property {Array<import('../providers/bank-provider.js').Transaction>} [transactions] - What the
+   *   latest sync fetched, each with its `apiFields`.
    */
 
   /**
@@ -27,19 +29,21 @@
   }
 
   /**
-   * Writes both raw tabs: bank, connection, holder, account name and masked IBAN are added
+   * Writes the three raw tabs: bank, connection, holder, account name and masked IBAN are added
    * to each balance, and every API field becomes its own `api.*` column.
    * @param {{writeTable: function(string, Array<Object>, Array<Object>, Array<string>=): number}} writer - Sheet writer.
    * @param {RawData} data - Fresh rows from the connections that were read.
    * @param {Array<string>} refreshed - Keys of those connections; other connections' rows stay.
-   * @returns {{accounts: number, balances: number}} Row counts written (no sensitive data).
+   * @returns {{accounts: number, balances: number, transactions: number}} Row counts written (no sensitive data).
    */
   function write(writer, data, refreshed) {
     const labelsFor = ns.AccountLabels.lookup(data.accounts);
     const balances = data.balances.map(function (b) { return ns.RawWriter.toRow(ns.AccountLabels.stamp(b, labelsFor)); });
     const accounts = data.accounts.map(ns.RawWriter.toRow);
+    const transactions = (data.transactions || []).map(function (t) { return ns.RawWriter.toRow(ns.AccountLabels.stamp(t, labelsFor)); });
     const tabs = ns.Config.TABS;
     return {
+      transactions: writer.writeTable(tabs.RAW_TRANSACTIONS, ns.RawWriter.TRANSACTION_COLUMNS, transactions, refreshed),
       accounts: writer.writeTable(tabs.RAW_ACCOUNTS, ns.RawWriter.ACCOUNT_COLUMNS, accounts, refreshed),
       balances: writer.writeTable(tabs.RAW_BALANCES, ns.RawWriter.BALANCE_COLUMNS, balances, refreshed)
     };

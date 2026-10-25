@@ -54,6 +54,7 @@
     TABS: Object.freeze({
       RAW_ACCOUNTS: 'raw_accounts',
       RAW_BALANCES: 'raw_balances',
+      RAW_TRANSACTIONS: 'raw_transactions',
       TRANSACTIONS: 'transactions'
     }),
     TRANSACTIONS: Object.freeze({
