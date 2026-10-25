@@ -71,8 +71,8 @@ quirks) goes into the next phase's PR.
     investments (an amount the summary does not break down, possibly payments still being processed). The
     fix takes `totalValue` as the total and cash as total minus investments.
   - History types: `INTEREST_ON_FREE_CASH` (about two a day), `DEPOSIT`, `WITHDRAW`, `LENDING_INTEREST`, and
-    dividends. Card payments look like `WITHDRAW` rows and card cashback like small `DEPOSIT` rows; there is
-    no merchant field.
+    dividends. Card payments are not in the API (checked against the app: `WITHDRAW` rows are withdrawals, not
+    card spending); only the card cashback appears, as small `DEPOSIT` rows.
   - A key without its secret shows as "not connected" (both are needed).
   - Still to check: that a second sync reports 0 added and 0 updated for Trading 212 once the backfill is
     complete.
@@ -386,7 +386,7 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 - **Internal transfers:** a bank-to-Trading 212 transfer appears twice in `transactions` (the bank's outflow and
   the Trading 212 `DEPOSIT`). Decide whether Trading 212 history stays in `transactions`, moves to its own tab, or
   transfers get matched and marked as internal so analysis does not count them as spending or income.
-- **Card spending detail:** the API exposes no merchant data; the Trading 212 CSV report might (unverified),
+- **Card spending:** the API does not return card payments at all (only the cashback); the Trading 212 CSV report might (unverified),
   which would fit Phase 6.
 - **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer.
 - **Old portfolio sheet:** it calls Trading 212 with the legacy key and shares the per-account rate limit; retire

@@ -211,9 +211,9 @@ What it writes:
 
 Notes:
 
-- Card payments are not documented in the API (no card type, no merchant). Seen live: they very
-  likely arrive as plain `WITHDRAW` rows, and card cashback as small `DEPOSIT` rows; only the amount,
-  date and a reference are available. A transfer from a bank
+- Card payments are not in the API (no card type, no merchant), confirmed against the app: the
+  `WITHDRAW` rows are withdrawals, not card spending. Only the card cashback appears, as small
+  `DEPOSIT` rows. Card spending stays out of Bank Sync until another source covers it. A transfer from a bank
   account to Trading 212 currently shows up twice in `transactions` (the bank's outflow and the
   Trading 212 deposit).
 - Rate limits are per Trading 212 account, whatever the key: summary 1 per 5 s, positions 1 per s,
