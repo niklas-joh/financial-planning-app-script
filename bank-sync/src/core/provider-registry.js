@@ -68,10 +68,16 @@
     create: function (c, wired, env) {
       const http = env.http({ retryDelayMs: ns.T212RateLimit.hook(wired.nowMs, env.msLeft) });
       const client = ns.T212Client.create(http, ns.T212Credentials.credentials(wired.props, c), env.base64);
-      return ns.Trading212Provider.create({ connection: c, client: client, nowMs: wired.nowMs, toLocalDate: env.toLocalDate });
+      return ns.Trading212Provider.create({
+        connection: c, client: client, nowMs: wired.nowMs, toLocalDate: env.toLocalDate, history: ns.T212History.store(wired.props, c)
+      });
     },
     consents: function () { return []; },
-    statusLines: function (wired) { return ns.T212Credentials.statusLines(wired.props); }
+    statusLines: function (wired) {
+      const ready = ns.T212Credentials.connections(wired.props).filter(function (c) { return ns.T212Credentials.isComplete(wired.props, c); });
+      return ns.T212Credentials.statusLines(wired.props)
+        .concat(ready.map(function (c) { return ns.T212History.statusLine(wired.props, c); }));
+    }
   };
 
   const ENTRIES = [enableBanking, trading212];

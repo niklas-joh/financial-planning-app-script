@@ -7,13 +7,18 @@
 (function (ns) {
   const PROVIDER_ID = ns.Config.TRADING212.PROVIDER_ID;
 
-  /** Summary amounts that become balances; `kind` puts them in the daily value. */
+  /**
+   * Summary amounts that become balances; `kind` puts them in the daily value. The daily value takes
+   * Trading 212's own total and investments value (which already contains the cash in pies), and cash
+   * as the rest, so amounts the summary does not break down (seen live: a small gap between the total
+   * and available cash plus investments) still count. The cash rows are kept as detail.
+   */
   const SUMMARY_BALANCES = [
-    { path: ['cash', 'availableToTrade'], description: 'Cash available to trade', kind: 'cash' },
-    { path: ['cash', 'inPies'], description: 'Cash in pies, not yet invested', kind: 'cash' },
-    { path: ['cash', 'reservedForOrders'], description: 'Cash reserved for pending orders', kind: 'cash' },
-    { path: ['investments', 'currentValue'], description: 'Current value of investments', kind: 'investments' },
-    { path: ['totalValue'], description: 'Total account value, as reported', kind: '' }
+    { path: ['cash', 'availableToTrade'], description: 'Cash available to trade', kind: '' },
+    { path: ['cash', 'inPies'], description: 'Cash in pies, not yet invested (part of the investments value)', kind: '' },
+    { path: ['cash', 'reservedForOrders'], description: 'Cash reserved for pending orders', kind: '' },
+    { path: ['investments', 'currentValue'], description: 'Current value of investments, including cash in pies', kind: 'investments' },
+    { path: ['totalValue'], description: 'Total account value', kind: 'total' }
   ];
 
   /** Cash movement types with a known direction; others (TRANSFER, new types) keep the API's sign. */

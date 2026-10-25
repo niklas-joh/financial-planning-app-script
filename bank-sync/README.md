@@ -179,33 +179,41 @@ pasted in Script Properties and *Sync all* picks it up.
 
    A second account of the same person gets its own suffix, e.g. `T212_API_KEY_NIKLAS_ISA`
    (connection `trading212-niklas-isa`).
-3. *Show status* lists each pair as `set`/`MISSING` (never the values). *Sync all* (and the daily
-   sync) now includes every complete pair.
+3. *Show status* lists each pair as `set`/`MISSING` (never the values), and for each complete pair how
+   far the history backfill is. *Sync all* (and the daily sync) includes every complete pair. Both the
+   key and the secret are needed: with only one, the connection shows as "not connected". Don't
+   keep placeholder values for someone who has no key yet; add their pair when they have one.
 
 What it writes:
 
-- `daily_values` (new): one row per account and day with `cash` (available to trade + in pies +
-  reserved for orders), `investments` (current value), `total`, and the same in EUR. A second run on
-  the same day replaces that day's row, so the tab is a daily history; the 06:00 daily sync records
-  the previous market close. Rows are built from the balances (`raw_balances.valueKind`), not from a
-  separate API call or rate.
+- `daily_values` (new): one row per account and day with `total` (Trading 212's account value),
+  `investments` (its investments value, which already includes the cash in pies) and `cash` (total
+  minus investments: available cash plus anything the summary does not break down, e.g. amounts still
+  being processed), and the same in EUR. So the total always matches the app. A second run on the same
+  day replaces that day's row, so the tab is a daily history; the 06:00 daily sync records the
+  previous market close. Rows are built from the balances tagged in `raw_balances.valueKind`
+  (`total`, `investments`), not from a separate API call or rate.
 - `holdings` (new): the open positions per account (ticker, ISIN, name, quantity, average and current
   price in the instrument currency, value, cost and unrealized result in the account currency,
   `amountEur`), replaced on each sync, with every API field as `api.*` columns.
 - `raw_accounts` / `raw_balances`: one account per key (the account number from the API is its
-  `accountId`); balances `cash.availableToTrade`, `cash.inPies`, `cash.reservedForOrders`,
-  `investments.currentValue` and `totalValue` (the last as reported, for checking; not summed).
+  `accountId`); balances `cash.availableToTrade`, `cash.inPies`, `cash.reservedForOrders` (detail),
+  `investments.currentValue` (`valueKind: investments`) and `totalValue` (`valueKind: total`).
 - `transactions` and `raw_transactions`: cash movements (deposits, withdrawals, fees, interest,
   transfers; `description` is the type) and dividends (id `div:<reference>`, counterparty the
   instrument). Withdrawals and fees are negative, deposits, interest and dividends positive. Orders
   (buys and sells) are not imported: they move money between cash and investments, which
-  `daily_values` already shows. The first run reads 90 days back, later runs from the latest booked
-  date minus 7 days, like the banks; EUR at the booking-date rate.
+  `daily_values` already shows. Each run reads from the latest booked date minus 7 days (the first
+  run: 90 days back), like the banks, and on top of that **backfills the full history once**: up to
+  40 older pages per feed per run, continuing where the last run stopped (kept in the Script Property
+  `T212_HISTORY_<HOLDER>`), so an account with a long history completes over a few syncs. Delete
+  that property to backfill again. EUR at the booking-date rate.
 
 Notes:
 
-- Card payments are not documented in the API (no card type, no merchant). If they appear, they
-  come as plain `WITHDRAW` rows; check `api.type` on `raw_transactions`. A transfer from a bank
+- Card payments are not in the API (no card type, no merchant), confirmed against the app: the
+  `WITHDRAW` rows are withdrawals, not card spending. Only the card cashback appears, as small
+  `DEPOSIT` rows. Card spending stays out of Bank Sync until another source covers it. A transfer from a bank
   account to Trading 212 currently shows up twice in `transactions` (the bank's outflow and the
   Trading 212 deposit).
 - Rate limits are per Trading 212 account, whatever the key: summary 1 per 5 s, positions 1 per s,

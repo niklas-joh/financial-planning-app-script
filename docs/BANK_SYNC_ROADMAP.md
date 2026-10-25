@@ -29,7 +29,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 2.5 | Connections, Connect flow with live bank list, labels, `raw_*` tabs with every API field | Merged (#49), live on the Bank Sync sheet (Revolut and Danske Bank SE) |
 | 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Merged (#56), live: first sync converted the full history, a second converted 0 |
 | 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
-| 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live once the owner pasted the keys and pushed (see Live state) |
+| 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#65): daily total from Trading 212's own total, one-time full history backfill |
 | 6 | CSV import provider (Avanza, BIL) | Planned |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
@@ -62,12 +62,20 @@ quirks) goes into the next phase's PR.
   89 days left; the first warning emails (30 days) are due around 2026-12-23 (Revolut) and 2026-12-24 (Danske).
   Check after the first daily run that *Show status* shows `(daily): OK` with 0 added/updated/removed. The web app only changes when `auth.complete`,
   `doGet` or what they call change: then run `clasp deploy -i <deployment id>`.
-- Trading 212 (Phase 5): one connection per pasted key pair (`T212_API_KEY_<HOLDER>`,
-  `T212_API_SECRET_<HOLDER>`), e.g. `trading212-niklas` and the partner's own account. Tabs `holdings` and
-  `daily_values` are added by the first *Sync all* after the keys are set; `raw_balances` gains a `valueKind`
-  column. Still to check on the first live sync: that `totalValue` equals cash plus investments, which
-  `api.type` values `raw_transactions` shows (are card payments in there as `WITHDRAW`?), and that a
-  second sync reports 0 added and 0 updated for Trading 212.
+- Trading 212 (Phase 5): `trading212-niklas` is live (key and secret pasted 2026-10-25); the partner's
+  pair is added once she has her own key. The first *Sync all* added the `holdings` and `daily_values`
+  tabs and read 90 days of history; with the fix (#65) the rest of the history backfills over the next
+  syncs (*Show status* shows "history: complete" when done). Seen on the first live sync:
+  - `investments.currentValue` already contains the cash in pies (the holdings sum plus `cash.inPies`), so
+    the first version counted pie cash twice; and `totalValue` was slightly above available cash plus
+    investments (an amount the summary does not break down, possibly payments still being processed). The
+    fix takes `totalValue` as the total and cash as total minus investments.
+  - History types: `INTEREST_ON_FREE_CASH` (about two a day), `DEPOSIT`, `WITHDRAW`, `LENDING_INTEREST`, and
+    dividends. Card payments are not in the API (checked against the app: `WITHDRAW` rows are withdrawals, not
+    card spending); only the card cashback appears, as small `DEPOSIT` rows.
+  - A key without its secret shows as "not connected" (both are needed).
+  - Still to check: that a second sync reports 0 added and 0 updated for Trading 212 once the backfill is
+    complete.
 - Known data quirks: Revolut returns one transaction in 90 days (a zero-amount card check);
   its SEK balance has a reference date in 2024 (dormant). Danske history starts at the 90-day
   lookback; older history may need a longer `INITIAL_LOOKBACK_DAYS` (check what the bank serves).
@@ -272,18 +280,27 @@ As built (see `bank-sync/README.md`, "Trading 212"):
   stored elsewhere; *Show status* shows `set`/`MISSING`; `Redact` scrubs `Basic ...` headers.
 - `listAccounts` builds one account from `GET /equity/account/summary` (its `id` is the `accountId`). The
   summary is read once per run (the limit is 1 per 5 s) and also gives the five balances:
-  `cash.availableToTrade`, `cash.inPies`, `cash.reservedForOrders` (`valueKind: cash`),
-  `investments.currentValue` (`investments`), `totalValue` (no kind, kept for checking).
+  `cash.availableToTrade`, `cash.inPies`, `cash.reservedForOrders` (detail, no kind),
+  `investments.currentValue` (`valueKind: investments`; it includes the cash in pies) and `totalValue`
+  (`valueKind: total`).
 - `getHoldings` (new optional contract method) maps `GET /equity/positions` to `Holding` rows; `amount` is the
   value in the account currency so the unchanged `FxService.convertBalances` converts it.
 - `daily_values` is built in `RawSync.write` from the converted balances by `DailyValues.fromBalances` (no second
-  FX path); accumulated by connection, account and date, so a same-day re-run replaces the row. Banks can be
-  added later by tagging their booked balance `cash` in the Enable Banking normalizer.
+  FX path); accumulated by connection, account and date, so a same-day re-run replaces the row. Rule: with a
+  `total` balance, total is that and cash = total - investments (so it matches the provider); without one,
+  cash = sum of `cash` balances and total = cash + investments. Banks can be added later by tagging their
+  booked balance `cash` in the Enable Banking normalizer.
 - `getTransactions` reads `/equity/history/transactions` and `/equity/history/dividends` newest first
   (`limit=50`, following `nextPagePath`) until a page reaches back past `dateFrom`; `maxWindowDays: Infinity`
   makes `TxnSync` ask for one window, so its lookback, restart and idempotent upsert are reused unchanged.
   Withdrawals and fees negative; deposits, interest and dividends positive; TRANSFER and unknown types keep the
   API's sign. Dividend ids are `div:<reference>`. Orders are not imported.
+- One-time full history backfill (`t212-history`): on top of the incremental read, each feed continues from its
+  saved `nextPagePath` (Script Property `T212_HISTORY_<HOLDER>`, `{transactions|dividends: {next, done}}`) for up to
+  `TRADING212.BACKFILL_PAGES_PER_RUN` (40) pages per run; a rate limit, HTTP error or the time budget pauses it
+  until the next sync, and the positions are saved only after every feed's items are read and normalized (a
+  failure saves nothing, so the same pages are read again rather than skipped). When both feeds reach
+  their last page it stops; deleting the property starts it again. Older rows go through the same upsert.
 - Rate limits: no client-side pacer (a run makes about four calls per account, far below the burst limits).
   `lib/http` gained an optional `retryDelayMs` hook: for Trading 212 a 429 waits until `x-ratelimit-reset`
   (seconds or ms accepted), at most `TRADING212.MAX_RETRY_WAIT_MS` (65 s) and never past the run's time budget;
@@ -369,7 +386,7 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 - **Internal transfers:** a bank-to-Trading 212 transfer appears twice in `transactions` (the bank's outflow and
   the Trading 212 `DEPOSIT`). Decide whether Trading 212 history stays in `transactions`, moves to its own tab, or
   transfers get matched and marked as internal so analysis does not count them as spending or income.
-- **Card spending detail:** the API exposes no merchant data; the Trading 212 CSV report might (unverified),
+- **Card spending:** the API does not return card payments at all (only the cashback); the Trading 212 CSV report might (unverified),
   which would fit Phase 6.
 - **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer.
 - **Old portfolio sheet:** it calls Trading 212 with the legacy key and shares the per-account rate limit; retire

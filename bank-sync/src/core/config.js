@@ -36,7 +36,8 @@
    *   triggers call, the hour of the daily run (script time zone), how long after an unfinished run
    *   the follow-up starts (ms), and how many follow-ups one daily run may chain.
    * @property {Object} TRADING212 - Trading 212 public API: provider id, display name, origin and API path
-   *   (live), page size (the API's maximum), and the longest wait for a rate-limit reset before a call gives up.
+   *   (live), page size (the API's maximum), pages per history feed the one-time backfill reads per run, and
+   *   the longest wait for a rate-limit reset before a call gives up.
    * @property {{WARN_DAYS: Array<number>}} CONSENT - Days before a consent lapses on which a warning
    *   email is sent (each once per consent); one more is sent once it has lapsed.
    */
@@ -67,6 +68,7 @@
       EB_API_PREFIX: 'EB_API_',
       T212_API_KEY_PREFIX: 'T212_API_KEY_',
       T212_API_SECRET_PREFIX: 'T212_API_SECRET_',
+      T212_HISTORY_PREFIX: 'T212_HISTORY_',
       LAST_RUN: 'BS_LAST_RUN',
       CONSENT_WARNED_PREFIX: 'BS_CONSENT_WARNED_'
     }),
@@ -111,6 +113,7 @@
       ORIGIN: 'https://live.trading212.com',
       API_PATH: '/api/v0',
       PAGE_LIMIT: 50,
+      BACKFILL_PAGES_PER_RUN: 40,
       MAX_RETRY_WAIT_MS: 65000
     }),
     CONSENT: Object.freeze({
