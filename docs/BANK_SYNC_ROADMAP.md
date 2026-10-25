@@ -36,7 +36,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
 commit to `main`, conventional-commit PR title with a lowercase subject (e.g.
 `feat(bank-sync): add transactions writer (phase 2)`), summary and test plan in the PR
-body, CI green, ask before merging, and stop after each phase for review.
+body, open as draft and mark ready when CI is green (that starts the review), ask before merging, and stop after each phase for review.
 
 ## Live state (2026-10-25)
 
@@ -222,18 +222,20 @@ another route. Decide only when this phase starts.
 1. Read `CLAUDE.md`, this file, then `docs/HANDOFF.md`.
 2. `git fetch`, branch off `origin/main` (never commit to `main`), run `npm test` in
    `bank-sync/` and `npm run check` at the root to confirm a green baseline.
-3. Do the next phase in one small PR; read the Claude review comment on the PR before merging
-   (it now posts on every non-doc PR and has found real bugs twice); stop after the phase.
+3. Do the next phase in one small PR, opened as a draft; mark it ready when CI is green, read the
+   review comment and its `code-review` issues, fix the real ones on the branch, and stop after the
+   phase. Do not re-run the review yourself.
 4. Deploy only when asked: `clasp push --force` from `bank-sync/` after diffing the manifest,
    and `clasp deploy -i <deployment id>` only if the web-app path changed.
 
 ## Review workflow
 
-`claude-code-review.yml` now posts a review on every non-doc PR (#46, #47 fixed it: the
-tool allowlist was unquoted, so every tool was denied, and it had no Write tool). Read the
-review before merging; #44 and #48 both had useful findings. A PR that edits the workflow
-itself is skipped by design; test those with `gh workflow run claude-code-review.yml -f pr_number=N`
-after merging.
+Process set in `CLAUDE.md` (#51): open every PR as a **draft**, mark it **ready for review** only
+when CI is green; that runs the checks on the PR head and starts the Claude review once. The review
+posts one comment and files each bug and improvement as its own `code-review` issue (nits in one
+issue); fix them on the same PR branch and close the issues. Do not re-run the review yourself
+(no `workflow_dispatch`, no draft/ready toggling) unless the owner asks. Read the review before
+merging: it found real bugs on #44 and #49. A PR that edits the workflow itself is skipped by design.
 
 ## Follow-ups from reviews (small, not blocking)
 
