@@ -22,6 +22,17 @@ test('daily values: sums cash and investments per account; balances without a ki
   assert.deepStrictEqual([r.cashEur, r.investmentsEur, r.totalEur, r.fxRate, r.fxRateDate], [10.03, 90, 100.03, 10, '2026-11-01']);
 });
 
+test('daily values: with a reported total, cash is total minus investments, so the total always matches', () => {
+  const [r] = BS.DailyValues.fromBalances([
+    bal({ balanceType: 'cash.availableToTrade', valueKind: '', amount: 50, amountEur: 5 }),
+    bal({ valueKind: 'investments', amount: 900.105, amountEur: 90.01, fxRate: 10, fxRateDate: '2026-11-01' }),
+    bal({ valueKind: 'total', amount: 1000.3, amountEur: 100.03, fxRate: 10, fxRateDate: '2026-11-01' })
+  ], '2026-11-02');
+  assert.deepStrictEqual([r.cash, r.investments, r.total], [100.19, 900.11, 1000.3]);
+  assert.strictEqual(Math.round((r.cash + r.investments) * 100), Math.round(r.total * 100), 'the columns add up after rounding');
+  assert.deepStrictEqual([r.cashEur, r.investmentsEur, r.totalEur], [10.02, 90.01, 100.03]);
+});
+
 test('daily values: an account with a balance lacking a rate gets no partial EUR sum', () => {
   const [r] = BS.DailyValues.fromBalances([
     bal({ valueKind: 'cash', amount: 1, amountEur: 0.1, fxRate: 10 }),
@@ -46,7 +57,9 @@ test('daily values tab: a second run on the same day replaces that day, the next
 
 // --- Sync all with a Trading 212 provider and a bank ---
 
-const SUMMARY = { id: 42, currency: 'EUR', cash: { availableToTrade: 60, inPies: 0, reservedForOrders: 0 }, investments: { currentValue: 140 }, totalValue: 200 };
+// The investments value includes the 5 in pies (as Trading 212 reports it); the total is 3 above
+// available cash plus investments (an amount the summary does not break down), which counts as cash.
+const SUMMARY = { id: 42, currency: 'EUR', cash: { availableToTrade: 60, inPies: 5, reservedForOrders: 0 }, investments: { currentValue: 145 }, totalValue: 208 };
 const POSITION = {
   instrument: { ticker: 'DEMO_US_EQ', name: 'Demo Corp', currency: 'USD' }, quantity: 2, averagePricePaid: 60, currentPrice: 70,
   walletImpact: { currency: 'EUR', currentValue: 140, totalCost: 120, unrealizedProfitLoss: 20 }
@@ -117,10 +130,11 @@ test('sync all: Trading 212 fills holdings, daily values and transactions next t
     [['trading212-alex', 'Trading 212 EUR', 'DEMO_US_EQ', 140, 140]]);
   const daily = tab(book, 'daily_values');
   assert.deepStrictEqual(daily.map((d) => [d.connection, d.accountId, d.cash, d.investments, d.total, d.totalEur]),
-    [['trading212-alex', '42', 60, 140, 200, 200]], 'only accounts with tagged balances get a daily value');
+    [['trading212-alex', '42', 63, 145, 208, 208]], 'total as reported, pie cash not counted twice; only tagged accounts get a row');
   assert.deepStrictEqual(store.rows().map((t) => [t.connection, t.transactionId, t.amount, t.accountName]),
     [['trading212-alex', 'div:d1', 1.5, 'Trading 212 EUR'], ['trading212-alex', 'r1', 100, 'Trading 212 EUR']]);
-  assert.ok(tab(book, 'raw_balances').some((b) => b.connection === 'trading212-alex' && b.valueKind === 'cash'));
+  assert.deepStrictEqual(tab(book, 'raw_balances').filter((b) => b.connection === 'trading212-alex').map((b) => b.valueKind),
+    ['', '', '', 'investments', 'total']);
   assert.match(BS.SyncAll.summarize(first), /1 holdings, 1 daily values\./);
 
   const second = runSync(book, store);

@@ -60,14 +60,16 @@ test('t212 normalize: the summary becomes one account named by bank and currency
   assert.throws(() => BS.T212Normalize.account({ currency: 'EUR' }, CONN), /missing id or currency/);
 });
 
-test('t212 normalize: cash and investment figures become balances tagged for the daily value', () => {
+test('t212 normalize: summary figures become balances; total and investments are tagged for the daily value', () => {
   const b = BS.T212Normalize.balances(SUMMARY, 'acc', '2026-11-02T06:30:00.000Z');
+  // The daily value takes Trading 212's total and investments value (which already contains the cash in
+  // pies); the cash rows are detail only, so pie cash is never counted twice.
   assert.deepStrictEqual(b.map((x) => [x.balanceType, x.valueKind, x.amount]), [
-    ['cash.availableToTrade', 'cash', 100.5],
-    ['cash.inPies', 'cash', 20],
-    ['cash.reservedForOrders', 'cash', 4.5],
+    ['cash.availableToTrade', '', 100.5],
+    ['cash.inPies', '', 20],
+    ['cash.reservedForOrders', '', 4.5],
     ['investments.currentValue', 'investments', 875],
-    ['totalValue', '', 1000]
+    ['totalValue', 'total', 1000]
   ]);
   assert.ok(b.every((x) => x.currency === 'EUR' && x.provider === 'trading212' && x.accountId === 'acc'));
   const partial = BS.T212Normalize.balances({ currency: 'EUR', cash: { availableToTrade: 1 } }, 'acc', '');
@@ -232,8 +234,103 @@ test('provider registry: lists both providers, routes each connection, keeps con
   assert.deepStrictEqual(lines.slice(0, 3), ['EB_APP_ID: set', 'EB_PRIVATE_KEY: MISSING', 'EB_REDIRECT_URL: MISSING']);
   assert.match(lines[3], /^Demo Bank \(alex\): 2027-01-31T00:00:00Z \(89 days left\)/);
   assert.strictEqual(lines[4], 'Trading 212 (alex) - T212_API_KEY_ALEX: set; T212_API_SECRET_ALEX: set');
+  assert.strictEqual(lines[5], 'Trading 212 (alex) history: older history loads with the next sync');
   const env = { http: () => ({ request: () => SUMMARY }), base64: (s) => s, toLocalDate, msLeft: () => 1000 };
   const t212 = R.create(R.connections(wired)[1], wired, env);
   assert.strictEqual(t212.listAccounts()[0].accountId, '1234567');
   assert.throws(() => R.entryFor({ key: 'x', provider: 'nope' }), /Unknown provider: nope/);
+});
+
+// --- One-time history backfill ---
+
+const pages = (n, prefix) => Array.from({ length: n }, (_, i) => ({
+  items: [{ type: 'DEPOSIT', amount: 1, currency: 'EUR', dateTime: '2024-0' + (9 - Math.min(i, 8)) + '-01T10:00:00Z', reference: prefix + i }],
+  nextPagePath: i < n - 1 ? '/api/v0/page-' + prefix + (i + 1) : null
+}));
+const reader = (list) => {
+  const asked = [];
+  const read = (path) => {
+    asked.push(path);
+    const i = path === null ? 0 : Number(path.split('-').pop().replace(/\D/g, ''));
+    return list[i];
+  };
+  return { read, asked };
+};
+
+test('t212 history: a step reads up to the page budget from the saved position and marks the last page', () => {
+  const r = reader(pages(5, 'c'));
+  const first = BS.T212History.step(r.read, { next: null, done: false }, 3);
+  assert.deepStrictEqual([first.items.length, first.feed], [3, { next: '/api/v0/page-c3', done: false }]);
+  const second = BS.T212History.step(r.read, first.feed, 3);
+  assert.deepStrictEqual([second.items.length, second.feed], [2, { next: null, done: true }]);
+  assert.deepStrictEqual(r.asked, [null, '/api/v0/page-c1', '/api/v0/page-c2', '/api/v0/page-c3', '/api/v0/page-c4']);
+  assert.deepStrictEqual(BS.T212History.step(() => { throw new Error('never'); }, second.feed, 3).items, [], 'a done feed reads nothing');
+});
+
+test('t212 history: a rate limit, server error or the time budget pauses at the last good page; other errors throw', () => {
+  const list = pages(3, 'c');
+  const failingOn = (n, error) => (path) => { if (path === '/api/v0/page-c' + n) throw error; return reader(list).read(path); };
+  const paused = BS.T212History.step(failingOn(1, BS.Errors.http(429, 'Limited')), { next: null, done: false }, 10);
+  assert.deepStrictEqual([paused.items.length, paused.feed], [1, { next: '/api/v0/page-c1', done: false }]);
+  assert.strictEqual(BS.T212History.step(failingOn(1, BS.Errors.http(503, 'down')), { next: null, done: false }, 10).feed.next, '/api/v0/page-c1');
+  assert.strictEqual(BS.T212History.step(failingOn(1, BS.Errors.create('TimeBudget', 't')), { next: null, done: false }, 10).feed.done, false);
+  assert.throws(() => BS.T212History.step(failingOn(1, BS.Errors.create('DataError', 'bad')), { next: null, done: false }, 10), /bad/);
+});
+
+test('t212 history: the state lives in one Script Property per holder and an unreadable one restarts', () => {
+  const props = fakeProps({});
+  const st = BS.T212History.store(props, CONN);
+  assert.deepStrictEqual(st.load(), { transactions: { next: null, done: false }, dividends: { next: null, done: false } });
+  assert.strictEqual(BS.T212History.statusLine(props, CONN), 'Trading 212 (alex) history: older history loads with the next sync');
+  st.save({ transactions: { next: '/api/v0/x', done: false }, dividends: { next: null, done: true } });
+  assert.ok(props.getKeys().includes('T212_HISTORY_ALEX'));
+  assert.match(BS.T212History.statusLine(props, CONN), /loading older history/);
+  st.save({ transactions: { next: null, done: true }, dividends: { next: null, done: true } });
+  assert.strictEqual(BS.T212History.statusLine(props, CONN), 'Trading 212 (alex) history: complete');
+  props.setProperty('T212_HISTORY_ALEX', '{not json');
+  assert.deepStrictEqual(st.load().transactions, { next: null, done: false });
+});
+
+test('t212 provider: the backfill adds older history over several runs, then stops reading it', () => {
+  const props = fakeProps({});
+  const history = BS.T212History.store(props, CONN);
+  const cashList = pages(BS.Config.TRADING212.BACKFILL_PAGES_PER_RUN + 2, 'c');
+  const cash = reader(cashList);
+  const client = {
+    summary: () => SUMMARY,
+    positions: () => [],
+    transactionsPage: cash.read,
+    dividendsPage: () => ({ items: [{ amount: 1, paidOn: '2024-10-01T10:00:00Z', reference: 'd1', ticker: 'X_EQ' }], nextPagePath: null })
+  };
+  const run = () => BS.Trading212Provider.create({ connection: CONN, client, nowMs: () => NOW, toLocalDate, history })
+    .getTransactions('acc', { dateFrom: '2026-10-01', dateTo: '2026-11-02' });
+  const first = run();
+  const perRun = BS.Config.TRADING212.BACKFILL_PAGES_PER_RUN;
+  assert.strictEqual(first.filter((t) => t.transactionId.startsWith('c')).length, perRun, 'old items come in although they are before dateFrom');
+  assert.ok(first.some((t) => t.transactionId === 'div:d1'));
+  assert.strictEqual(new Set(first.map((t) => t.transactionId)).size, first.length, 'no duplicates between recent and backfilled');
+  assert.deepStrictEqual(history.load(), { transactions: { next: '/api/v0/page-c' + perRun, done: false }, dividends: { next: null, done: true } });
+  const second = run();
+  assert.deepStrictEqual(second.filter((t) => t.transactionId.startsWith('c')).map((t) => t.transactionId), ['c' + perRun, 'c' + (perRun + 1)],
+    'the second run continues where the first stopped (page 0 is older than dateFrom, so the incremental part skips it)');
+  assert.strictEqual(history.load().transactions.done, true);
+  cash.asked.length = 0;
+  run();
+  assert.deepStrictEqual(cash.asked, [null], 'once done, only the incremental first page is read');
+});
+
+test('t212 provider: an item that fails to normalize never moves the backfill position past it', () => {
+  const props = fakeProps({});
+  const history = BS.T212History.store(props, CONN);
+  const client = {
+    summary: () => SUMMARY,
+    positions: () => [],
+    transactionsPage: (path) => (path === null
+      ? { items: [{ type: 'DEPOSIT', amount: 1, dateTime: '2026-11-01T10:00:00Z', reference: 'ok' }], nextPagePath: '/api/v0/p1' }
+      : { items: [{ type: 'DEPOSIT', amount: 'x', dateTime: '2024-01-01T10:00:00Z', reference: 'bad' }], nextPagePath: null }),
+    dividendsPage: () => ({ items: [], nextPagePath: null })
+  };
+  const provider = BS.Trading212Provider.create({ connection: CONN, client, nowMs: () => NOW, toLocalDate, history });
+  assert.throws(() => provider.getTransactions('acc', { dateFrom: '2026-10-01', dateTo: '2026-11-02' }), /not numeric/);
+  assert.deepStrictEqual(history.load().transactions, { next: null, done: false });
 });
