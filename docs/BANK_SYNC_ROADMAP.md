@@ -346,8 +346,8 @@ As built (see `bank-sync/README.md`, "CSV import"):
   connection `csv-<holder>`), read by every *Sync all* (so also the daily sync) and on demand by *Import CSV
   files*. Compared before coding: pasting into an import tab (no scope, but Sheets re-parses decimal commas and
   dates by the sheet locale) and an upload dialog (no scope, one manual step per file) were the alternatives; the
-  folder needs `drive.readonly` and no manual step after the upload. **Avanza waits for B1**, so its movements go
-  straight to `investment_transactions`; it becomes one more entry in `csv-formats`.
+  folder needs `drive.readonly` and no manual step after the upload. **Avanza waits for B1**, so its movements land
+  where B1 decides from the start; it becomes one more entry in `csv-formats`.
 - One registry entry (`csv`): connections from the folder properties, no consents, Show status = folder
   `set`/`MISSING` and the last read (`CSV_IMPORTS_<HOLDER>`: time, per source files, transactions and date range,
   skipped files with the reason; no amounts or text). The Enable Banking and Trading 212 providers are untouched;
@@ -385,8 +385,8 @@ As built (see `bank-sync/README.md`, "CSV import"):
   `Total`, one `ID` per row. Its `ID` equals the API `reference` (owner checked a card debit). Required columns are
   `Action`, `Time (UTC)`, `ID`, `Total` (columns empty for a period may be missing). See B3 for what it does.
 - Not yet seen live: a real BIL file through the import, its encoding, and whether BIL changes a movement's text
-  between exports (that would add a second row); a report with orders or dividends (their actions add nothing);
-  a card refund (its action name is unknown, so it adds nothing until it is seen).
+  between exports (that would add a second row); a report with orders, dividends, interest or a card refund
+  (they are coded from their action names, which were not in the sample).
 
 ## Phase 7: Danske Bank (Sweden): done
 
@@ -439,20 +439,30 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 
 ## Open decisions (raise, do not act)
 
-- **B1. Investment-account transactions in their own tab** (planned; next before Avanza). Move Trading 212
-  (and then Avanza) cash movements and dividends out of `transactions` into `investment_transactions`, so
-  `transactions` stays current-account cash flow. What it touches:
-  - the transactions store becomes a property of the registry entry (`SyncAllDeps.store` is one store today;
-    `TxnSync` gets the entry's store, and the FX step converts both tabs);
-  - labels: unchanged (`AccountLabels.stamp` works on any row), same columns on both tabs;
-  - FX: `FxService.convertTransactions` runs once per tab, rates fetched once for the run;
-  - migration: a one-time, repeat-safe step that moves the existing `trading212` rows (by provider) from
-    `transactions` to the new tab, keeping their EUR columns, so nothing is re-fetched or re-converted;
-  - the dedupe key stays provider + accountId + transactionId, so the T212 history backfill and later syncs land
-    on the moved rows unchanged;
-  - the card rows (B3: `WITHDRAW` with a merchant `category`, and `SPENDING_CASHBACK`) are spending, not
-    investment movements: decide whether they stay in `transactions` (moved by category) or go with the rest;
-  - the `category` column moves with the rows; the enrichment step must look in both tabs.
+- **B1. Where Trading 212 (and later Avanza) rows live: to review** (open decision; before Avanza). Today every
+  Trading 212 row is in `transactions`. Goal: `transactions` shows day-to-day cash flow, so totals of spending and
+  income are not mixed with money parked in or moved around an investment account. Since Phase 6 the report gives
+  each row it covers a precise `category` (merchant category for card payments, else `CARD_DEBIT`,
+  `SPENDING_CASHBACK`, `DEPOSIT`, ...), so a split can be by category rather than by provider. Options:
+  - **(a) All Trading 212 rows to their own tab** (`investment_transactions`): card payments, cashback, deposits,
+    withdrawals, interest, dividends. Simplest rule (by provider) and no ambiguous rows, but card spending
+    disappears from `transactions`, so spending analysis must read two tabs.
+  - **(b) Only card rows apart**: card payments and cashback in their own card tab (or kept in `transactions`),
+    everything else where it is. Keeps spending in one place, but deposits, interest and dividends stay mixed
+    into `transactions`.
+  - **(c) Split cards / investments**: card payments and cashback stay in `transactions` as spending; deposits,
+    withdrawals to the bank, interest and dividends go to `investment_transactions`. Matches the goal best;
+    needs the category to route rows and a rule for rows the report has not covered yet (a bare `WITHDRAW` or
+    `DEPOSIT` is ambiguous until a report names it, so it would move once a report arrives).
+  What every option touches:
+  - the store per destination: `SyncAllDeps.store` is one store today; `TxnSync` would route each row (by provider
+    for (a), by category for (b) and (c)), and the FX step converts every tab, rates fetched once per run;
+  - labels and columns: unchanged (`AccountLabels.stamp` works on any row), the same columns on every tab;
+  - migration: a one-time, repeat-safe step that moves the existing rows, keeping their EUR columns and
+    `category`, so nothing is re-fetched or re-converted;
+  - the dedupe key stays provider + accountId + transactionId; with routing by category a row can change tab
+    when a report names it, so a merge must find a row in any tab (and the enrichment step too);
+  - Avanza (Phase 6 format after B1) and B2 depend on the choice.
 - **B2. Internal transfers** (open decision). A bank-to-Trading 212 transfer appears twice in `transactions` (the
   bank's outflow, e.g. a BIL standing order to "Trading 212 Markets Limited", and the Trading 212 `DEPOSIT`); the
   same will hold for Avanza and for transfers between the owner's own accounts. Options: (a) match pairs (same
@@ -463,18 +473,22 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
   and cashback as `DEPOSIT` rows, without merchant or type. The Trading 212 report (exported from the app, or `POST
   /equity/history/exports`) names them, and its `ID` equals the API `reference`, so it **adds details to the API
   rows instead of adding rows** (adding would count every card payment twice):
-  - format `trading212-report` (`kind: 'details'`): `Card debit` gives `counterparty` = merchant name and the new
-    `category` column = merchant category (e.g. `SERVICE_PROVIDERS`); `Spending cashback` gives `category`
-    `SPENDING_CASHBACK`; other actions add nothing. Report rows the API has not delivered yet are applied on a later
-    sync (the folder is re-read every run).
+  - format `trading212-report` (`kind: 'details'`): every report row gives its API row a `category` (the new
+    column): the merchant category when there is one (e.g. `SERVICE_PROVIDERS`), else the action as a code
+    (`CARD_DEBIT`, `SPENDING_CASHBACK`, `DEPOSIT`, ...); and a `counterparty`: the merchant name, else the notes
+    (e.g. `Bank Transfer`). So a card payment is told apart from a withdrawal and cashback from a deposit. Report
+    rows the API has not delivered yet are applied on a later sync (the folder is re-read every run).
   - `transactions` gained an optional last column `category` (older tabs load; the table is one column wider).
   - `SyncAll` collects `getEnrichments()` from providers that have it and, after every connection and before the
-    FX step, applies them with the pure `TxnMerge.enrich` (provider + transactionId; only non-empty fields; saves
-    only if something changed; a failure is reported and marks the run failed, never stops it). The summary says
+    FX step, applies them with the pure `TxnMerge.enrich` (provider + transactionId; it only fills empty fields, so a
+    value the API gave, e.g. a dividend's instrument, is never replaced; saves only if something changed; a failure is reported and marks the run failed, never stops it). The summary says
     "Details from reports: N transactions updated (M read)."
   - `TxnMerge.combine` keeps a stored `counterparty`/`category` when a re-fetched row has none, so the Trading 212
     sync's 7-day re-read never wipes the merchant (and a merchant set by the report never counts as an update).
-  - The Trading 212 provider itself is unchanged. Not used yet: card refunds and the conversion fee column.
+  - The Trading 212 provider itself is unchanged. Not used: the conversion fee columns (no column for them). Report
+    rows for orders match nothing (orders are not imported); dividend rows match nothing either while our dividend
+    ids are `div:<reference>` (no dividend row was in the sample, so whether the report's dividend `ID` is that
+    reference is not checked).
 - **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer.
 - **Old portfolio sheet:** it calls Trading 212 with the legacy key and shares the per-account rate limit; retire
   it or move what is still used.

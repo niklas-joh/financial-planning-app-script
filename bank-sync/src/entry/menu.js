@@ -93,18 +93,20 @@
   }
 
   /**
-   * Runs an action under the script lock so syncs never overlap.
-   * @param {function(): void} action - Work to run while holding the lock.
+   * Runs an action under the script lock so syncs never overlap. Show popups after it returns: an
+   * open alert keeps the server call (and so the lock) waiting until it is closed.
+   * @param {function(): *} action - Work to run while holding the lock.
+   * @returns {*} What the action returns.
    * @throws {Error} LockError if another sync holds the lock.
    */
   function withLock(action) {
-    ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, action);
+    return ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, action);
   }
 
   /** Syncs accounts, balances and transactions for every connected login, then fills the EUR columns. */
   function syncAll() {
     guarded(function () {
-      withLock(function () {
+      const summary = withLock(function () {
         const wired = ns.Container.services();
         const lastRun = ns.LastRun.create(wired.props);
         const now = function () { return ns.Gas.dateTimeFormatter(ns.Config.TIMEZONE)(new Date()); };
@@ -116,8 +118,9 @@
           throw e;
         }
         ns.AutoSync.recordManual(lastRun, { outcome: outcome }, now());
-        SpreadsheetApp.getUi().alert(ns.SyncAll.summarize(outcome));
+        return ns.SyncAll.summarize(outcome);
       });
+      SpreadsheetApp.getUi().alert(summary);
     });
   }
 
@@ -127,18 +130,18 @@
    */
   function importCsv() {
     guarded(function () {
-      withLock(function () {
+      const summary = withLock(function () {
         const wired = ns.Container.services();
         const deps = ns.Container.syncAllDeps(wired);
         deps.connections = deps.connections.filter(function (c) { return c.provider === ns.Config.CSV.PROVIDER_ID; });
         if (!deps.connections.length) {
-          SpreadsheetApp.getUi().alert('No CSV folder set. Add ' + ns.Config.PROPERTY_KEYS.CSV_FOLDER_PREFIX +
-            '<HOLDER> with the Drive folder id in Script Properties (see the README).');
-          return;
+          return 'No CSV folder set. Add ' + ns.Config.PROPERTY_KEYS.CSV_FOLDER_PREFIX +
+            '<HOLDER> with the Drive folder id in Script Properties (see the README).';
         }
         const outcome = ns.SyncAll.run(deps);
-        SpreadsheetApp.getUi().alert(ns.SyncAll.summarize(outcome) + '\n\n' + ns.CsvFolders.statusLines(wired.props).join('\n'));
+        return ns.SyncAll.summarize(outcome) + '\n\n' + ns.CsvFolders.statusLines(wired.props).join('\n');
       });
+      SpreadsheetApp.getUi().alert(summary);
     });
   }
 

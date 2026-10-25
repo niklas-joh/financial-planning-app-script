@@ -104,10 +104,11 @@
 
   /**
    * Trading 212 history report (app export or `POST /equity/history/exports`). Its `ID` is the API's
-   * `reference`, so it names rows the Trading 212 provider already stores: card debits get their
-   * merchant and merchant category, spending cashback the category `SPENDING_CASHBACK`. Other actions
-   * (deposits, interest, orders, ...) are already complete from the API and add nothing. Columns that
-   * are empty for the exported period may be missing (merchant columns without card payments), so
+   * `reference`, so it names rows the Trading 212 provider already stores, and every record gives its
+   * row what the API lacks: `category` = the merchant category, else the action as a code (`CARD_DEBIT`,
+   * `SPENDING_CASHBACK`, `DEPOSIT`, ...), so a card payment is told apart from a withdrawal and cashback
+   * from a deposit; `counterparty` = the merchant name, else the notes (e.g. `Bank Transfer`). Columns
+   * that are empty for the exported period may be missing (merchant columns without card payments), so
    * only the ones every report has are required.
    * @type {CsvFormat}
    */
@@ -124,14 +125,22 @@
       if (!id) throw ns.Errors.create('DataError', 'A Trading 212 report row has no ID');
       // Time is 'YYYY-MM-DD HH:MM:SS+00:00' (UTC); the date only feeds the last-read record.
       const date = ns.CsvParse.date(String(r['Time (UTC)']).trim().slice(0, 10), 'YYYY-MM-DD');
-      const action = squeeze(r.Action);
-      if (action === 'Card debit') {
-        return { id: id, date: date, counterparty: squeeze(r['Merchant name'] || ''), category: squeeze(r['Merchant category'] || '') };
-      }
-      if (action === 'Spending cashback') return { id: id, date: date, counterparty: '', category: 'SPENDING_CASHBACK' };
-      return null;
+      return {
+        id: id,
+        date: date,
+        counterparty: squeeze(r['Merchant name'] || '') || squeeze(r.Notes || ''),
+        category: squeeze(r['Merchant category'] || '') || code(r.Action)
+      };
     }
   };
+
+  /**
+   * @param {string} text - Label, e.g. 'Spending cashback'.
+   * @returns {string} Upper-case code, e.g. 'SPENDING_CASHBACK'.
+   */
+  function code(text) {
+    return String(text || '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
 
   const ALL = [BIL, T212_REPORT];
 

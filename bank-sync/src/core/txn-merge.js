@@ -91,15 +91,17 @@
    * @typedef {Object} Enrichment
    * @property {string} provider - Provider of the rows it applies to.
    * @property {string} transactionId - Id of the row it applies to.
-   * @property {string} counterparty - Other party, or '' to leave the row's.
-   * @property {string} category - Category, or '' to leave the row's.
+   * @property {string} counterparty - Other party, or ''.
+   * @property {string} category - Category, or ''.
    * @property {string} [date] - Date of the source record (informational; not applied).
    */
 
   /**
    * Adds details from another source (e.g. merchant and category from a CSV report) to stored rows
-   * with the same provider and transaction id. Rows without a matching detail, and details without
-   * a matching row, are left alone; applying the same details again changes nothing.
+   * with the same provider and transaction id. Only empty fields are filled: a value the provider
+   * itself gave (e.g. a dividend's instrument as counterparty) is never replaced. Rows without a
+   * matching detail, and details without a matching row, are left alone; applying the same details
+   * again changes nothing.
    * @param {Array<import('../providers/bank-provider.js').Transaction>} rows - Stored rows.
    * @param {Array<Enrichment>} details - Details to apply.
    * @returns {{rows: Array<import('../providers/bank-provider.js').Transaction>, enriched: number}}
@@ -113,7 +115,7 @@
       const d = byKey[t.provider + '|' + t.transactionId];
       if (!d) return t;
       const next = Object.assign({}, t);
-      DETAIL_FIELDS.forEach(function (field) { if (!isEmpty(d[field])) next[field] = d[field]; });
+      DETAIL_FIELDS.forEach(function (field) { if (isEmpty(next[field]) && !isEmpty(d[field])) next[field] = d[field]; });
       if (!changed(t, next)) return t;
       enriched++;
       return next;

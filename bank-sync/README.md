@@ -251,11 +251,12 @@ Supported exports:
   The file has no currency column; BIL accounts are EUR.
 - **Trading 212 report** (exported from the Trading 212 app's history, any period, CSV): adds details to rows
   that *Sync all* already reads from the Trading 212 API, matched on the report's `ID` (the API's reference). It
-  never adds rows. `Card debit` rows give the API's `WITHDRAW` row its merchant (`counterparty`) and merchant
-  category (`category`, e.g. `SERVICE_PROVIDERS`); `Spending cashback` gives the `DEPOSIT` row the category
-  `SPENDING_CASHBACK`. Other actions (deposits, interest, orders, dividends) are complete from the API and
-  are left alone. A report row whose API row is not there yet is applied on a later sync. Comma-separated,
-  UTF-8, times in UTC.
+  never adds rows. Each report row gives its API row a `category`: the merchant category for card payments
+  (e.g. `SERVICE_PROVIDERS`), else the action as a code (`CARD_DEBIT`, `SPENDING_CASHBACK`, `DEPOSIT`, ...), so
+  a card payment is told apart from a withdrawal and cashback from a deposit; and a `counterparty`: the
+  merchant name, else the notes (e.g. `Bank Transfer`). Only empty fields are filled: what the API gave (e.g. a
+  dividend's instrument) is kept. Orders are not in `transactions`, so their report rows change nothing. A
+  report row whose API row is not there yet is applied on a later sync. Comma-separated, UTF-8, times in UTC.
 
 What it writes:
 
@@ -268,6 +269,9 @@ What it writes:
 - `transactions` has a new last column `category`, filled only by details such as the Trading 212 report. A
   later sync that re-reads a row without a counterparty or category keeps the ones already stored. The summary
   says how many rows got details: "Details from reports: N transactions updated (M read)."
+- The daily sync shows no popup (a time-driven run has no screen). *Sync all* and *Import CSV files* from the
+  menu show their summary after the sync has finished and released the script lock, so a popup left open never
+  holds up the daily run.
 - The `accountId` is the source plus a hash of the account number (`bil-1a2b3c4d`).
 
 Re-importing is safe. Without a bank id, a row's id is its date, a hash of its identifying columns and a

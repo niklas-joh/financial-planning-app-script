@@ -326,11 +326,11 @@ test('merge: a re-fetch without counterparty or category keeps the stored ones (
   assert.deepStrictEqual([renamed.updated, renamed.rows[0].counterparty, renamed.rows[0].category], [1, 'Other', 'RESTAURANTS']);
 });
 
-test('enrich: details land on rows with the same provider and id, only non-empty fields, idempotent', () => {
+test('enrich: details fill the empty fields of rows with the same provider and id, never replace a value, idempotent', () => {
   const rows = [tx({ transactionId: 'a', provider: 'trading212' }), tx({ transactionId: 'a' }), tx({ transactionId: 'b', provider: 'trading212', counterparty: 'Kept' })];
   const details = [
     { provider: 'trading212', transactionId: 'a', counterparty: 'Demo Cafe', category: 'RESTAURANTS', date: '2026-01-10' },
-    { provider: 'trading212', transactionId: 'b', counterparty: '', category: 'SPENDING_CASHBACK' },
+    { provider: 'trading212', transactionId: 'b', counterparty: 'Report name', category: 'SPENDING_CASHBACK' },
     { provider: 'trading212', transactionId: 'missing', counterparty: 'X', category: 'Y' }
   ];
   const once = BS.TxnMerge.enrich(rows, details);
