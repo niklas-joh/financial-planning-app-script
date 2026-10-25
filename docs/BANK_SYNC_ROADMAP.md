@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-25 (phase 5, the Trading 212 provider, as it stands once merged and deployed).
+Last updated: 2026-10-25 (phase 6, the CSV import provider with BIL, as it stands once merged and deployed).
 
 ## Setup in one paragraph
 
@@ -16,7 +16,8 @@ Two independent Apps Script projects, each bound to its own Sheet:
   SaltEdge code. **Not being developed further**; the smoke test of it was dropped
   because its `Transactions` sheet is empty. Retirement is a pending decision (below).
 - **bank-sync** (`bank-sync/`, own `.clasp.json`, namespace `BankSync`): sheet "Bank Sync".
-  Enable Banking (banks) and the Trading 212 public API (one API key per account) are the data sources.
+  Enable Banking (banks), the Trading 212 public API (one API key per account) and CSV exports in a
+  Drive folder per holder (BIL) are the data sources.
   Europe/Luxembourg time zone, EUR reporting currency.
 
 ## Status
@@ -30,7 +31,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Merged (#56), live: first sync converted the full history, a second converted 0 |
 | 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
 | 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#65): daily total from Trading 212's own total, one-time full history backfill |
-| 6 | CSV import provider (Avanza, BIL) | Planned |
+| 6 | CSV import provider: Drive folder per holder, BIL export | Merged, live once deployed (see Phase 6). Avanza follows after B1 |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
 
@@ -52,7 +53,7 @@ quirks) goes into the next phase's PR.
   field as `api.*` columns; `raw_transactions` accumulates, see below), `transactions` (the full deduplicated
   history, signed amounts, label columns, `amountEur`/`fxRate`/`fxRateDate` filled), and `rates` (ECB rates per
   currency and date). `raw_balances` also carries `amountEur`/`fxRate`/`fxRateDate` at the latest rate.
-- Menu: *Connect a bank...*, *Sync all*, *Show status*, *Enable daily sync*, *Disable daily sync*. Sync all is idempotent: a second run
+- Menu: *Connect a bank...*, *Sync all*, *Import CSV files*, *Show status*, *Enable daily sync*, *Disable daily sync*. Sync all is idempotent: a second run
   reports 0 added, 0 updated, 0 removed, and 0 transactions converted to EUR.
 - Apps Script: web-app deployment (the redirect `/exec`) is pinned to version 3; the script
   itself is pushed from `main` after #58 (Phases 3 and 4 did not change the web app, so no redeploy). The three
@@ -71,8 +72,9 @@ quirks) goes into the next phase's PR.
     investments (an amount the summary does not break down, possibly payments still being processed). The
     fix takes `totalValue` as the total and cash as total minus investments.
   - History types: `INTEREST_ON_FREE_CASH` (about two a day), `DEPOSIT`, `WITHDRAW`, `LENDING_INTEREST`, and
-    dividends. Card payments are not in the API (checked against the app: `WITHDRAW` rows are withdrawals, not
-    card spending); only the card cashback appears, as small `DEPOSIT` rows.
+    dividends. Card payments do appear, but only as plain `WITHDRAW` rows (cashback as small `DEPOSIT` rows) with
+    no card type, merchant or category, so they cannot be told apart from other movements (owner, checked
+    against the app on 2026-10-25; this corrects the first reading that they were missing). See B3.
   - A key without its secret shows as "not connected" (both are needed).
   - The backfill (#65) loaded the full history in two syncs. Every re-read Trading 212 row was reported as
     "updated" (the values were identical; only the key order differed from the copy read back from the sheet,
@@ -113,6 +115,10 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
 - `providers/trading212/`: `t212-normalize` (pure), `t212-rate-limit` (pure 429 wait from
   `x-ratelimit-reset`, plugged into `lib/http` as `retryDelayMs`), `t212-credentials` (key pairs in Script
   Properties), `t212-client` (one method per endpoint, Basic auth), `t212-provider`.
+- `providers/csv/`: `csv-parse` (pure: rows, header below a preamble, numbers and dates in a declared layout),
+  `csv-formats` (one entry per export, written from a real sample), `csv-normalize` (pure: format detection,
+  account, stable ids, number masking), `csv-folders` (folder per holder and the last-read record in Script
+  Properties), `csv-provider`. `lib/gas-adapters` `driveFolder` is the only DriveApp use.
 - `providers/enable-banking/`: `eb-client` (one method per endpoint), `eb-auth`,
   `eb-token`, `eb-session-store`, `eb-normalize`, `eb-provider`.
 - `sheets/`: `raw-writer` (fixed columns plus one `api.*` column per API field, per-connection
@@ -331,10 +337,48 @@ Trading 212 facts (verified against docs.trading212.com/api and its OpenAPI file
 - History types: WITHDRAW, DEPOSIT, FEE, TRANSFER, INTEREST_ON_FREE_CASH, LENDING_INTEREST. No card type and no
   merchant field; the CSV report (`POST /equity/history/exports`, 1/30 s) is the only other history source.
 
-## Phase 6: CSV import provider
+## Phase 6: CSV import provider (live once deployed)
 
-`CsvImportProvider` for banks Enable Banking does not cover: Avanza (not supported) and
-BIL (not supported, parked). Same normalized `Transaction` model and the same upsert.
+As built (see `bank-sync/README.md`, "CSV import"):
+
+- Owner decisions (2026-10-25): files come from a **Drive folder** per holder (`CSV_FOLDER_<HOLDER>` = folder id,
+  connection `csv-<holder>`), read by every *Sync all* (so also the daily sync) and on demand by *Import CSV
+  files*. Compared before coding: pasting into an import tab (no scope, but Sheets re-parses decimal commas and
+  dates by the sheet locale) and an upload dialog (no scope, one manual step per file) were the alternatives; the
+  folder needs `drive.readonly` and no manual step after the upload. **Avanza waits for B1**, so its movements go
+  straight to `investment_transactions`; it becomes one more entry in `csv-formats`.
+- One registry entry (`csv`): connections from the folder properties, no consents, Show status = folder
+  `set`/`MISSING` and the last read (`CSV_IMPORTS_<HOLDER>`: time, per source files, transactions and date range,
+  skipped files with the reason; no amounts or text). The Enable Banking and Trading 212 providers are untouched;
+  `SyncAll`, `TxnSync`, `TxnMerge`, `RawSync` and the FX step are reused as they are (the provider returns all
+  of the folder's rows in one window, `maxWindowDays: Infinity`).
+- Each run reads every `.csv` in the folder (Google-format files are ignored), finds its format by the header
+  (trying UTF-8, then Windows-1252 if UTF-8 decodes with invalid bytes), and normalizes it. A file that matches no
+  format or has an unreadable row is skipped whole and named; the others still import. Nothing is guessed.
+- Ids without a bank id: `h<date>-<fnv1a of the parsed identifying columns>-<occurrence>`, the counter per
+  identical row within a file. Exports cover whole days, so the same or an overlapping file yields the same ids:
+  0 added, 0 updated. Rows in two overlapping files count once. The date in the id confines a 32-bit hash
+  collision to one day.
+- `accountId` = `<source>-` + hash of the account number; `ibanMasked` = its last four. IBANs and 12-19 digit runs
+  (card, account and personal id numbers) are masked to their last four characters in `description`,
+  `counterparty` and the `api.*` columns.
+- BIL export (from the owner's sample, 2026-10-25): `;`-separated; title lines, then `<IBAN> <product>`, a blank
+  line, then the header `Date;Value date;Name;Message;Amount`; dates `DD/MM/YYYY`; amounts signed (out negative),
+  `.` decimal mark and `,` thousands separator (`8,828.03`, `-1,500`); some messages are in double quotes, some
+  not (both are read); no id column (identifying columns: both dates, `Name`, `Message`, `Amount`); no currency
+  column (taken as EUR). Opening the file in a spreadsheet app as comma-separated splits amounts with a thousands
+  comma across two columns: an artefact of the viewer, not of the file. `Name` is the movement type (`Payment
+  order`, `Credit`, `Card payment`); the counterparty comes from `Beneficiary:` / `By order of:` in the message,
+  or the merchant text before the date for card payments.
+- New OAuth scope `drive.readonly` (in `bank-sync/src/appsscript.json` and `scripts/allowed-scopes.json`): DriveApp
+  needs a Drive scope to read files the script did not create (`drive.file` does not cover files uploaded by hand).
+  Read-only: files are never changed, moved or deleted. The web-app path is unchanged.
+- Deploy steps: `clasp push --force` from `bank-sync/` after diffing the manifest (time zone and the new scope),
+  reload the sheet and re-authorize (the daily trigger fails until then), create the folder, set
+  `CSV_FOLDER_NIKLAS`, upload a BIL export, run *Import CSV files* twice (the second reports 0 added, 0 updated)
+  and check *Show status*. No `clasp deploy`.
+- Not yet seen live: a real BIL file through the import, its encoding, and whether BIL changes a movement's text
+  between exports (that would add a second row).
 
 ## Phase 7: Danske Bank (Sweden): done
 
@@ -387,11 +431,36 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 
 ## Open decisions (raise, do not act)
 
-- **Internal transfers:** a bank-to-Trading 212 transfer appears twice in `transactions` (the bank's outflow and
-  the Trading 212 `DEPOSIT`). Decide whether Trading 212 history stays in `transactions`, moves to its own tab, or
-  transfers get matched and marked as internal so analysis does not count them as spending or income.
-- **Card spending:** the API does not return card payments at all (only the cashback); the Trading 212 CSV report might (unverified),
-  which would fit Phase 6.
+- **B1. Investment-account transactions in their own tab** (planned; next before Avanza). Move Trading 212
+  (and then Avanza) cash movements and dividends out of `transactions` into `investment_transactions`, so
+  `transactions` stays current-account cash flow. What it touches:
+  - the transactions store becomes a property of the registry entry (`SyncAllDeps.store` is one store today;
+    `TxnSync` gets the entry's store, and the FX step converts both tabs);
+  - labels: unchanged (`AccountLabels.stamp` works on any row), same columns on both tabs;
+  - FX: `FxService.convertTransactions` runs once per tab, rates fetched once for the run;
+  - migration: a one-time, repeat-safe step that moves the existing `trading212` rows (by provider) from
+    `transactions` to the new tab, keeping their EUR columns, so nothing is re-fetched or re-converted;
+  - the dedupe key stays provider + accountId + transactionId, so the T212 history backfill and later syncs land
+    on the moved rows unchanged;
+  - card spending from Trading 212 (B3) is current-account-like spending and would stay in `transactions`.
+- **B2. Internal transfers** (open decision). A bank-to-Trading 212 transfer appears twice in `transactions` (the
+  bank's outflow, e.g. a BIL standing order to "Trading 212 Markets Limited", and the Trading 212 `DEPOSIT`); the
+  same will hold for Avanza and for transfers between the owner's own accounts. Options: (a) match pairs (same
+  holder, opposite amounts, a few days apart) and mark both `internal` so analysis skips them; (b) let B1 settle
+  the investment side (the deposit leaves `transactions`; the bank outflow stays as money moved to savings). B1
+  covers investment accounts only; transfers between bank accounts would still need (a).
+- **B3. Card spending** (open decision). The Trading 212 API returns card payments only as plain `WITHDRAW` rows
+  and cashback as `DEPOSIT` rows, without merchant or type. The Trading 212 CSV report (`POST
+  /equity/history/exports`, or exported from the app) has them. Header from the owner's export (2026-10-25):
+  `Action, Time (UTC), Notes, ID, Total, Currency (Total), Currency conversion fee, Currency (Currency conversion
+  fee), Merchant name, Merchant category`; actions seen: `Card debit` (negative `Total`, merchant name and
+  category), `Spending cashback`, `Deposit` (note `Bank Transfer`); time `YYYY-MM-DD HH:MM:SS+00:00` in UTC;
+  `.` decimal mark; one id per row (a UUID). This header has no instrument columns (ISIN, ticker, shares),
+  presumably because that export held no orders or dividends, so a format must match on the columns it needs,
+  not the whole header. The raw separator is not confirmed yet (the sample was copied from a spreadsheet app). Because the API already has these rows,
+  importing them as new rows would count each card payment twice. Open: whether the API `reference` equals the
+  report's `ID` (then the report can add merchant and category to the API rows instead of adding rows), and
+  where the enrichment lives (columns on `transactions`, or a small `card_details` tab joined on the id).
 - **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer.
 - **Old portfolio sheet:** it calls Trading 212 with the legacy key and shares the per-account rate limit; retire
   it or move what is still used.

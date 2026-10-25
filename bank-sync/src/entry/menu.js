@@ -121,6 +121,27 @@
     });
   }
 
+  /**
+   * Imports the CSV files in every holder's Drive folder now: Sync all limited to the CSV connections
+   * (Sync all and the daily sync read the folders too). Leaves the Sync all last-run record alone.
+   */
+  function importCsv() {
+    guarded(function () {
+      withLock(function () {
+        const wired = ns.Container.services();
+        const deps = ns.Container.syncAllDeps(wired);
+        deps.connections = deps.connections.filter(function (c) { return c.provider === ns.Config.CSV.PROVIDER_ID; });
+        if (!deps.connections.length) {
+          SpreadsheetApp.getUi().alert('No CSV folder set. Add ' + ns.Config.PROPERTY_KEYS.CSV_FOLDER_PREFIX +
+            '<HOLDER> with the Drive folder id in Script Properties (see the README).');
+          return;
+        }
+        const outcome = ns.SyncAll.run(deps);
+        SpreadsheetApp.getUi().alert(ns.SyncAll.summarize(outcome) + '\n\n' + ns.CsvFolders.statusLines(wired.props).join('\n'));
+      });
+    });
+  }
+
   /** Turns the daily sync on (one trigger, never duplicated). */
   function enableDailySync() {
     guarded(function () {
@@ -149,7 +170,7 @@
     });
   }
 
-  ns.Menu = { connect: connect, syncAll: syncAll, status: status, enableDailySync: enableDailySync, disableDailySync: disableDailySync };
+  ns.Menu = { connect: connect, syncAll: syncAll, importCsv: importCsv, status: status, enableDailySync: enableDailySync, disableDailySync: disableDailySync };
 })(globalThis.BankSync);
 
 /** Adds the Bank Sync menu when the spreadsheet opens. */
@@ -157,6 +178,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Bank Sync')
     .addItem('Connect a bank...', 'menuConnect')
     .addItem('Sync all', 'menuSyncAll')
+    .addItem('Import CSV files', 'menuImportCsv')
     .addItem('Show status', 'menuStatus')
     .addSeparator()
     .addItem('Enable daily sync', 'menuEnableDailySync')
@@ -169,6 +191,9 @@ function menuConnect() { BankSync.Menu.connect(); }
 
 /** Menu entry: sync everything. */
 function menuSyncAll() { BankSync.Menu.syncAll(); }
+
+/** Menu entry: import the CSV files in the Drive folders now. */
+function menuImportCsv() { BankSync.Menu.importCsv(); }
 
 /** Menu entry: show setup status. */
 function menuStatus() { BankSync.Menu.status(); }

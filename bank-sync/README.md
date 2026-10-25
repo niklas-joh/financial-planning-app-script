@@ -2,8 +2,8 @@
 
 Modular Apps Script project that pulls bank data via
 [Enable Banking](https://enablebanking.com), and cash, holdings and history from
-[Trading 212](https://docs.trading212.com/api), into a dedicated Google Sheet
-("Bank Sync"). Independent of the legacy `src/` project in this repo.
+[Trading 212](https://docs.trading212.com/api), and CSV exports from a Drive folder (BIL),
+into a dedicated Google Sheet ("Bank Sync"). Independent of the legacy `src/` project in this repo.
 
 ## Layout
 
@@ -211,11 +211,11 @@ What it writes:
 
 Notes:
 
-- Card payments are not in the API (no card type, no merchant), confirmed against the app: the
-  `WITHDRAW` rows are withdrawals, not card spending. Only the card cashback appears, as small
-  `DEPOSIT` rows. Card spending stays out of Bank Sync until another source covers it. A transfer from a bank
-  account to Trading 212 currently shows up twice in `transactions` (the bank's outflow and the
-  Trading 212 deposit).
+- Card payments are in the API only as plain `WITHDRAW` rows (cashback as small `DEPOSIT` rows), with no
+  card type, merchant or category, so they cannot be told apart from other withdrawals and deposits. The
+  Trading 212 CSV report does carry them (`Card debit` with merchant name and category); see the roadmap,
+  "Card spending". A transfer from a bank account to Trading 212 currently shows up twice in
+  `transactions` (the bank's outflow and the Trading 212 deposit).
 - Rate limits are per Trading 212 account, whatever the key: summary 1 per 5 s, positions 1 per s,
   history 20 per minute. A sync makes about four calls per account. On HTTP 429 the call waits until
   the `x-ratelimit-reset` time (at most 65 s and never past the run's time budget), then retries.
@@ -223,3 +223,53 @@ Notes:
 - All amounts come in the account's primary currency; multi-currency accounts are not supported by
   the API. Only Invest and Stocks ISA accounts have API access.
 - No new OAuth scope: `script.external_request` already covers the calls.
+
+## CSV import (Phase 6)
+
+Banks that Enable Banking does not cover are imported from their CSV exports. You drop the files in a
+Google Drive folder; *Sync all* (and the daily sync) reads every `.csv` file in it, and
+*Bank Sync > Import CSV files* does the same on demand (only the folders, no bank or Trading 212 calls).
+
+1. Create a Drive folder per person, e.g. "Bank Sync imports (niklas)". Copy its id from the URL
+   (`https://drive.google.com/drive/folders/<id>`).
+2. In **Project Settings > Script Properties** add `CSV_FOLDER_<HOLDER>` = the folder id, e.g.
+   `CSV_FOLDER_NIKLAS` (connection `csv-niklas`). The id is not a secret, but keep the folder private.
+3. Export from the bank and upload the file as it is. If Drive is set to convert uploads to Google
+   formats, turn that off (**Drive settings > Convert uploads**): a converted file is a Sheet, not a CSV,
+   and is ignored. Don't edit exports in a spreadsheet app and save them again; that can change
+   separators and number formats.
+4. *Import CSV files*, or wait for the next sync. *Show status* shows per folder when it was last read
+   and, per source, how many files and transactions it found and their date range, plus any file it
+   skipped and why.
+
+Supported exports:
+
+- **BIL** (BILnet, "List of account movements", one account per file): `;`-separated, a few title lines
+  and the account line (IBAN and product) above the header `Date;Value date;Name;Message;Amount`; dates
+  `DD/MM/YYYY`; amounts signed (money out negative) with `.` as decimal mark and `,` between thousands
+  (`8,828.03`, `-1,500`). Spreadsheet apps that open the file as comma-separated split those amounts
+  across two columns; the import reads the raw text, so they are read correctly. UTF-8, else Windows-1252.
+  The file has no currency column: BIL accounts are taken as EUR.
+
+What it writes:
+
+- `transactions`: one booked row per movement, `provider` `csv`, `bank` the source (`BIL`),
+  `connection` the folder (`csv-niklas`), `accountName` the product from the account line, `ibanMasked`
+  its last four characters, `description` the type and message, `counterparty` the beneficiary, the
+  payer or the card merchant when the message names one. Account and card numbers inside the texts are
+  masked to their last four digits. EUR at the booking-date rate, like every other row.
+- `raw_accounts` and `raw_transactions`: the account and every CSV column as `api.*` (masked the same way).
+- The `accountId` is the source plus a hash of the account number (`bil-1a2b3c4d`).
+
+Re-importing is safe. Without a bank id, a row's id is its date, a hash of its identifying columns and a
+counter for identical rows on the same day, so the same file, or a file overlapping an earlier one, gives
+0 added and 0 updated; files can stay in the folder. Rows read from two overlapping files count once. A
+row the bank later changes (a different text for the same movement) would come in as a new row; delete
+the old one by hand if that ever happens. A file whose header matches no known export, or with a row that
+cannot be read (e.g. an amount that is not a number), is skipped as a whole and named in *Show status*;
+the other files still import. Nothing is guessed: a new bank needs its export layout added to
+`src/providers/csv/csv-formats.js`.
+
+New OAuth scope: `drive.readonly`, to list the folder and read files you uploaded (`drive.file` only covers
+files the script created). The script never changes, moves or deletes files. Re-authorize after the push
+(the daily sync fails until you do).

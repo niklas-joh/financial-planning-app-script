@@ -38,6 +38,8 @@
    * @property {Object} TRADING212 - Trading 212 public API: provider id, display name, origin and API path
    *   (live), page size (the API's maximum), pages per history feed the one-time backfill reads per run, and
    *   the longest wait for a rate-limit reset before a call gives up.
+   * @property {Object} CSV - CSV import: provider id, display name of its connections (one Drive folder per
+   *   holder) and the largest file read.
    * @property {{WARN_DAYS: Array<number>}} CONSENT - Days before a consent lapses on which a warning
    *   email is sent (each once per consent); one more is sent once it has lapsed.
    */
@@ -69,6 +71,8 @@
       T212_API_KEY_PREFIX: 'T212_API_KEY_',
       T212_API_SECRET_PREFIX: 'T212_API_SECRET_',
       T212_HISTORY_PREFIX: 'T212_HISTORY_',
+      CSV_FOLDER_PREFIX: 'CSV_FOLDER_',
+      CSV_IMPORTS_PREFIX: 'CSV_IMPORTS_',
       LAST_RUN: 'BS_LAST_RUN',
       CONSENT_WARNED_PREFIX: 'BS_CONSENT_WARNED_'
     }),
@@ -115,6 +119,11 @@
       PAGE_LIMIT: 50,
       BACKFILL_PAGES_PER_RUN: 40,
       MAX_RETRY_WAIT_MS: 65000
+    }),
+    CSV: Object.freeze({
+      PROVIDER_ID: 'csv',
+      BANK_NAME: 'CSV import',
+      MAX_FILE_BYTES: 5000000
     }),
     CONSENT: Object.freeze({
       WARN_DAYS: Object.freeze([30, 14, 7, 1])
