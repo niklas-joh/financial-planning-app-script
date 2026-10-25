@@ -288,3 +288,25 @@ test('sync: provider errors propagate', () => {
   const { deps } = syncDeps({ provider: { getTransactions: () => { throw BS.Errors.auth('expired'); } } });
   assert.throws(() => BS.TxnSync.run(deps), { name: 'AuthError' });
 });
+
+test('merge: a row whose keys come in another order than the stored copy is not counted as updated', () => {
+  // A provider builds its row with labels appended last; the copy read back from the sheet has the
+  // columns' order. Same values, so a re-fetch must report 0 updated (seen live with Trading 212).
+  const conn = BS.T212Credentials.connections({ getKeys: () => ['T212_API_KEY_ALEX'] })[0];
+  const account = BS.T212Normalize.account({ id: 7, currency: 'EUR' }, conn);
+  const labels = BS.AccountLabels.lookup([account]);
+  const fetched = () => {
+    const t = BS.AccountLabels.stamp(BS.T212Normalize.cashMovement(
+      { type: 'DEPOSIT', amount: 5, currency: 'EUR', dateTime: '2026-10-20T10:00:00Z', reference: 'r1' }, '7', (iso) => iso.slice(0, 10)), labels);
+    delete t.apiFields;
+    return t;
+  };
+  const book = fakeSheetBook();
+  const store = BS.TransactionsStore.create(book, (d) => d.toISOString().slice(0, 10));
+  const range = [{ accountId: '7', from: '2026-10-01', to: '2026-10-25' }];
+  store.save(BS.TxnMerge.merge(store.load(), [fetched()], range).rows);
+  const again = BS.TxnMerge.merge(store.load(), [fetched()], range);
+  assert.deepStrictEqual([again.added, again.updated, again.removed], [0, 0, 0]);
+  const amountChanged = Object.assign(fetched(), { amount: 6 });
+  assert.strictEqual(BS.TxnMerge.merge(store.load(), [amountChanged], range).updated, 1, 'a real change still counts');
+});

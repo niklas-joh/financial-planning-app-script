@@ -74,8 +74,12 @@ quirks) goes into the next phase's PR.
     dividends. Card payments are not in the API (checked against the app: `WITHDRAW` rows are withdrawals, not
     card spending); only the card cashback appears, as small `DEPOSIT` rows.
   - A key without its secret shows as "not connected" (both are needed).
-  - Still to check: that a second sync reports 0 added and 0 updated for Trading 212 once the backfill is
-    complete.
+  - The backfill (#65) loaded the full history in two syncs. Every re-read Trading 212 row was reported as
+    "updated" (the values were identical; only the key order differed from the copy read back from the sheet,
+    and `TxnMerge.changed` compared JSON text). Fixed in #67: rows are compared field by field. After deploying
+    it, a repeated sync reports 0 added and 0 updated for Trading 212 too.
+  - `totalValue` stays a constant small amount above available cash plus investments over several syncs, so it
+    is not a payment in flight; it counts as cash (total minus investments).
 - Known data quirks: Revolut returns one transaction in 90 days (a zero-amount card check);
   its SEK balance has a reference date in 2024 (dormant). Danske history starts at the 90-day
   lookback; older history may need a longer `INITIAL_LOOKBACK_DAYS` (check what the bank serves).
