@@ -5,21 +5,30 @@
   const PROVIDER_ID = ns.Config.ENABLE_BANKING.PROVIDER_ID;
 
   /**
-   * Maps an Enable Banking AccountResource to an Account.
+   * Maps an Enable Banking AccountResource to an Account. The API's `name` is the
+   * account holder's name (`holderName`); `details` is the label set by the user or
+   * bank (`accountName`). `bank` and `connection` are stamped later by the provider.
    * @param {Object} raw - AccountResource (needs `uid` and `currency`).
-   * @returns {import('../bank-provider.js').Account} Normalized account; IBAN masked.
+   * @param {string} [detailsAt] - ISO date-time the details were read, '' if unknown.
+   * @returns {import('../bank-provider.js').Account} Normalized account; IBAN masked, every API
+   *   field kept (flattened) in `apiFields`.
    * @throws {Error} If `uid` is missing.
    */
-  function normalizeAccount(raw) {
+  function normalizeAccount(raw, detailsAt) {
     if (!raw || !raw.uid) throw ns.Errors.create('DataError', 'Account is missing uid');
     return {
       provider: PROVIDER_ID,
       accountId: raw.uid,
-      name: raw.name || raw.product || '',
+      bank: '',
+      connection: '',
+      holderName: raw.name || '',
+      accountName: raw.details || '',
       currency: raw.currency || '',
       ibanMasked: ns.Redact.maskIban(raw.account_id && raw.account_id.iban),
       accountType: raw.cash_account_type || '',
-      product: raw.product || ''
+      product: raw.product || '',
+      detailsAt: detailsAt || '',
+      apiFields: ns.Flatten.flat(raw)
     };
   }
 
@@ -38,12 +47,13 @@
       provider: PROVIDER_ID,
       accountId: accountId,
       balanceType: raw.balance_type || '',
-      name: raw.name || '',
+      description: raw.name || '',
       amount: amount,
       currency: raw.balance_amount.currency || '',
       referenceDate: raw.reference_date || '',
       lastChange: raw.last_change_date_time || '',
-      fetchedAt: fetchedAt
+      fetchedAt: fetchedAt,
+      apiFields: ns.Flatten.flat(raw)
     };
   }
 
@@ -95,6 +105,11 @@
   function toTransaction(raw, accountId, status) {
     return {
       provider: PROVIDER_ID,
+      bank: '',
+      connection: '',
+      holderName: '',
+      accountName: '',
+      ibanMasked: '',
       accountId: accountId,
       transactionId: '',
       bookingDate: raw.booking_date || '',
@@ -106,7 +121,8 @@
       fxRate: null,
       fxRateDate: '',
       counterparty: counterpartyName(raw),
-      description: descriptionOf(raw)
+      description: descriptionOf(raw),
+      apiFields: ns.Flatten.flat(raw)
     };
   }
 
@@ -124,7 +140,8 @@
    * Maps all raw transactions of one fetch. The id is `entry_reference` (documented
    * as unique and immutable per account), else `transaction_id`, else a content hash
    * with an occurrence counter so genuinely identical rows stay distinct.
-   * Cancelled, rejected, scheduled and unknown-status rows are skipped.
+   * Cancelled, rejected, scheduled and unknown-status rows are skipped. Every API field is
+   * kept (flattened, account numbers masked) in `apiFields`; callers strip it before storing.
    * @param {Array<Object>} rawList - Enable Banking transactions (all pages of one fetch).
    * @param {string} accountId - Account the transactions belong to.
    * @returns {{transactions: Array<import('../bank-provider.js').Transaction>, skipped: number}}

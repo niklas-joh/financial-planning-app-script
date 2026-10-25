@@ -5,7 +5,7 @@
 (function (ns) {
   /**
    * @typedef {Object} EbProviderDeps
-   * @property {import('../../core/config.js').BankConfig} bank - Bank this instance serves.
+   * @property {import('../../core/config.js').ConnectionConfig} connection - Login this instance serves.
    * @property {Object} client - EbClient.
    * @property {Object} store - EbSessionStore.
    * @property {Object} auth - EbAuth flow.
@@ -13,7 +13,7 @@
    */
 
   /**
-   * Creates a provider for one bank.
+   * Creates a provider for one connection (one login at one bank).
    * @param {EbProviderDeps} deps - Injected services.
    * @returns {import('../bank-provider.js').BankProvider} The provider.
    */
@@ -24,26 +24,39 @@
      * @throws {Error} AuthError if never authorized, lapsed or revoked.
      */
     function requireSession() {
-      const session = deps.store.loadSession(deps.bank.key);
-      if (!session) throw ns.Errors.auth('Not authorized yet; run "Authorize" first');
+      const session = deps.store.loadSession(deps.connection.key);
+      if (!session) throw ns.Errors.auth('Not authorized yet; use "Connect a bank..." first');
       if (Date.parse(session.accessValidUntil) <= deps.nowMs()) {
         throw ns.Errors.auth('Consent has expired; re-authorize');
       }
       return session;
     }
 
+    /**
+     * Adds the bank and connection this provider serves, and the stored API fields.
+     * @param {import('../bank-provider.js').Account} account - Stored account.
+     * @returns {import('../bank-provider.js').Account} Account with `bank`, `connection` and `apiFields` set.
+     */
+    function stampAccount(account) {
+      return Object.assign({}, account, {
+        bank: deps.connection.bank.aspspName,
+        connection: deps.connection.key,
+        apiFields: deps.store.loadApiFields(account.accountId)
+      });
+    }
+
     return ns.BankProvider.assertBankProvider({
       authorize: function () {
-        return deps.auth.begin(deps.bank);
+        return deps.auth.begin(deps.connection);
       },
 
-      listAccounts: function () {
+      listAccounts: function (options) {
         const session = requireSession();
         const state = deps.client.getSession(session.sessionId);
         if (state.status && state.status !== 'AUTHORIZED') {
           throw ns.Errors.auth('Session status is ' + state.status + '; re-authorize');
         }
-        return session.accounts;
+        return deps.auth.refreshStale(deps.connection, options && options.outOfTime).map(stampAccount);
       },
 
       getBalances: function (accountId) {

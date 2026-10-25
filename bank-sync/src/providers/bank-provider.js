@@ -7,11 +7,16 @@
    * @typedef {Object} Account
    * @property {string} provider - Provider id, e.g. 'enablebanking'.
    * @property {string} accountId - Provider-scoped account identifier.
-   * @property {string} name - Display name.
+   * @property {string} bank - Bank name, e.g. 'Revolut'. Set by the provider.
+   * @property {string} connection - Connection key (bank plus holder). Set by the provider.
+   * @property {string} holderName - Account holder's name as the API reports it (Enable Banking `name`).
+   * @property {string} accountName - Name set by the user or bank (Enable Banking `details`), or ''.
    * @property {string} currency - ISO 4217 code.
    * @property {string} ibanMasked - IBAN reduced to last four characters, or ''.
    * @property {string} accountType - Provider account type (e.g. ISO cash account type).
    * @property {string} product - Provider product name, or ''.
+   * @property {string} detailsAt - ISO date-time the full details were last read, or ''.
+   * @property {Object<string,*>} [apiFields] - Every API field, flattened and IBAN-masked (raw tab).
    */
 
   /**
@@ -19,17 +24,23 @@
    * @property {string} provider - Provider id.
    * @property {string} accountId - Account the balance belongs to.
    * @property {string} balanceType - Provider balance type code (e.g. CLBD).
-   * @property {string} name - Provider balance label.
+   * @property {string} description - What the balance type means (Enable Banking balance `name`).
    * @property {number} amount - Amount in the account currency.
    * @property {string} currency - ISO 4217 code.
    * @property {string} referenceDate - ISO date, or ''.
    * @property {string} lastChange - ISO date-time, or ''.
    * @property {string} fetchedAt - ISO date-time the balance was read.
+   * @property {Object<string,*>} [apiFields] - Every API field, flattened (raw tab).
    */
 
   /**
    * @typedef {Object} Transaction
    * @property {string} provider
+   * @property {string} bank - Label, filled from the account list at sync time.
+   * @property {string} connection - Label, as above.
+   * @property {string} holderName - Label, as above.
+   * @property {string} accountName - Label, as above.
+   * @property {string} ibanMasked - Label, as above.
    * @property {string} accountId
    * @property {string} transactionId
    * @property {string} bookingDate
@@ -42,12 +53,13 @@
    * @property {string} fxRateDate
    * @property {string} counterparty
    * @property {string} description
+   * @property {Object<string,*>} [apiFields] - Every API field, flattened (raw tab only; never stored on `transactions`).
    */
 
   /**
    * @typedef {Object} BankProvider
    * @property {function(Object): Object} authorize - Starts user authorization.
-   * @property {function(): Array<Account>} listAccounts
+   * @property {function(Object=): Array<Account>} listAccounts - Optional `{outOfTime: function(): boolean}`.
    * @property {function(string): Array<Balance>} getBalances
    * @property {function(string, Object): Array<Transaction>} getTransactions
    */

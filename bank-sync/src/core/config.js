@@ -5,10 +5,10 @@
  */
 (function (ns) {
   /**
-   * @typedef {Object} BankConfig
-   * @property {string} key - Stable internal key for the bank.
-   * @property {string} aspspName - Name as listed by Enable Banking `GET /aspsps`.
-   * @property {string} country - ISO 3166 country the bank is listed under.
+   * @typedef {Object} ConnectionConfig
+   * @property {string} key - Stable key, bank plus holder (e.g. 'revolut-niklas'); one login and consent.
+   * @property {string} holder - Short label of the person the login belongs to.
+   * @property {{aspspName: string, country: string}} bank - Bank as listed by Enable Banking `GET /aspsps`.
    */
 
   /**
@@ -16,7 +16,9 @@
    * @property {string} REPORTING_CURRENCY - ISO 4217 code all amounts are converted to.
    * @property {string} TIMEZONE - IANA timezone used for date handling.
    * @property {Object} ENABLE_BANKING - API base URL, JWT claims/TTL, consent defaults.
-   * @property {Object<string,BankConfig>} BANKS - Banks reachable through Enable Banking.
+   * @property {Object} LEGACY_CONNECTION - The single login that existed before connections were
+   *   stored; used once to migrate its session. Connections are otherwise added with the
+   *   Connect menu and kept in Script Properties.
    * @property {Object<string,string>} PROPERTY_KEYS - Script Properties key names.
    * @property {Object<string,string>} TABS - Sheet tab names.
    * @property {Object<string,number>} TRANSACTIONS - Sync tuning: first-run lookback and
@@ -37,19 +39,22 @@
       DEFAULT_CONSENT_DAYS: 90,
       PENDING_AUTH_TTL_SECONDS: 900
     }),
-    BANKS: Object.freeze({
-      REVOLUT: Object.freeze({ key: 'revolut', aspspName: 'Revolut', country: 'LU' })
-    }),
+    LEGACY_CONNECTION: Object.freeze({ sessionKey: 'revolut', bankName: 'Revolut', country: 'LU', holder: 'niklas' }),
     PROPERTY_KEYS: Object.freeze({
       EB_APP_ID: 'EB_APP_ID',
       EB_PRIVATE_KEY: 'EB_PRIVATE_KEY',
       EB_REDIRECT_URL: 'EB_REDIRECT_URL',
       EB_SESSIONS: 'EB_SESSIONS',
-      EB_PENDING: 'EB_PENDING'
+      EB_PENDING: 'EB_PENDING',
+      EB_CONNECTIONS: 'EB_CONNECTIONS',
+      EB_MIGRATED: 'EB_MIGRATED',
+      EB_SESSION_PREFIX: 'EB_SESSION_',
+      EB_API_PREFIX: 'EB_API_'
     }),
     TABS: Object.freeze({
       RAW_ACCOUNTS: 'raw_accounts',
       RAW_BALANCES: 'raw_balances',
+      RAW_TRANSACTIONS: 'raw_transactions',
       TRANSACTIONS: 'transactions'
     }),
     TRANSACTIONS: Object.freeze({
@@ -58,6 +63,8 @@
       WINDOW_DAYS: 31,
       MAX_PAGES: 50,
       LOCK_WAIT_MS: 30000,
+      MIN_CONNECTION_BUDGET_MS: 15000,
+      DETAILS_MAX_AGE_DAYS: 7,
       TIME_BUDGET_MS: 270000
     })
   });

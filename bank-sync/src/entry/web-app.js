@@ -14,10 +14,10 @@
     if (!p.code || !p.state) return 'Missing code or state in the redirect.';
     try {
       const summary = ns.Container.services().auth.complete(p.code, p.state);
-      return 'Authorized ' + summary.bankKey + ' (' + summary.accountCount +
+      return 'Authorized ' + summary.connectionKey + ' (' + summary.accountCount +
         ' accounts). Consent valid until ' + summary.validUntil + '. You can close this tab.';
     } catch (err) {
-      return 'Authorization failed: ' + ns.Redact.text(err.name + ': ' + err.message);
+      return ns.Connections.explainNotEnabled(err) || 'Authorization failed: ' + ns.Redact.text(err.name + ': ' + err.message);
     }
   }
 
