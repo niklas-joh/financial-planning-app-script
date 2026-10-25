@@ -1,5 +1,6 @@
 /**
- * @fileoverview Provider-agnostic raw refresh: accounts and balances to raw tabs.
+ * @fileoverview Provider-agnostic raw refresh: accounts, balances and (for providers that
+ * hold investments) holdings to their tabs, plus the daily values built from the balances.
  * Reading and writing are separate so several connections can share one write.
  */
 (function (ns) {
@@ -9,6 +10,10 @@
    * @property {Array<import('../providers/bank-provider.js').Balance>} balances
    * @property {Array<import('../providers/bank-provider.js').Transaction>} [transactions] - What the
    *   latest sync fetched, each with its `apiFields`.
+   * @property {?Array<import('../providers/bank-provider.js').Holding>} [holdings] - Open positions; null
+   *   from a provider without `getHoldings`.
+   * @property {Array<string>} [holdingConnections] - Keys of the connections whose holdings were read
+   *   (their rows on the holdings tab are replaced, also when they now hold nothing).
    */
 
   /**
@@ -16,16 +21,22 @@
    * @param {import('../providers/bank-provider.js').BankProvider} provider - Source.
    * @param {Array<import('../providers/bank-provider.js').Account>} accounts - Its accounts.
    * @param {function(): boolean} [outOfTime] - True once the shared time budget is spent.
-   * @returns {RawData} Accounts and balances.
+   * @returns {RawData} Accounts, balances and holdings (null when the provider has none).
    * @throws {Error} Any provider error, e.g. AuthError when consent lapsed; TimeBudget if
-   *   `outOfTime` turns true before every account's balances were read (nothing is written then).
+   *   `outOfTime` turns true before every account was read (nothing is written then).
    */
   function collect(provider, accounts, outOfTime) {
-    const balances = accounts.reduce(function (all, account) {
-      if (outOfTime && outOfTime()) throw ns.Errors.create('TimeBudget', 'Time budget reached while reading balances');
-      return all.concat(provider.getBalances(account.accountId));
-    }, []);
-    return { accounts: accounts, balances: balances };
+    const perAccount = function (method, what) {
+      return accounts.reduce(function (all, account) {
+        if (outOfTime && outOfTime()) throw ns.Errors.create('TimeBudget', 'Time budget reached while reading ' + what);
+        return all.concat(provider[method](account.accountId));
+      }, []);
+    };
+    return {
+      accounts: accounts,
+      balances: perAccount('getBalances', 'balances'),
+      holdings: typeof provider.getHoldings === 'function' ? perAccount('getHoldings', 'holdings') : null
+    };
   }
 
   /**
@@ -61,13 +72,16 @@
 
   /**
    * Writes the three raw tabs: bank, connection, holder, account name and masked IBAN are added
-   * to each balance, and every API field becomes its own `api.*` column.
+   * to each balance, and every API field becomes its own `api.*` column. When holdings were read,
+   * also writes the holdings tab (per-connection replace); when any balance counts towards a daily
+   * value, adds or replaces today's rows on the daily values tab.
    * @param {{writeTable: function(string, Array<Object>, Array<Object>, Array<string>=): number}} writer - Sheet writer.
    * @param {RawData} data - Fresh rows from the connections that were read.
    * @param {Array<string>} refreshed - Keys of those connections; other connections' rows stay.
    *   Transactions are the exception: they accumulate across runs (see `accumulateTransactions`).
    * @param {string} today - ISO date of today, for the transactions retention window.
-   * @returns {{accounts: number, balances: number, transactions: number}} Row counts written (no sensitive data).
+   * @returns {{accounts: number, balances: number, transactions: number, holdings: (number|undefined),
+   *   dailyValues: (number|undefined)}} Row counts on each tab written (no sensitive data).
    */
   function write(writer, data, refreshed, today) {
     const labelsFor = ns.AccountLabels.lookup(data.accounts);
@@ -75,11 +89,20 @@
     const accounts = data.accounts.map(ns.RawWriter.toRow);
     const transactions = (data.transactions || []).map(function (t) { return ns.RawWriter.toRow(ns.AccountLabels.stamp(t, labelsFor)); });
     const tabs = ns.Config.TABS;
-    return {
+    const written = {
       transactions: writer.writeTable(tabs.RAW_TRANSACTIONS, ns.RawWriter.TRANSACTION_COLUMNS, transactions, refreshed, accumulateTransactions(today)),
       accounts: writer.writeTable(tabs.RAW_ACCOUNTS, ns.RawWriter.ACCOUNT_COLUMNS, accounts, refreshed),
       balances: writer.writeTable(tabs.RAW_BALANCES, ns.RawWriter.BALANCE_COLUMNS, balances, refreshed)
     };
+    if (data.holdingConnections && data.holdingConnections.length) {
+      const holdings = (data.holdings || []).map(function (h) { return ns.RawWriter.toRow(ns.AccountLabels.stamp(h, labelsFor)); });
+      written.holdings = writer.writeTable(tabs.HOLDINGS, ns.RawWriter.HOLDING_COLUMNS, holdings, data.holdingConnections);
+    }
+    const daily = ns.DailyValues.fromBalances(balances, today);
+    if (daily.length) {
+      written.dailyValues = writer.writeTable(tabs.DAILY_VALUES, ns.RawWriter.DAILY_VALUE_COLUMNS, daily, refreshed, ns.DailyValues.accumulate());
+    }
+    return written;
   }
 
   ns.RawSync = { collect: collect, write: write };

@@ -18,6 +18,9 @@
    * @property {function(string, Object): {getResponseCode: function(): number, getContentText: function(): string}} fetch
    * @property {function(number): void} sleep
    * @property {number} [maxRetries] - Retries on 429/5xx (default 3).
+   * @property {function(number, Object<string,string>, number): ?number} [retryDelayMs] - Decides the wait
+   *   before retry `attempt` (0-based) after a 429/5xx from the status and the response headers; null gives up
+   *   and throws the error. Without it the wait is 500 ms doubled per attempt.
    */
 
   /**
@@ -27,6 +30,15 @@
    */
   function isRetryable(status) {
     return status === 429 || status >= 500;
+  }
+
+  /**
+   * Default wait before a retry.
+   * @param {number} attempt - 0-based retry number.
+   * @returns {number} 500 ms doubled per attempt.
+   */
+  function backoffMs(attempt) {
+    return RETRY_BASE_MS * Math.pow(2, attempt);
   }
 
   /**
@@ -74,12 +86,16 @@
         const body = parseBody(response.getContentText());
         if (status >= 200 && status < 300) return body;
         if (!isRetryable(status) || attempt >= maxRetries) throw toError(status, body);
-        deps.sleep(RETRY_BASE_MS * Math.pow(2, attempt));
+        const wait = deps.retryDelayMs
+          ? deps.retryDelayMs(status, response.getAllHeaders ? response.getAllHeaders() : {}, attempt)
+          : backoffMs(attempt);
+        if (wait === null || wait === undefined) throw toError(status, body);
+        deps.sleep(wait);
       }
     }
 
     return { request: request };
   }
 
-  ns.Http = { create: create };
+  ns.Http = { create: create, backoffMs: backoffMs };
 })(globalThis.BankSync);

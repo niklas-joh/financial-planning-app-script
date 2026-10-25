@@ -48,10 +48,11 @@
    * Splits a range into consecutive, non-overlapping windows, oldest first.
    * @param {string} from - First day, inclusive.
    * @param {string} to - Last day, inclusive.
-   * @param {number} windowDays - Maximum days per window (>= 1).
+   * @param {number} windowDays - Maximum days per window (>= 1); Infinity gives one window for the whole range.
    * @returns {Array<DateWindow>} Windows; empty when from is after to.
    */
   function planWindows(from, to, windowDays) {
+    if (!isFinite(windowDays)) return from <= to ? [{ from: from, to: to }] : [];
     const windows = [];
     for (let start = from; start <= to; start = addDays(start, windowDays)) {
       const end = addDays(start, windowDays - 1);

@@ -19,12 +19,23 @@
       };
     },
 
-    /** @returns {{request: function(Object): *}} HTTP client backed by UrlFetchApp. */
-    http: function () {
-      return ns.Http.create({
+    /**
+     * @param {Object} [options] - Extra `Http.create` deps, e.g. `retryDelayMs`.
+     * @returns {{request: function(Object): *}} HTTP client backed by UrlFetchApp.
+     */
+    http: function (options) {
+      return ns.Http.create(Object.assign({
         fetch: function (url, params) { return UrlFetchApp.fetch(url, params); },
         sleep: function (ms) { Utilities.sleep(ms); }
-      });
+      }, options || {}));
+    },
+
+    /**
+     * @param {string} text - Text.
+     * @returns {string} Its Base64 encoding (UTF-8).
+     */
+    base64: function (text) {
+      return Utilities.base64Encode(text, Utilities.Charset.UTF_8);
     },
 
     /** @returns {Object} Script Properties service. */

@@ -30,6 +30,8 @@
    * @property {string} referenceDate - ISO date, or ''.
    * @property {string} lastChange - ISO date-time, or ''.
    * @property {string} fetchedAt - ISO date-time the balance was read.
+   * @property {string} [valueKind] - 'cash' or 'investments' when the balance is part of the account's
+   *   daily value (see `core/daily-values.js`); '' or missing otherwise.
    * @property {Object<string,*>} [apiFields] - Every API field, flattened (raw tab).
    */
 
@@ -57,11 +59,61 @@
    */
 
   /**
+   * @typedef {Object} Holding
+   * @property {string} provider - Provider id.
+   * @property {string} accountId - Account the position is held in.
+   * @property {string} ticker - Provider's instrument id (e.g. 'AAPL_US_EQ').
+   * @property {string} isin - ISIN, or ''.
+   * @property {string} name - Instrument name.
+   * @property {string} instrumentCurrency - Currency the instrument trades in (prices are in it).
+   * @property {number} quantity - Shares held.
+   * @property {number} averagePrice - Average price paid per share, instrument currency.
+   * @property {number} currentPrice - Current price per share, instrument currency.
+   * @property {number} amount - Current market value in `currency` (the account currency); named like a
+   *   balance amount so the same EUR conversion applies.
+   * @property {string} currency - Currency of `amount`, `totalCost`, `unrealizedPnl` and `fxImpact`.
+   * @property {?number} totalCost - What the position cost.
+   * @property {?number} unrealizedPnl - `amount` minus `totalCost`.
+   * @property {?number} fxImpact - Part of the value change caused by exchange rates, or null.
+   * @property {string} openedAt - ISO date-time the position was opened, or ''.
+   * @property {string} asOf - ISO date-time the position was read.
+   * @property {?number} [amountEur] - Set by the FX step.
+   * @property {?number} [fxRate] - Set by the FX step.
+   * @property {string} [fxRateDate] - Set by the FX step.
+   * @property {Object<string,*>} [apiFields] - Every API field, flattened (holdings tab).
+   */
+
+  /**
+   * @typedef {Object} DailyValue
+   * @property {string} date - ISO date of the run (Bank Sync time zone).
+   * @property {string} provider
+   * @property {string} bank - Label.
+   * @property {string} connection - Label.
+   * @property {string} holderName - Label.
+   * @property {string} accountName - Label.
+   * @property {string} accountId
+   * @property {string} currency - Account currency.
+   * @property {number} cash - Sum of the account's 'cash' balances.
+   * @property {number} investments - Sum of its 'investments' balances.
+   * @property {number} total - cash plus investments.
+   * @property {?number} cashEur
+   * @property {?number} investmentsEur
+   * @property {?number} totalEur
+   * @property {?number} fxRate
+   * @property {string} fxRateDate
+   * @property {string} fetchedAt - When the balances were read.
+   */
+
+  /**
    * @typedef {Object} BankProvider
    * @property {function(Object): Object} authorize - Starts user authorization.
    * @property {function(Object=): Array<Account>} listAccounts - Optional `{outOfTime: function(): boolean}`.
    * @property {function(string): Array<Balance>} getBalances
-   * @property {function(string, Object): Array<Transaction>} getTransactions
+   * @property {function(string, Object): Array<Transaction>} getTransactions - `(accountId, {dateFrom, dateTo})`.
+   * @property {number} [maxWindowDays] - Longest date range one `getTransactions` call takes (default
+   *   `Config.TRANSACTIONS.WINDOW_DAYS`); Infinity for cursor-paged APIs that read the whole range at once.
+   * @property {function(string): Array<Holding>} [getHoldings] - Open positions of an account, for providers
+   *   that hold investments. Optional: banks do not implement it.
    */
 
   const REQUIRED_METHODS = ['authorize', 'listAccounts', 'getBalances', 'getTransactions'];

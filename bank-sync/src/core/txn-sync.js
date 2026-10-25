@@ -67,7 +67,7 @@
       const start = ns.DateRange.startFor(latestBooked(rows, account.accountId), today, cfg);
       let dirty = false;
       try {
-        ns.DateRange.planWindows(start, today, cfg.WINDOW_DAYS).forEach(function (window) {
+        ns.DateRange.planWindows(start, today, deps.provider.maxWindowDays || cfg.WINDOW_DAYS).forEach(function (window) {
           if (!result.complete || deps.nowMs() - startedAt > budgetMs) {
             result.complete = false;
             return;

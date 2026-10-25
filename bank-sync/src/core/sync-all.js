@@ -1,6 +1,7 @@
 /**
- * @fileoverview Syncs every configured connection in turn: raw accounts and
- * balances, then transactions; then converts balances (latest rate) and the stored
+ * @fileoverview Syncs every configured connection in turn: raw accounts, balances and
+ * (for providers that hold investments) holdings, then transactions; then converts
+ * balances and holdings (latest rate) and the stored
  * transactions that have no EUR amount yet (booking-date rate) to EUR, fetching rates once for the whole run.
  * One connection failing (e.g. a lapsed consent) never stops the others, and the
  * time budget is shared.
@@ -25,6 +26,7 @@
    * @property {number} missing - Transactions still without a rate.
    * @property {number} waiting - Transactions dated today whose rate is not published yet.
    * @property {number} balancesMissing - Fresh balances without a rate.
+   * @property {number} holdingsMissing - Fresh holdings without a rate.
    * @property {Array<string>} failed - Redacted per-currency fetch errors.
    * @property {string} [error] - Redacted message if the FX step itself failed.
    */
@@ -60,14 +62,14 @@
   /**
    * Runs the sync for all connections.
    * @param {SyncAllDeps} deps - Injected services.
-   * @returns {{results: Array<ConnectionResult>, raw: ?{accounts: number, balances: number, transactions: number}, fx: ?FxOutcome}}
-   *   Per-connection outcome, the raw rows written (null if no connection could be read) and the EUR
+   * @returns {{results: Array<ConnectionResult>, raw: ?Object, fx: ?FxOutcome}}
+   *   Per-connection outcome, the row counts from `RawSync.write` (null if no connection could be read) and the EUR
    *   conversion counts (null without `deps.fx`). No transaction content.
    */
   function run(deps) {
     const cfg = ns.Config.TRANSACTIONS;
     const startedAt = deps.nowMs();
-    const collected = { accounts: [], balances: [], transactions: [] };
+    const collected = { accounts: [], balances: [], transactions: [], holdings: [], holdingConnections: [] };
     const refreshed = [];
 
     const results = deps.connections.map(function (connection) {
@@ -83,6 +85,10 @@
           collected.accounts = collected.accounts.concat(done.data.accounts);
           collected.balances = collected.balances.concat(done.data.balances);
           collected.transactions = collected.transactions.concat(done.transactions.rawRows);
+          if (done.data.holdings) {
+            collected.holdings = collected.holdings.concat(done.data.holdings);
+            collected.holdingConnections.push(connection.key);
+          }
           result.transactions = Object.assign({}, done.transactions);
           delete result.transactions.rawRows;
           refreshed.push(connection.key);
@@ -98,13 +104,18 @@
       return result;
     });
 
-    const fx = deps.fx ? { changed: 0, missing: 0, waiting: 0, balancesMissing: 0, failed: [] } : null;
+    const fx = deps.fx ? { changed: 0, missing: 0, waiting: 0, balancesMissing: 0, holdingsMissing: 0, failed: [] } : null;
     if (fx && refreshed.length) {
       guardFx(fx, function () {
         const converted = deps.fx.convertBalances(collected.balances);
         collected.balances = converted.rows;
         fx.balancesMissing = converted.missing;
         fx.failed = converted.failed;
+        if (!collected.holdings.length) return;
+        const holdings = deps.fx.convertBalances(collected.holdings);
+        collected.holdings = holdings.rows;
+        fx.holdingsMissing = holdings.missing;
+        fx.failed = holdings.failed;
       });
     }
     const raw = refreshed.length ? ns.RawSync.write(deps.rawWriter, collected, refreshed, deps.todayIso()) : null;
@@ -149,14 +160,17 @@
       }
       return r.connection + ': ' + r.status + (r.error ? ' (' + r.error + ')' : '');
     });
-    if (outcome.raw) lines.push('Raw tabs: ' + outcome.raw.accounts + ' accounts, ' + outcome.raw.balances + ' balances, ' +
-      outcome.raw.transactions + ' transactions.');
+    const raw = outcome.raw;
+    if (raw) lines.push('Raw tabs: ' + raw.accounts + ' accounts, ' + raw.balances + ' balances, ' + raw.transactions + ' transactions' +
+      (raw.holdings === undefined ? '' : ', ' + raw.holdings + ' holdings') +
+      (raw.dailyValues === undefined ? '' : ', ' + raw.dailyValues + ' daily values') + '.');
     const fx = outcome.fx;
     if (fx) {
       lines.push('EUR conversion: ' + fx.changed + ' transactions converted' +
         (fx.missing ? ', ' + fx.missing + ' without a rate' : '') +
         (fx.waiting ? ', ' + fx.waiting + " waiting for today's rate" : '') +
-        (fx.balancesMissing ? ', ' + fx.balancesMissing + ' balances without a rate' : '') + '.');
+        (fx.balancesMissing ? ', ' + fx.balancesMissing + ' balances without a rate' : '') +
+        (fx.holdingsMissing ? ', ' + fx.holdingsMissing + ' holdings without a rate' : '') + '.');
       fx.failed.forEach(function (f) { lines.push('Rates unavailable for ' + f); });
       if (fx.error) lines.push('EUR conversion failed (' + fx.error + ')');
     }
