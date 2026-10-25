@@ -151,7 +151,10 @@ creates a second trigger (duplicates are removed). The trigger runs as the accou
   email. What was sent is kept in `BS_CONSENT_WARNED_<connection>` together with the expiry date, so
   renewing the consent starts afresh. The email names the connection, the date and how to renew
   (*Connect a bank...* with the same country, bank and holder); no balances, amounts, counterparties
-  or account numbers. Warnings are only sent by the daily sync.
+  or account numbers. The holder in it is the short label typed when connecting (needed to renew the
+  same connection), not the bank's account-holder name, and the email goes only to the script's own
+  account. Warnings are only sent by the daily sync, also when that run's sync fails; one connection
+  failing (e.g. a mail error) never stops the others' warnings.
 - *Show status* marks consents within 30 days with "renew soon" and lapsed ones with "LAPSED".
 
 New OAuth scopes (re-authorize after the push; the first menu click asks):

@@ -67,9 +67,9 @@
         createAfter: function (handler, ms) {
           ScriptApp.newTrigger(handler).timeBased().after(ms).create();
         },
-        remove: function (id) {
+        remove: function (ids) {
           ScriptApp.getProjectTriggers().forEach(function (t) {
-            if (t.getUniqueId() === id) ScriptApp.deleteTrigger(t);
+            if (ids.indexOf(t.getUniqueId()) !== -1) ScriptApp.deleteTrigger(t);
           });
         }
       };

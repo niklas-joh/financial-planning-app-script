@@ -23,7 +23,7 @@ const fakeTriggers = (initial) => {
     list: () => list.slice(),
     createDaily: (handler, hour) => { log.push('daily ' + handler + ' ' + hour); list.push({ id: String(next++), handler }); },
     createAfter: (handler, ms) => { log.push('after ' + handler + ' ' + ms); list.push({ id: String(next++), handler }); },
-    remove: (id) => { log.push('remove ' + id); list.splice(list.findIndex((t) => t.id === id), 1); }
+    remove: (ids) => ids.forEach((id) => { log.push('remove ' + id); list.splice(list.findIndex((t) => t.id === id), 1); })
   };
 };
 
@@ -127,14 +127,34 @@ test('consent: sendDue emails each due warning once and records it only after se
   const sent = [];
   const deps = { consents: [{ connection: CONN, validUntil: inDays(10) }, { connection: Object.assign({}, CONN, { key: 'far' }), validUntil: inDays(90) }],
     props, send: (s) => sent.push(s), nowMs: () => NOW };
-  assert.strictEqual(BS.ConsentWarnings.sendDue(deps), 1);
-  assert.strictEqual(BS.ConsentWarnings.sendDue(deps), 0);
+  assert.deepStrictEqual(BS.ConsentWarnings.sendDue(deps), { sent: 1, errors: [] });
+  assert.deepStrictEqual(BS.ConsentWarnings.sendDue(deps), { sent: 0, errors: [] });
   assert.strictEqual(sent.length, 1);
   assert.deepStrictEqual(JSON.parse(props.map['BS_CONSENT_WARNED_demo-bank-alex']).sent, [30, 14]);
 
   const failing = fakeProps();
-  assert.throws(() => BS.ConsentWarnings.sendDue(Object.assign({}, deps, { props: failing, send: () => { throw new Error('quota'); } })), /quota/);
+  const result = BS.ConsentWarnings.sendDue(Object.assign({}, deps, { props: failing, send: () => { throw new Error('quota'); } }));
+  assert.deepStrictEqual(result, { sent: 0, errors: ['demo-bank-alex: Error: quota'] });
   assert.deepStrictEqual(failing.map, {});
+});
+
+test('consent: one failing connection never stops the warnings for the others', () => {
+  const props = fakeProps({ 'BS_CONSENT_WARNED_bad-record': '{not json' });
+  const second = Object.assign({}, CONN, { key: 'second' });
+  const badRecord = Object.assign({}, CONN, { key: 'bad-record' });
+  const sent = [];
+  const result = BS.ConsentWarnings.sendDue({
+    consents: [{ connection: CONN, validUntil: inDays(3) }, { connection: badRecord, validUntil: inDays(3) },
+      { connection: second, validUntil: inDays(3) }],
+    props, nowMs: () => NOW,
+    send: (subject) => { if (sent.length === 0) { sent.push('failed'); throw new Error('quota'); } sent.push(subject); }
+  });
+  assert.strictEqual(result.sent, 2);
+  assert.deepStrictEqual(result.errors, ['demo-bank-alex: Error: quota']);
+  // The unreadable record counts as nothing sent and is replaced; the later connection still got its email.
+  assert.deepStrictEqual(JSON.parse(props.map['BS_CONSENT_WARNED_bad-record']).sent, [30, 14, 7]);
+  assert.ok(props.map.BS_CONSENT_WARNED_second);
+  assert.strictEqual(props.map['BS_CONSENT_WARNED_demo-bank-alex'], undefined);
 });
 
 // ── Last run ──────────────────────────────────────────────────────────────
@@ -228,6 +248,19 @@ test('auto sync: any other failure is recorded, then rethrown so Apps Script rep
   assert.deepStrictEqual(deps.triggers.log, []);
 });
 
+test('auto sync: consent warnings are still sent when the sync fails', () => {
+  const mails = [];
+  const deps = autoDeps({
+    sync: () => { throw new Error('sheet gone'); },
+    consents: () => [{ connection: CONN, validUntil: inDays(6) }],
+    send: (s) => mails.push(s)
+  });
+  assert.throws(() => BS.AutoSync.runTriggered(deps, 'daily'), /sheet gone/);
+  assert.strictEqual(mails.length, 1);
+  assert.strictEqual(deps.lastRun.saved.warningsSent, 1);
+  assert.match(BS.LastRun.describe(deps.lastRun.saved).join('\n'), /Consent warnings emailed: 1/);
+});
+
 test('auto sync: due consent warnings are emailed; a mail failure fails the record but not the sync', () => {
   const mails = [];
   const deps = autoDeps({ consents: () => [{ connection: CONN, validUntil: inDays(6) }], send: (s) => mails.push(s) });
@@ -246,13 +279,28 @@ test('auto sync: status lines show whether the daily sync is on and the last run
   const off = BS.AutoSync.statusLines([], null);
   assert.match(off[0], /^Daily sync: off/);
   const on = BS.AutoSync.statusLines([{ id: '1', handler: A.DAILY_HANDLER }], null);
-  assert.match(on[0], /^Daily sync: on \(between 6:00 and 7:00, Europe\/Luxembourg\)/);
+  assert.match(on[0], /^Daily sync: on, between 6:00 and 7:00 \(Europe\/Luxembourg\)/);
   assert.strictEqual(on[1], 'Last sync: none recorded yet');
 });
 
-test('auto sync: a manual run is recorded with chain 0', () => {
-  const store = { save: (r) => { store.saved = r; } };
-  BS.AutoSync.recordManual(store, okOutcome(true), '2026-12-01 12:00');
+test('auto sync: a manual run is recorded, failed or not, and keeps the follow-up chain', () => {
+  const store = { saved: null, load: () => store.saved, save: (r) => { store.saved = r; } };
+  BS.AutoSync.recordManual(store, { outcome: okOutcome(true) }, '2026-12-01 12:00');
   assert.strictEqual(store.saved.source, 'menu');
   assert.strictEqual(store.saved.chain, 0);
+  assert.strictEqual(store.saved.ok, true);
+
+  store.saved.chain = 2;
+  BS.AutoSync.recordManual(store, { error: new Error('sheet gone') }, '2026-12-01 12:05');
+  assert.strictEqual(store.saved.ok, false);
+  assert.match(store.saved.error, /sheet gone/);
+  assert.strictEqual(store.saved.chain, 2);
+});
+
+test('auto sync: a manual run between follow-ups does not raise the follow-up cap', () => {
+  const deps = autoDeps({ sync: () => okOutcome(false) });
+  BS.AutoSync.runTriggered(deps, 'daily');
+  BS.AutoSync.runTriggered(deps, 'follow-up');
+  BS.AutoSync.recordManual(deps.lastRun, { outcome: okOutcome(false) }, '2026-12-01 06:20');
+  assert.strictEqual(BS.AutoSync.runTriggered(deps, 'follow-up').chain, 2);
 });

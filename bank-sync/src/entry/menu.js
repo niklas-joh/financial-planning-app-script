@@ -106,8 +106,16 @@
     guarded(function () {
       withLock(function () {
         const wired = ns.Container.services();
-        const outcome = ns.SyncAll.run(ns.Container.syncAllDeps(wired));
-        ns.AutoSync.recordManual(ns.LastRun.create(wired.props), outcome, ns.Gas.dateTimeFormatter(ns.Config.TIMEZONE)(new Date()));
+        const lastRun = ns.LastRun.create(wired.props);
+        const now = function () { return ns.Gas.dateTimeFormatter(ns.Config.TIMEZONE)(new Date()); };
+        let outcome;
+        try {
+          outcome = ns.SyncAll.run(ns.Container.syncAllDeps(wired));
+        } catch (e) {
+          ns.AutoSync.recordManual(lastRun, { error: e }, now());
+          throw e;
+        }
+        ns.AutoSync.recordManual(lastRun, { outcome: outcome }, now());
         SpreadsheetApp.getUi().alert(ns.SyncAll.summarize(outcome));
       });
     });
@@ -117,10 +125,9 @@
   function enableDailySync() {
     guarded(function () {
       const created = ns.AutoSync.enable(ns.Gas.triggers());
-      const A = ns.Config.AUTOMATION;
       SpreadsheetApp.getUi().alert((created ? 'Daily sync is on.' : 'Daily sync was already on.') +
-        ' Sync all runs every day between ' + A.DAILY_HOUR + ':00 and ' + (A.DAILY_HOUR + 1) + ':00 (' + ns.Config.TIMEZONE +
-        ') and emails you before a bank consent lapses. Show status shows the last run.');
+        ' Sync all runs every day ' + ns.AutoSync.scheduleText() +
+        ' and emails you before a bank consent lapses. Show status shows the last run.');
     });
   }
 
@@ -138,9 +145,10 @@
       const s = ns.Container.services();
       const keys = ns.Config.PROPERTY_KEYS;
       const yesNo = function (key) { return s.props.getProperty(key) ? 'set' : 'MISSING'; };
-      const consents = ns.Container.consents(s);
+      const consentByKey = {};
+      ns.Container.consents(s).forEach(function (x) { consentByKey[x.connection.key] = x; });
       const connections = s.connections.all().map(function (c) {
-        const found = consents.filter(function (x) { return x.connection.key === c.key; })[0];
+        const found = consentByKey[c.key];
         const consent = found
           ? found.validUntil + ' (' + ns.ConsentWarnings.daysLeft(found.validUntil, s.nowMs()) + ' days left)' +
             ns.ConsentWarnings.statusNote(found.validUntil, s.nowMs(), ns.Config.CONSENT.WARN_DAYS)

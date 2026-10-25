@@ -47,13 +47,15 @@
   /**
    * Builds the record of a run that failed as a whole (e.g. the lock was busy).
    * @param {Error} error - What stopped it.
-   * @param {{source: string, at: string, chain: number, followUp: boolean}} meta - Run context.
+   * @param {{source: string, at: string, chain: number, followUp: boolean, warningsSent: (number|undefined),
+   *   warningsError: (string|undefined)}} meta - Run context.
    * @returns {LastRun} The record.
    */
   function fromError(error, meta) {
     return {
-      at: meta.at, source: meta.source, ok: false, connections: [], fx: null, warningsSent: 0,
-      error: ns.Redact.text(error.name + ': ' + error.message), followUp: meta.followUp, chain: meta.chain
+      at: meta.at, source: meta.source, ok: false, connections: [], fx: null, warningsSent: meta.warningsSent || 0,
+      warningsError: meta.warningsError, error: ns.Redact.text(error.name + ': ' + error.message),
+      followUp: meta.followUp, chain: meta.chain
     };
   }
 

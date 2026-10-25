@@ -104,23 +104,41 @@
    * @param {{getProperty: function(string): ?string, setProperty: function(string, string): *}} deps.props - Script Properties.
    * @param {function(string, string): void} deps.send - Sends an email (subject, body) to the owner.
    * @param {function(): number} deps.nowMs - Clock.
-   * @returns {number} Emails sent.
+   * @returns {{sent: number, errors: Array<string>}} Emails sent, and one redacted error per connection
+   *   that failed; a failure never stops the other connections.
    */
   function sendDue(deps) {
     const thresholds = ns.Config.CONSENT.WARN_DAYS;
     const prefix = ns.Config.PROPERTY_KEYS.CONSENT_WARNED_PREFIX;
-    let sent = 0;
+    const result = { sent: 0, errors: [] };
     deps.consents.forEach(function (c) {
       const key = prefix + c.connection.key;
-      const raw = deps.props.getProperty(key);
-      const warning = due(c.validUntil, raw ? JSON.parse(raw) : null, deps.nowMs(), thresholds);
-      if (!warning) return;
-      const mail = message(c.connection, c.validUntil, warning, thresholds);
-      deps.send(mail.subject, mail.body);
-      deps.props.setProperty(key, JSON.stringify(warning.record));
-      sent += 1;
+      try {
+        const warning = due(c.validUntil, readRecord(deps.props.getProperty(key)), deps.nowMs(), thresholds);
+        if (!warning) return;
+        const mail = message(c.connection, c.validUntil, warning, thresholds);
+        deps.send(mail.subject, mail.body);
+        deps.props.setProperty(key, JSON.stringify(warning.record));
+        result.sent += 1;
+      } catch (e) {
+        result.errors.push(c.connection.key + ': ' + ns.Redact.text(e.name + ': ' + e.message));
+      }
     });
-    return sent;
+    return result;
+  }
+
+  /**
+   * Parses a stored record; an unreadable one counts as nothing sent yet.
+   * @param {?string} raw - Stored JSON.
+   * @returns {?WarnedRecord} The record, or null.
+   */
+  function readRecord(raw) {
+    try {
+      const record = raw ? JSON.parse(raw) : null;
+      return record && Array.isArray(record.sent) ? record : null;
+    } catch (e) {
+      return null;
+    }
   }
 
   ns.ConsentWarnings = { daysLeft: daysLeft, due: due, message: message, statusNote: statusNote, sendDue: sendDue };

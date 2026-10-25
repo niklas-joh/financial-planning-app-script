@@ -221,12 +221,13 @@ As built (see `bank-sync/README.md`, "Daily sync and consent warnings"):
   (`triggerSyncContinue`, 5 minutes later), at most 3 per daily run; old one-off triggers are deleted
   at the start of each triggered run because Apps Script keeps them listed after they fire.
 - Each run's outcome (counts and redacted errors only) is stored in `BS_LAST_RUN` and shown by
-  *Show status*. A run that throws (other than a busy lock) is recorded and rethrown so Apps Script's
+  *Show status*; a manual run is recorded too (also when it fails) and keeps the follow-up chain. A run that throws (other than a busy lock) is recorded and rethrown so Apps Script's
   own failure email fires too.
 - Consent warnings at 30, 14, 7 and 1 days before expiry and once after it lapses, one email per
   threshold. Dedupe: `BS_CONSENT_WARNED_<connection>` = `{validUntil, sent: [..]}`; a new expiry date
   (renewed consent) resets it; an email is recorded only after it was sent. Reaching several thresholds
-  at once (e.g. the daily sync turned on late) sends one email. Sent only by the daily sync.
+  at once (e.g. the daily sync turned on late) sends one email. Sent only by the daily sync, also when its
+  sync fails; errors are collected per connection so one failure never silences the others.
 - Recipient: `Session.getEffectiveUser().getEmail()` at run time (the trigger owner), never stored.
 - New scopes, verified in the Apps Script reference: `script.scriptapp` (ScriptApp triggers),
   `script.send_mail` (MailApp.sendEmail), `userinfo.email` (Session user email). Added to
