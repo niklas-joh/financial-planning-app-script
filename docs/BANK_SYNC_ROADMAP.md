@@ -376,8 +376,8 @@ As built (see `bank-sync/README.md`, "CSV import"):
   needs a Drive scope to read files the script did not create (`drive.file` covers only files the script created
   or the user picked in a Google Picker, not a folder filled by hand). There is no per-folder scope, so it grants
   read access to **all** of Drive; the code opens only the `CSV_FOLDER_<HOLDER>` folders (`Gas.driveFolder` is the
-  only DriveApp use) and never writes. Accepted by the owner for the hands-off daily import (review #69). Narrower
-  later, if wanted: an upload dialog or a Google Picker with `drive.file`, at the cost of a manual step per file.
+  only DriveApp use) and never writes. Accepted by the owner for the hands-off daily import (review #69); narrowing
+  it is open decision B4.
   The web-app path is unchanged.
 - Deploy steps: `clasp push --force` from `bank-sync/` after diffing the manifest (time zone and the new scope),
   reload the sheet and re-authorize (the daily trigger fails until then), create the folder, set
@@ -493,6 +493,18 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
     rows for orders match nothing (orders are not imported); dividend rows match nothing either while our dividend
     ids are `div:<reference>` (no dividend row was in the sample, so whether the report's dividend `ID` is that
     reference is not checked).
+- **B4. Narrow the Drive scope** (open decision, raised in review #69). The CSV import reads a Drive folder with
+  `drive.readonly`, which can read all of Drive (no per-folder scope exists). Kept for now (owner, 2026-10-25) for
+  the hands-off daily import. Options to reconsider:
+  - **Upload dialog, no Drive scope**: *Import CSV files...* opens a file chooser; the browser sends the file text;
+    each upload runs a normal *Sync all* so report details find that day's API rows. Same manual effort as
+    dropping a file in the folder; files are not kept, so a report row whose API row is missing must be uploaded
+    again, and the daily sync no longer imports CSVs. Change: a dialog plus one `google.script.run` global, the
+    provider fed from uploads instead of `Gas.driveFolder`, the scope removed from both manifests.
+  - **`drive.file` with a Google Picker**: only picked files are readable. Needs a Google Cloud project, the Picker
+    API and an API key; whether picking a folder exposes its files is not documented (to verify), so likely one
+    pick per file.
+  - **Keep `drive.readonly`** (current).
 - **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer.
 - **Old portfolio sheet:** it calls Trading 212 with the legacy key and shares the per-account rate limit; retire
   it or move what is still used.
