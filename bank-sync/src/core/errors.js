@@ -23,10 +23,11 @@
     /**
      * @param {number} status - HTTP status code.
      * @param {string} detail - Redacted API message.
-     * @returns {Error} HttpError carrying `status`.
+     * @param {string} [apiCode] - The API's error code (e.g. 'NO_ACCOUNTS_ADDED'), if it sent one.
+     * @returns {Error} HttpError carrying `status` and `apiCode`.
      */
-    http: function (status, detail) {
-      return create('HttpError', 'HTTP ' + status + ': ' + detail, { status: status });
+    http: function (status, detail, apiCode) {
+      return create('HttpError', 'HTTP ' + status + ': ' + detail, { status: status, apiCode: apiCode || '' });
     },
 
     /**

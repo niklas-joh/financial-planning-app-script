@@ -33,12 +33,16 @@
     }
 
     /**
-     * Adds the bank and connection this provider serves.
+     * Adds the bank and connection this provider serves, and the stored API fields.
      * @param {import('../bank-provider.js').Account} account - Stored account.
-     * @returns {import('../bank-provider.js').Account} Account with `bank` and `connection` set.
+     * @returns {import('../bank-provider.js').Account} Account with `bank`, `connection` and `apiFields` set.
      */
     function stampAccount(account) {
-      return Object.assign({}, account, { bank: deps.connection.bank.aspspName, connection: deps.connection.key });
+      return Object.assign({}, account, {
+        bank: deps.connection.bank.aspspName,
+        connection: deps.connection.key,
+        apiFields: deps.store.loadApiFields(account.accountId)
+      });
     }
 
     return ns.BankProvider.assertBankProvider({
@@ -52,7 +56,7 @@
         if (state.status && state.status !== 'AUTHORIZED') {
           throw ns.Errors.auth('Session status is ' + state.status + '; re-authorize');
         }
-        return session.accounts.map(stampAccount);
+        return deps.auth.refreshStale(deps.connection).map(stampAccount);
       },
 
       getBalances: function (accountId) {

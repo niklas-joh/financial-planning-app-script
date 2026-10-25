@@ -28,12 +28,13 @@
    * @param {import('./config.js').ConnectionConfig} connection - Connection.
    * @param {SyncAllDeps} deps - Services.
    * @param {number} budgetMs - Time left for it.
+   * @param {number} startedAt - When the whole run started (epoch ms).
    * @returns {{data: import('./raw-sync.js').RawData, transactions: Object}} What was read and the counts.
    */
-  function syncOne(connection, deps, budgetMs) {
+  function syncOne(connection, deps, budgetMs, startedAt) {
     const provider = deps.providerFor(connection);
     const accounts = provider.listAccounts();
-    const data = ns.RawSync.collect(provider, accounts);
+    const data = ns.RawSync.collect(provider, accounts, function () { return deps.nowMs() - startedAt > ns.Config.TRANSACTIONS.TIME_BUDGET_MS; });
     const transactions = ns.TxnSync.run({
       provider: provider, accounts: accounts, store: deps.store,
       nowMs: deps.nowMs, todayIso: deps.todayIso, budgetMs: budgetMs
@@ -62,14 +63,18 @@
         result.status = 'skipped: time budget';
       } else {
         try {
-          const done = syncOne(connection, deps, left);
+          const done = syncOne(connection, deps, left, startedAt);
           collected.accounts = collected.accounts.concat(done.data.accounts);
           collected.balances = collected.balances.concat(done.data.balances);
           result.transactions = done.transactions;
           refreshed.push(connection.key);
         } catch (e) {
-          result.status = 'error';
-          result.error = ns.Redact.text(e.name + ': ' + e.message);
+          if (e.name === 'TimeBudget') {
+            result.status = 'skipped: time budget';
+          } else {
+            result.status = 'error';
+            result.error = ns.Redact.text(e.name + ': ' + e.message);
+          }
         }
       }
       return result;

@@ -7,6 +7,7 @@
    * @typedef {Object} AccountLabels
    * @property {string} bank - Bank name.
    * @property {string} connection - Connection key (bank plus holder).
+   * @property {string} holderName - Account holder's name as the bank reports it, or ''.
    * @property {string} accountName - The name set by the user or bank, else the product name, else ''.
    * @property {string} ibanMasked - IBAN reduced to its last four characters, or ''.
    */
@@ -22,6 +23,7 @@
       byId[a.accountId] = {
         bank: a.bank || '',
         connection: a.connection || '',
+        holderName: a.holderName || '',
         accountName: a.accountName || a.product || '',
         ibanMasked: a.ibanMasked || ''
       };

@@ -97,15 +97,25 @@ Motivation, from live use of Phase 2:
    config entry.
 3. Tabs do not show which bank, connection or account a row belongs to.
 
-As built (see `bank-sync/README.md` for use): `CONNECTIONS` in config; sessions keyed by
-connection (the old `revolut` session is moved to `revolut-niklas` automatically);
-menu = *Connect a bank...*, *Sync all*, *Refresh account names*, *Show status*; labels
-`bank`, `connection`, `accountName`, `ibanMasked` on all three tabs, joined from the
-accounts list and stored on each transaction row so one connection's sync never blanks
-another's; the tab loads by header name so older layouts still load. Verified in the API
-reference: `name` is the account **holder's** name (no longer stored), `details` is the
-user/bank-set label, `product` the product type, and `GET /sessions/{id}` returns only
-account ids, so names refresh through `GET /accounts/{id}/details` on demand.
+As built (see `bank-sync/README.md` for use): connections are created by the *Connect a bank...*
+menu flow (country, bank picked from Enable Banking's live `GET /aspsps` list, holder label)
+and kept in Script Properties, not in config; one property per session; sessions keyed by
+connection (the old `revolut` session is moved to `revolut-niklas` automatically, once);
+menu = *Connect a bank...*, *Sync all*, *Show status*; labels `bank`, `connection`,
+`holderName`, `accountName`, `ibanMasked` on all three tabs, joined from the accounts list and
+stored on each transaction row so one connection's sync never blanks another's; `raw_accounts`
+and `raw_balances` carry every API field as `api.*` columns (IBAN-looking values masked);
+account details are read automatically when missing or older than 7 days; the tab loads by
+header name so older layouts still load.
+
+Verified in the API reference: `name` is the account **holder's** name (stored as
+`holderName`), `details` is the user/bank-set label (`accountName`), `product` the product type,
+and `GET /sessions/{id}` returns only account ids, so details come from
+`GET /accounts/{id}/details`. Enable Banking has no endpoint listing the banks or accounts you
+linked (`GET /application` returns name, countries, services only) and no hosted bank picker
+(`aspsp` is required in `POST /auth`); "not enabled" is detected from `NO_ACCOUNTS_ADDED` /
+`ACCESS_DENIED` or an empty account list. Not yet seen live: which of these a restricted
+application actually returns for an unlinked bank.
 
 Original scope notes:
 

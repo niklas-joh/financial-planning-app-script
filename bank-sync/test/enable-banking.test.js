@@ -8,16 +8,24 @@ const memProps = () => {
   return { getProperty: (k) => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = v; } };
 };
 
-test('normalizeAccount masks the IBAN, keeps the user-set label, drops the holder name, requires uid', () => {
+test('normalizeAccount masks the IBAN, keeps holder and label, keeps every API field, requires uid', () => {
   const a = BS.EbNormalize.normalizeAccount({
     uid: 'u1', name: 'Jane Holder', details: 'Holiday pot', product: 'Savings', currency: 'EUR',
-    cash_account_type: 'CACC', account_id: { iban: 'GB82WEST12345698765432' }
-  });
+    cash_account_type: 'CACC', account_id: { iban: 'GB82WEST12345698765432' },
+    all_account_ids: [{ identification: 'GB82WEST12345698765432', scheme_name: 'IBAN' }],
+    postal_address: { country: 'LU' }, legal_age: true, credit_limit: null
+  }, '2026-01-01T00:00:00.000Z');
   assert.strictEqual(a.ibanMasked, '****5432');
+  assert.strictEqual(a.holderName, 'Jane Holder');
   assert.strictEqual(a.accountName, 'Holiday pot');
   assert.strictEqual(a.product, 'Savings');
+  assert.strictEqual(a.detailsAt, '2026-01-01T00:00:00.000Z');
   assert.ok(!JSON.stringify(a).includes('GB82'));
-  assert.ok(!JSON.stringify(a).includes('Jane'));
+  assert.strictEqual(a.apiFields['account_id.iban'], '****5432');
+  assert.strictEqual(a.apiFields['all_account_ids[0].identification'], '****5432');
+  assert.strictEqual(a.apiFields['postal_address.country'], 'LU');
+  assert.strictEqual(a.apiFields.legal_age, true);
+  assert.strictEqual(a.apiFields.credit_limit, '', 'null fields keep their column');
   assert.throws(() => BS.EbNormalize.normalizeAccount({}), { name: 'DataError' });
 });
 
@@ -26,6 +34,8 @@ test('normalizeBalance converts the decimal string amount', () => {
     { name: 'x', balance_type: 'CLBD', balance_amount: { amount: '12.50', currency: 'SEK' } }, 'u1', 't');
   assert.strictEqual(b.amount, 12.5);
   assert.strictEqual(b.currency, 'SEK');
+  assert.strictEqual(b.apiFields['balance_amount.amount'], '12.50');
+  assert.strictEqual(b.apiFields.balance_type, 'CLBD');
   assert.throws(() => BS.EbNormalize.normalizeBalance({ balance_amount: { amount: 'x' } }, 'u1', 't'));
 });
 
@@ -63,18 +73,19 @@ function wired(overrides) {
     createSession: () => ({
       session_id: 'sess-1',
       access: { valid_until: '2026-03-01T00:00:00Z' },
-      accounts: [{ uid: 'a1', currency: 'EUR', name: 'Main', account_id: { iban: 'GB82WEST12345698765432' } }]
+      accounts: [{ uid: 'a1', currency: 'EUR', name: 'Holder X', details: 'Main', account_id: { iban: 'GB82WEST12345698765432' } }]
     }),
     getSession: () => ({ status: 'AUTHORIZED' }),
     getAccountDetails: (uid) => ({ uid, currency: 'EUR', details: 'Renamed', account_id: { iban: 'GB82WEST12345698765432' } }),
     getBalances: () => ({ balances: [{ name: 'b', balance_type: 'CLBD', balance_amount: { amount: '5', currency: 'EUR' } }] }),
     ...overrides
   };
+  const connection = BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'niklas' });
+  const connections = BS.Connections.create(props);
   const auth = BS.EbAuth.create({
-    client, store, nowMs: () => NOW, uuid: () => 'state-1',
+    client, store, connections, nowMs: () => NOW, uuid: () => 'state-1',
     getRedirectUrl: () => 'https://script.example/exec'
   });
-  const connection = BS.Config.CONNECTIONS.REVOLUT_NIKLAS;
   const provider = BS.EnableBankingProvider.create({ connection, client, store, auth, nowMs: () => NOW });
   return { provider, store, calls, client, auth, connection };
 }
@@ -85,15 +96,12 @@ test('authorize builds the /auth body and stores the pending state', () => {
   assert.deepStrictEqual(r, { url: 'https://bank.example/login', state: 'state-1' });
   assert.strictEqual(calls[0].redirect_url, 'https://script.example/exec');
   assert.strictEqual(calls[0].psu_type, 'personal');
-  assert.strictEqual(store.consumePending('state-1').connectionKey, 'revolut-niklas');
+  assert.strictEqual(store.consumePending('state-1').connection.key, 'revolut-niklas');
 });
 
 test('complete persists the session with masked accounts; list/balances then work', () => {
-  const { provider, store } = wired();
-  const auth = BS.EbAuth.create({
-    client: wired().client, store, nowMs: () => NOW, uuid: () => 's', getRedirectUrl: () => 'x'
-  });
-  store.savePending('st', { connectionKey: 'revolut-niklas', validUntil: '2026-02-01T00:00:00Z' });
+  const { provider, store, auth, connection } = wired();
+  store.savePending('st', { connection, validUntil: '2026-02-01T00:00:00Z' });
   const summary = auth.complete('code', 'st');
   assert.strictEqual(summary.accountCount, 1);
   assert.strictEqual(summary.validUntil, '2026-03-01T00:00:00Z');

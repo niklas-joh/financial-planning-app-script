@@ -10,7 +10,7 @@ const raw = (o) => ({
 });
 const norm = (list) => BS.EbNormalize.normalizeTransactions(list, 'a1');
 const tx = (o) => ({
-  provider: 'enablebanking', bank: '', connection: '', accountName: '', ibanMasked: '', accountId: 'a1', transactionId: 't1', bookingDate: '2026-01-10', valueDate: '',
+  provider: 'enablebanking', bank: '', connection: '', holderName: '', accountName: '', ibanMasked: '', accountId: 'a1', transactionId: 't1', bookingDate: '2026-01-10', valueDate: '',
   status: 'booked', amount: -5, currency: 'EUR', amountEur: null, fxRate: null, fxRateDate: '',
   counterparty: '', description: '', ...o
 });
@@ -125,7 +125,7 @@ function providerWith(pages) {
   const session = { sessionId: 's', accessValidUntil: '2999-01-01T00:00:00Z', accounts: [] };
   const fakeStore = { loadSession: () => session };
   const provider = BS.EnableBankingProvider.create({
-    connection: BS.Config.CONNECTIONS.REVOLUT_NIKLAS, client, store: fakeStore, auth: {}, nowMs: () => 0 });
+    connection: BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'niklas' }), client, store: fakeStore, auth: {}, nowMs: () => 0 });
   return { provider, calls };
 }
 
@@ -194,7 +194,7 @@ test('store: load fails loudly when the header was changed', () => {
 
 test('store: an older tab without the label columns, or with reordered columns, still loads', () => {
   const keys = BS.TransactionsStore.COLUMNS.map((c) => c.key);
-  const legacyKeys = keys.filter((k) => !['bank', 'connection', 'accountName', 'ibanMasked'].includes(k));
+  const legacyKeys = keys.filter((k) => !['bank', 'connection', 'holderName', 'accountName', 'ibanMasked'].includes(k));
   const row = tx({ transactionId: 'a', amount: -2 });
   const cells = (order) => order.map((k) => (row[k] === null ? '' : row[k]));
   const book = fakeSheetBook();

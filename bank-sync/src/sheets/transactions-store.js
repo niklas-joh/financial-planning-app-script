@@ -17,6 +17,7 @@
     { key: 'provider', text: true },
     { key: 'bank', text: true, optional: true },
     { key: 'connection', text: true, optional: true },
+    { key: 'holderName', text: true, optional: true },
     { key: 'accountName', text: true, optional: true },
     { key: 'ibanMasked', text: true, optional: true },
     { key: 'accountId', text: true },

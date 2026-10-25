@@ -17,7 +17,7 @@
       return 'Authorized ' + summary.connectionKey + ' (' + summary.accountCount +
         ' accounts). Consent valid until ' + summary.validUntil + '. You can close this tab.';
     } catch (err) {
-      return 'Authorization failed: ' + ns.Redact.text(err.name + ': ' + err.message);
+      return ns.Connections.explainNotEnabled(err) || 'Authorization failed: ' + ns.Redact.text(err.name + ': ' + err.message);
     }
   }
 

@@ -9,12 +9,14 @@
    * @property {string} accountId - Provider-scoped account identifier.
    * @property {string} bank - Bank name, e.g. 'Revolut'. Set by the provider.
    * @property {string} connection - Connection key (bank plus holder). Set by the provider.
+   * @property {string} holderName - Account holder's name as the API reports it (Enable Banking `name`).
    * @property {string} accountName - Name set by the user or bank (Enable Banking `details`), or ''.
-   *   The account holder's own name is deliberately not stored.
    * @property {string} currency - ISO 4217 code.
    * @property {string} ibanMasked - IBAN reduced to last four characters, or ''.
    * @property {string} accountType - Provider account type (e.g. ISO cash account type).
    * @property {string} product - Provider product name, or ''.
+   * @property {string} detailsAt - ISO date-time the full details were last read, or ''.
+   * @property {Object<string,*>} [apiFields] - Every API field, flattened and IBAN-masked (raw tab).
    */
 
   /**
@@ -28,6 +30,7 @@
    * @property {string} referenceDate - ISO date, or ''.
    * @property {string} lastChange - ISO date-time, or ''.
    * @property {string} fetchedAt - ISO date-time the balance was read.
+   * @property {Object<string,*>} [apiFields] - Every API field, flattened (raw tab).
    */
 
   /**
@@ -35,6 +38,7 @@
    * @property {string} provider
    * @property {string} bank - Label, filled from the account list at sync time.
    * @property {string} connection - Label, as above.
+   * @property {string} holderName - Label, as above.
    * @property {string} accountName - Label, as above.
    * @property {string} ibanMasked - Label, as above.
    * @property {string} accountId

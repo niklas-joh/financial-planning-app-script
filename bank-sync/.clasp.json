@@ -12,6 +12,7 @@
     "src/lib/jwt.js",
     "src/lib/http.js",
     "src/lib/hash.js",
+    "src/lib/flatten.js",
     "src/core/connections.js",
     "src/core/account-labels.js",
     "src/core/date-range.js",

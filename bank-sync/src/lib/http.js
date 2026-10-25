@@ -45,12 +45,12 @@
   /**
    * Builds the secret-free error for a failed response.
    * @param {number} status - HTTP status.
-   * @param {*} body - Parsed body (may carry `message`).
+   * @param {*} body - Parsed body (may carry `message` and `error`, the API's error code).
    * @returns {Error} HttpError.
    */
   function toError(status, body) {
     const detail = body && body.message ? String(body.message).slice(0, 300) : 'request failed';
-    return ns.Errors.http(status, ns.Redact.text(detail));
+    return ns.Errors.http(status, ns.Redact.text(detail), body && typeof body.error === 'string' ? body.error : '');
   }
 
   /**

@@ -42,24 +42,61 @@
    * @typedef {Object} AuthDeps
    * @property {Object} client - EbClient.
    * @property {Object} store - EbSessionStore.
+   * @property {{save: function(Object): void}} connections - Connection store.
    * @property {function(): string} getRedirectUrl - Registered redirect URL.
    * @property {function(): number} nowMs - Clock.
    * @property {function(): string} uuid - Random state generator.
    */
 
   /**
+   * Removes the bulky API fields before an account goes into the session.
+   * @param {import('../bank-provider.js').Account} account - Account with `apiFields`.
+   * @returns {import('../bank-provider.js').Account} Copy without `apiFields`.
+   */
+  function withoutApiFields(account) {
+    const copy = Object.assign({}, account);
+    delete copy.apiFields;
+    return copy;
+  }
+
+  /**
    * Creates the auth flow.
    * @param {AuthDeps} deps - Injected services.
    * @returns {{begin: function(Object): {url: string, state: string}, complete: function(string, string): Object,
-   *   refreshAccounts: function(Object): number}} Flow.
+   *   refreshStale: function(Object): Array<Object>}} Flow.
    */
   function create(deps) {
+    /**
+     * Normalizes full AccountResources, keeps their API fields and returns the lean accounts.
+     * @param {Array<Object>} resources - AccountResources.
+     * @returns {Array<import('../bank-provider.js').Account>} Accounts for the session.
+     */
+    function keepAccounts(resources) {
+      const at = new Date(deps.nowMs()).toISOString();
+      return resources.map(function (raw) {
+        const account = ns.EbNormalize.normalizeAccount(raw, at);
+        deps.store.saveApiFields(account.accountId, account.apiFields);
+        return withoutApiFields(account);
+      });
+    }
+
+    /**
+     * Whether an account's details are missing or older than the allowed age.
+     * @param {import('../bank-provider.js').Account} account - Stored account.
+     * @returns {boolean} True if they should be read again.
+     */
+    function isStale(account) {
+      const maxAgeMs = ns.Config.TRANSACTIONS.DETAILS_MAX_AGE_DAYS * DAY_MS;
+      return !account.detailsAt || deps.nowMs() - Date.parse(account.detailsAt) > maxAgeMs;
+    }
+
     return {
       /**
        * Starts authorization for a connection.
        * @param {import('../../core/config.js').ConnectionConfig} connection - Login to connect.
        * @returns {{url: string, state: string}} Login URL the user must open.
-       * @throws {Error} ConfigError if the bank or redirect URL is unavailable.
+       * @throws {Error} ConfigError if the bank or redirect URL is unavailable; HttpError from
+       *   Enable Banking (see `Connections.explainNotEnabled`).
        */
       begin: function (connection) {
         const bank = connection.bank;
@@ -76,47 +113,65 @@
           redirect_url: redirectUrl,
           psu_type: 'personal'
         });
-        deps.store.savePending(state, { connectionKey: connection.key, validUntil: validUntil });
+        deps.store.savePending(state, { connection: connection, validUntil: validUntil });
         return { url: response.url, state: state };
       },
 
       /**
-       * Finishes authorization after the bank redirects back.
+       * Finishes authorization after the bank redirects back. The connection is stored only
+       * once the bank has granted at least one account.
        * @param {string} code - `code` query parameter.
        * @param {string} state - `state` query parameter.
        * @returns {{connectionKey: string, accountCount: number, validUntil: string}} Non-secret summary.
-       * @throws {Error} AuthError for an unknown/expired state.
+       * @throws {Error} AuthError for an unknown/expired state, or if no account is enabled
+       *   for the bank (`apiCode` NO_ACCOUNTS_ADDED).
        */
       complete: function (code, state) {
         const pending = deps.store.consumePending(state);
-        if (!pending.connectionKey) throw ns.Errors.auth('Authorization started before an update; start again');
+        const connection = pending.connection;
+        if (!connection) throw ns.Errors.auth('Authorization started before an update; start again');
         const session = deps.client.createSession(code);
+        const resources = session.accounts || [];
+        if (!resources.length) {
+          throw ns.Errors.create('AuthError', 'The bank granted no accounts', { apiCode: 'NO_ACCOUNTS_ADDED' });
+        }
         const validUntil = (session.access && session.access.valid_until) || pending.validUntil;
-        const accounts = (session.accounts || []).map(function (raw) { return ns.EbNormalize.normalizeAccount(raw); });
-        deps.store.saveSession(pending.connectionKey, {
+        const accounts = keepAccounts(resources);
+        deps.connections.save(connection);
+        deps.store.saveSession(connection.key, {
           sessionId: session.session_id,
           accessValidUntil: validUntil,
           createdAt: new Date(deps.nowMs()).toISOString(),
           accounts: accounts
         });
-        return { connectionKey: pending.connectionKey, accountCount: accounts.length, validUntil: validUntil };
+        return { connectionKey: connection.key, accountCount: accounts.length, validUntil: validUntil };
       },
 
       /**
-       * Re-reads each account's details (names set by the user or bank) and stores them.
-       * One bank call per account, so it is user-triggered, never part of a scheduled sync.
+       * Reads the full details of accounts whose details are missing or older than
+       * `DETAILS_MAX_AGE_DAYS` (one bank call each), so names set by the user or bank and
+       * every API field stay current without any manual step. A failed read keeps the old
+       * account and is retried on the next sync.
        * @param {import('../../core/config.js').ConnectionConfig} connection - Connected login.
-       * @returns {number} Accounts refreshed.
+       * @returns {Array<import('../bank-provider.js').Account>} The session's accounts, refreshed where due.
        * @throws {Error} AuthError if the connection has no session.
        */
-      refreshAccounts: function (connection) {
+      refreshStale: function (connection) {
         const session = deps.store.loadSession(connection.key);
         if (!session) throw ns.Errors.auth('Not authorized yet; connect first');
+        let changed = false;
         const accounts = session.accounts.map(function (account) {
-          return ns.EbNormalize.normalizeAccount(deps.client.getAccountDetails(account.accountId));
+          if (!isStale(account)) return account;
+          try {
+            const fresh = keepAccounts([deps.client.getAccountDetails(account.accountId)])[0];
+            changed = true;
+            return fresh;
+          } catch (e) {
+            return account;
+          }
         });
-        deps.store.saveSession(connection.key, Object.assign({}, session, { accounts: accounts }));
-        return accounts.length;
+        if (changed) deps.store.saveSession(connection.key, Object.assign({}, session, { accounts: accounts }));
+        return accounts;
       }
     };
   }

@@ -6,24 +6,29 @@
 
   /**
    * Maps an Enable Banking AccountResource to an Account. The API's `name` is the
-   * account holder's own name and is not kept; `details` is the label set by the
-   * user or bank. `bank` and `connection` are stamped later by the provider.
+   * account holder's name (`holderName`); `details` is the label set by the user or
+   * bank (`accountName`). `bank` and `connection` are stamped later by the provider.
    * @param {Object} raw - AccountResource (needs `uid` and `currency`).
-   * @returns {import('../bank-provider.js').Account} Normalized account; IBAN masked.
+   * @param {string} [detailsAt] - ISO date-time the details were read, '' if unknown.
+   * @returns {import('../bank-provider.js').Account} Normalized account; IBAN masked, every API
+   *   field kept (flattened) in `apiFields`.
    * @throws {Error} If `uid` is missing.
    */
-  function normalizeAccount(raw) {
+  function normalizeAccount(raw, detailsAt) {
     if (!raw || !raw.uid) throw ns.Errors.create('DataError', 'Account is missing uid');
     return {
       provider: PROVIDER_ID,
       accountId: raw.uid,
       bank: '',
       connection: '',
+      holderName: raw.name || '',
       accountName: raw.details || '',
       currency: raw.currency || '',
       ibanMasked: ns.Redact.maskIban(raw.account_id && raw.account_id.iban),
       accountType: raw.cash_account_type || '',
-      product: raw.product || ''
+      product: raw.product || '',
+      detailsAt: detailsAt || '',
+      apiFields: ns.Flatten.flat(raw)
     };
   }
 
@@ -47,7 +52,8 @@
       currency: raw.balance_amount.currency || '',
       referenceDate: raw.reference_date || '',
       lastChange: raw.last_change_date_time || '',
-      fetchedAt: fetchedAt
+      fetchedAt: fetchedAt,
+      apiFields: ns.Flatten.flat(raw)
     };
   }
 
@@ -101,6 +107,7 @@
       provider: PROVIDER_ID,
       bank: '',
       connection: '',
+      holderName: '',
       accountName: '',
       ibanMasked: '',
       accountId: accountId,

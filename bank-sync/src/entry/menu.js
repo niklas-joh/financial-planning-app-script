@@ -27,27 +27,60 @@
   }
 
   /**
-   * Lets the user pick one of several connections.
-   * @param {Array<import('../core/config.js').ConnectionConfig>} connections - Candidates.
+   * Asks a question and returns the trimmed answer.
    * @param {string} title - Prompt title.
-   * @returns {?import('../core/config.js').ConnectionConfig} The choice, or null if cancelled.
-   * @throws {Error} InputError if the answer is not a listed number.
+   * @param {string} question - Prompt text.
+   * @returns {?string} The answer, or null if cancelled.
    */
-  function pick(connections, title) {
-    if (connections.length === 1) return connections[0];
+  function ask(title, question) {
     const ui = SpreadsheetApp.getUi();
-    const list = connections.map(function (c, i) { return (i + 1) + '. ' + ns.Connections.label(c); }).join('\n');
-    const answer = ui.prompt(title, 'Enter a number:\n' + list, ui.ButtonSet.OK_CANCEL);
-    if (answer.getSelectedButton() !== ui.Button.OK) return null;
-    return ns.Connections.choose(connections, answer.getResponseText());
+    const answer = ui.prompt(title, question, ui.ButtonSet.OK_CANCEL);
+    return answer.getSelectedButton() === ui.Button.OK ? answer.getResponseText().trim() : null;
   }
 
-  /** Starts authorization for a chosen connection and shows the login link. */
+  /**
+   * Lets the user pick a bank from Enable Banking's live list for a country.
+   * @param {Object} client - EbClient.
+   * @returns {?{bankName: string, country: string}} The bank, or null if cancelled or not resolved.
+   */
+  function pickBank(client) {
+    const ui = SpreadsheetApp.getUi();
+    const country = ask('Connect a bank', 'Country code of the bank (e.g. LU, SE, DE):');
+    if (!country) return null;
+    if (!/^[A-Za-z]{2}$/.test(country)) throw ns.Errors.create('InputError', 'Use a two-letter country code');
+    const names = client.listAspsps(country.toUpperCase()).aspsps.map(function (a) { return a.name; });
+    const query = ask('Connect a bank', names.length + ' banks in ' + country.toUpperCase() + '. Type (part of) the bank name:');
+    if (!query) return null;
+    const found = ns.Connections.matchBanks(names, query);
+    if (!found.bank) {
+      ui.alert(found.matches.length
+        ? 'Several banks match. Run Connect again and type more of the name:\n- ' + found.matches.join('\n- ')
+        : 'No bank in ' + country.toUpperCase() + ' matches "' + query + '".');
+      return null;
+    }
+    return { bankName: found.bank, country: country.toUpperCase() };
+  }
+
+  /** Picks a bank from Enable Banking's list, asks whose login it is, and shows the login link. */
   function connect() {
     guarded(function () {
-      const connection = pick(ns.Connections.all(), 'Connect a bank');
-      if (!connection) return;
-      const result = ns.Container.providerFor(connection).authorize();
+      const wired = ns.Container.services();
+      const bank = pickBank(wired.client);
+      if (!bank) return;
+      const holder = ask('Connect ' + bank.bankName, 'Whose login is this? A short name, e.g. niklas:');
+      if (!holder) return;
+      const connection = ns.Connections.build({ bankName: bank.bankName, country: bank.country, holder: holder });
+      let result;
+      try {
+        result = ns.Container.providerFor(connection, wired).authorize();
+      } catch (e) {
+        const advice = ns.Connections.explainNotEnabled(e);
+        if (advice) {
+          SpreadsheetApp.getUi().alert(advice);
+          return;
+        }
+        throw e;
+      }
       const html = HtmlService.createHtmlOutput(
         '<p>Open the link, log in to ' + escapeHtml(connection.bank.aspspName) + ' as ' + escapeHtml(connection.holder) +
         ', and approve access.</p>' +
@@ -80,7 +113,7 @@
         const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
         const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
         const outcome = ns.SyncAll.run({
-          connections: ns.Connections.all(),
+          connections: wired.connections.all(),
           isConnected: function (c) { return Boolean(wired.store.loadSession(c.key)); },
           providerFor: function (c) { return ns.Container.providerFor(c, wired); },
           store: ns.TransactionsStore.create(spreadsheet, formatDate),
@@ -93,31 +126,13 @@
     });
   }
 
-  /** Re-reads account names from the bank for every connected login (one call per account). */
-  function refreshAccountNames() {
-    guarded(function () {
-      withLock(function () {
-        const wired = ns.Container.services();
-        const lines = ns.Connections.all().map(function (c) {
-          if (!wired.store.loadSession(c.key)) return c.key + ': not connected';
-          try {
-            return c.key + ': ' + wired.auth.refreshAccounts(c) + ' accounts refreshed';
-          } catch (e) {
-            return c.key + ': ' + ns.Redact.text(e.name + ': ' + e.message);
-          }
-        });
-        SpreadsheetApp.getUi().alert(lines.join('\n') + '\nRun "Sync all" to update the sheet.');
-      });
-    });
-  }
-
   /** Shows non-secret setup status: which settings exist and when each consent lapses. */
   function status() {
     guarded(function () {
       const s = ns.Container.services();
       const keys = ns.Config.PROPERTY_KEYS;
       const yesNo = function (key) { return s.props.getProperty(key) ? 'set' : 'MISSING'; };
-      const connections = ns.Connections.all().map(function (c) {
+      const connections = s.connections.all().map(function (c) {
         const session = s.store.loadSession(c.key);
         const consent = session
           ? session.accessValidUntil + ' (' + Math.floor((Date.parse(session.accessValidUntil) - s.nowMs()) / 86400000) + ' days left)'
@@ -128,11 +143,11 @@
         'EB_APP_ID: ' + yesNo(keys.EB_APP_ID),
         'EB_PRIVATE_KEY: ' + yesNo(keys.EB_PRIVATE_KEY),
         'EB_REDIRECT_URL: ' + yesNo(keys.EB_REDIRECT_URL)
-      ].concat(connections).join('\n'));
+      ].concat(connections.length ? connections : ['No bank connected yet: use "Connect a bank..."']).join('\n'));
     });
   }
 
-  ns.Menu = { connect: connect, syncAll: syncAll, refreshAccountNames: refreshAccountNames, status: status };
+  ns.Menu = { connect: connect, syncAll: syncAll, status: status };
 })(globalThis.BankSync);
 
 /** Adds the Bank Sync menu when the spreadsheet opens. */
@@ -140,8 +155,6 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Bank Sync')
     .addItem('Connect a bank...', 'menuConnect')
     .addItem('Sync all', 'menuSyncAll')
-    .addSeparator()
-    .addItem('Refresh account names', 'menuRefreshAccountNames')
     .addItem('Show status', 'menuStatus')
     .addToUi();
 }
@@ -151,9 +164,6 @@ function menuConnect() { BankSync.Menu.connect(); }
 
 /** Menu entry: sync everything. */
 function menuSyncAll() { BankSync.Menu.syncAll(); }
-
-/** Menu entry: refresh account names. */
-function menuRefreshAccountNames() { BankSync.Menu.refreshAccountNames(); }
 
 /** Menu entry: show setup status. */
 function menuStatus() { BankSync.Menu.status(); }

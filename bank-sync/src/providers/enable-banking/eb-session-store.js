@@ -11,14 +11,15 @@
    * @property {string} sessionId - Enable Banking session id.
    * @property {string} accessValidUntil - ISO date-time when consent lapses.
    * @property {string} createdAt - ISO date-time the session was created.
-   * @property {Array<import('../bank-provider.js').Account>} accounts - Accounts granted (IBANs masked).
+   * @property {Array<import('../bank-provider.js').Account>} accounts - Accounts granted (IBANs masked; the
+   *   full API fields live in `loadApiFields`, not here).
    */
 
   /**
    * Creates a store.
    * @param {{getProperty: function(string): ?string, setProperty: function(string, string): *}} props - Script Properties.
    * @param {function(): number} nowMs - Clock in epoch milliseconds.
-   * @returns {Object} Store with savePending, consumePending, saveSession, loadSession, migrateKey.
+   * @returns {Object} Store with savePending, consumePending, saveSession, loadSession, migrateKey, saveApiFields, loadApiFields.
    */
   function create(props, nowMs) {
     function readMap(key) {
@@ -64,21 +65,23 @@
       },
 
       /**
-       * @param {string} connectionKey - Connection key from Config.CONNECTIONS.
+       * Stores a session in its own property (Script Properties values are limited to 9 KB,
+       * so sessions of several connections must not share one).
+       * @param {string} connectionKey - Connection key.
        * @param {StoredSession} session - Session to persist.
        */
       saveSession: function (connectionKey, session) {
-        const map = readMap(KEYS.EB_SESSIONS);
-        map[connectionKey] = session;
-        writeMap(KEYS.EB_SESSIONS, map);
+        props.setProperty(KEYS.EB_SESSION_PREFIX + connectionKey, JSON.stringify(session));
       },
 
       /**
-       * @param {string} connectionKey - Connection key from Config.CONNECTIONS.
-       * @returns {?StoredSession} The session, or null if never authorized.
+       * @param {string} connectionKey - Connection key.
+       * @returns {?StoredSession} The session, or null if never authorized. Falls back to the
+       *   single-map storage used before sessions had their own property.
        */
       loadSession: function (connectionKey) {
-        return readMap(KEYS.EB_SESSIONS)[connectionKey] || null;
+        const own = props.getProperty(KEYS.EB_SESSION_PREFIX + connectionKey);
+        return own ? JSON.parse(own) : readMap(KEYS.EB_SESSIONS)[connectionKey] || null;
       },
 
       /**
@@ -89,12 +92,35 @@
        * @returns {boolean} True if a session was moved.
        */
       migrateKey: function (fromKey, toKey) {
-        const map = readMap(KEYS.EB_SESSIONS);
-        if (!map[fromKey] || map[toKey]) return false;
-        map[toKey] = map[fromKey];
-        delete map[fromKey];
-        writeMap(KEYS.EB_SESSIONS, map);
+        const session = this.loadSession(fromKey);
+        if (!session || this.loadSession(toKey)) return false;
+        this.saveSession(toKey, session);
+        const legacy = readMap(KEYS.EB_SESSIONS);
+        if (legacy[fromKey]) {
+          delete legacy[fromKey];
+          writeMap(KEYS.EB_SESSIONS, legacy);
+        }
+        props.setProperty(KEYS.EB_SESSION_PREFIX + fromKey, '');
         return true;
+      },
+
+      /**
+       * Keeps an account's full flattened API fields (shown on the raw tabs), one property
+       * per account so they never compete with the session for space.
+       * @param {string} accountId - Account uid.
+       * @param {Object<string,*>} fields - Flat, IBAN-masked fields.
+       */
+      saveApiFields: function (accountId, fields) {
+        props.setProperty(KEYS.EB_API_PREFIX + accountId, JSON.stringify(fields));
+      },
+
+      /**
+       * @param {string} accountId - Account uid.
+       * @returns {Object<string,*>} The stored fields, or {} if none.
+       */
+      loadApiFields: function (accountId) {
+        const raw = props.getProperty(KEYS.EB_API_PREFIX + accountId);
+        return raw ? JSON.parse(raw) : {};
       }
     };
   }
