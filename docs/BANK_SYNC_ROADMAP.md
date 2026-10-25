@@ -76,7 +76,7 @@ quirks) goes into the next phase's PR.
   - A key without its secret shows as "not connected" (both are needed).
   - The backfill (#65) loaded the full history in two syncs. Every re-read Trading 212 row was reported as
     "updated" (the values were identical; only the key order differed from the copy read back from the sheet,
-    and `TxnMerge.changed` compared JSON text). Fixed in #PR: rows are compared field by field. After deploying
+    and `TxnMerge.changed` compared JSON text). Fixed in #67: rows are compared field by field. After deploying
     it, a repeated sync reports 0 added and 0 updated for Trading 212 too.
   - `totalValue` stays a constant small amount above available cash plus investments over several syncs, so it
     is not a payment in flight; it counts as cash (total minus investments).
