@@ -29,11 +29,27 @@
   }
 
   /**
+   * How `raw_transactions` grows: one row per transaction id, newest first, so the raw API
+   * fields of earlier fetches are kept even though each sync only reads the last weeks.
+   * @type {{keyOf: function(Object): string, compare: function(Object, Object): number}}
+   */
+  const accumulateTransactions = {
+    keyOf: ns.TxnMerge.rowKey,
+    compare: function (a, b) {
+      const da = ns.TxnMerge.effectiveDate(a);
+      const db = ns.TxnMerge.effectiveDate(b);
+      if (da !== db) return da < db ? 1 : -1;
+      return 0;
+    }
+  };
+
+  /**
    * Writes the three raw tabs: bank, connection, holder, account name and masked IBAN are added
    * to each balance, and every API field becomes its own `api.*` column.
    * @param {{writeTable: function(string, Array<Object>, Array<Object>, Array<string>=): number}} writer - Sheet writer.
    * @param {RawData} data - Fresh rows from the connections that were read.
    * @param {Array<string>} refreshed - Keys of those connections; other connections' rows stay.
+   *   Transactions are the exception: they accumulate across runs (see `accumulateTransactions`).
    * @returns {{accounts: number, balances: number, transactions: number}} Row counts written (no sensitive data).
    */
   function write(writer, data, refreshed) {
@@ -43,7 +59,7 @@
     const transactions = (data.transactions || []).map(function (t) { return ns.RawWriter.toRow(ns.AccountLabels.stamp(t, labelsFor)); });
     const tabs = ns.Config.TABS;
     return {
-      transactions: writer.writeTable(tabs.RAW_TRANSACTIONS, ns.RawWriter.TRANSACTION_COLUMNS, transactions, refreshed),
+      transactions: writer.writeTable(tabs.RAW_TRANSACTIONS, ns.RawWriter.TRANSACTION_COLUMNS, transactions, refreshed, accumulateTransactions),
       accounts: writer.writeTable(tabs.RAW_ACCOUNTS, ns.RawWriter.ACCOUNT_COLUMNS, accounts, refreshed),
       balances: writer.writeTable(tabs.RAW_BALANCES, ns.RawWriter.BALANCE_COLUMNS, balances, refreshed)
     };
