@@ -133,8 +133,8 @@
    */
   function changed(a, b) {
     const keys = Object.keys(a).concat(Object.keys(b));
-    const value = function (v) { return JSON.stringify(v === undefined ? '' : v); };
-    return keys.some(function (k) { return value(a[k]) !== value(b[k]); });
+    const comparable = function (v) { return JSON.stringify(v === undefined ? '' : v); };
+    return keys.some(function (k) { return comparable(a[k]) !== comparable(b[k]); });
   }
 
   /**

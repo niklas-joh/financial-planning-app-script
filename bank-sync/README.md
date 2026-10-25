@@ -251,8 +251,8 @@ Supported exports:
   across two columns; the import reads the raw text, so they are read correctly. UTF-8, else Windows-1252.
   The file has no currency column; BIL accounts are EUR. The `Message` is split on BIL's own labels
   (`Remittance Info`, `Beneficiary`, `Beneficiary account`, `At`, `By order of`, `Paying bank`, `End-to-end
-  Identification`, `Payment initiation reference`), never on any colon, so text such as "DATE CISS: 19.08.2026"
-  inside a remittance stays in it:
+  Identification`, `Payment initiation reference`), never on any colon, and in the order BIL writes them, so
+  text such as "DATE CISS: 19.08.2026", or even "At:" typed by the payer, inside a remittance stays in it:
   - `description`: the remittance text (e.g. "Rent for August"); card payments keep the whole message;
   - `counterparty`: the beneficiary, the payer (`By order of`) or the card merchant;
   - `category`: the kind of movement as a code: `STANDING_ORDER`, `INSTANT_PAYMENT`, `CREDIT`, `CARD_PAYMENT`, ...;

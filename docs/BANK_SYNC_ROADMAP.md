@@ -381,7 +381,8 @@ As built (see `bank-sync/README.md`, "CSV import"):
   `<kind> Remittance Info: <text> [Beneficiary: ..] [Beneficiary account: ..] [At: <BIC - bank>] [By order of: ..]
   [Paying bank: ..] [End-to-end Identification: ..] [Payment initiation reference: ..]` (kinds seen: `Standing
   order`, `Instant Payment`, `Credit`); card payments are `<merchant> <country> DD/MM/YYYY HH:MM <card>`. It is
-  split on those labels only (a remittance may contain its own "LABEL: value" text, e.g. from the health fund):
+  split on those labels only (a remittance may contain its own "LABEL: value" text, e.g. from the health fund),
+  matched from the end in each kind's label order, so even a label name typed inside the remittance stays in it:
   `description` = remittance text, `counterparty` = beneficiary or payer (card: merchant), `category` = the kind as
   a code (card: `CARD_PAYMENT`; no label: the `Name`), `counterpartyAccount` (masked), `counterpartyBank`,
   `reference` (end-to-end id, else payment reference); all parts also as `api.parsed.*` on `raw_transactions`. The

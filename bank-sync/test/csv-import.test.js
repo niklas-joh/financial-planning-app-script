@@ -148,6 +148,24 @@ test('csv bil: the message is split on BIL labels only; a colon inside the remit
   assert.deepStrictEqual(BS.CsvBil.describe('Payment order', 'Fee for July').category, 'PAYMENT_ORDER');
 });
 
+test('csv bil: a label typed inside the remittance stays in it; the real labels after it still count', () => {
+  const typed = BS.CsvBil.parts('Standing order Remittance Info: Meet At: the club Beneficiary: DEMO PERSON ' +
+    'Beneficiary account: LU990000000000005678 At: DEMOLULL - DEMO BANK');
+  assert.deepStrictEqual(typed.fields, {
+    'Remittance Info': 'Meet At: the club',
+    Beneficiary: 'DEMO PERSON',
+    'Beneficiary account': 'LU990000000000005678',
+    At: 'DEMOLULL - DEMO BANK'
+  });
+  const twice = BS.CsvBil.parts('Credit Remittance Info: re Beneficiary: someone By order of: DEMO FUND Paying bank: DEMOLULL - DEMO BANK');
+  assert.deepStrictEqual(twice.fields, {
+    'Remittance Info': 're Beneficiary: someone',
+    'By order of': 'DEMO FUND',
+    'Paying bank': 'DEMOLULL - DEMO BANK'
+  });
+  assert.strictEqual(twice.lead, 'Credit');
+});
+
 test('csv bil: ids depend on the raw columns only, so a new way of splitting the message keeps them', () => {
   const id = normalize(bil(ROWS.rent)).transactions[0].transactionId;
   const print = JSON.stringify(['2026-08-28', '2026-08-31', 'Payment order',
