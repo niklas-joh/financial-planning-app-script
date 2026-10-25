@@ -105,6 +105,17 @@ use it after *removing* errors; never baseline a new error.
 - PRs are squash-merged; the **PR title must be a Conventional Commit**
   (`feat(scope): …`, `fix(scope): …`, `chore: …`) — CI enforces it.
 - Include a short summary and a test plan in the PR body.
+- **Open every PR as a draft.** Mark it *Ready for review* only when CI is green and
+  the work is done: that is what starts the Claude review, once. Don't push more
+  work after marking ready unless it fixes review findings.
+- **Review findings are issues.** The review files each bug and improvement as its
+  own issue and all nits as one, labelled `code-review` (plus `blocking`,
+  `enhancement` or `nits`), and links them from its PR comment. The session that
+  opened the PR fixes them on the same branch; otherwise the owner comments
+  `@claude` on the issue. Close the issue when the fix lands.
+- **Don't re-run the review yourself** (no `workflow_dispatch`, no draft/ready
+  toggling) unless the owner asks. To get a fresh review after big changes, the
+  owner converts the PR to draft and marks it ready again.
 
 ## CI (`.github/workflows/`)
 
@@ -112,8 +123,8 @@ use it after *removing* errors; never baseline a new error.
 |---|---|
 | `ci.yml` | PR-title commitlint, ESLint, tests, type check, Apps Script check (sticky PR comment with deltas vs `main`) |
 | `security.yml` | Gitleaks (full history) + Semgrep (JS, OWASP, GitHub Actions rules), weekly too |
-| `claude-code-review.yml` | Claude reviews each PR against this file |
-| `claude.yml` | `@claude` in issues/PRs (owner/collaborators only) |
+| `claude-code-review.yml` | When a PR is marked ready: runs the checks on the PR head, then Claude reviews it against this file, posts one comment and files findings as `code-review` issues |
+| `claude.yml` | `@claude` in issues/PRs (owner/collaborators only), e.g. to fix a review issue |
 | `auto-fix-ci.yml` | Claude fixes a red CI run on a PR branch and pushes the fix |
 | `deploy.yml` | Manual `clasp push` from `main` (see below) |
 
