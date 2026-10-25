@@ -8,6 +8,7 @@
     "src/00_namespace.js",
     "src/core/config.js",
     "src/core/errors.js",
+    "src/core/lock.js",
     "src/core/redact.js",
     "src/lib/jwt.js",
     "src/lib/http.js",

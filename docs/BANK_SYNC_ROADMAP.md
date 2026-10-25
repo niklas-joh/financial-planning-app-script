@@ -246,7 +246,8 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
   `listAccounts({outOfTime})`); moving it to its own step in `SyncAll` would be cleaner but is not needed.
 - Enable Banking keeps no list of enabled banks, so "not enabled" is detected after the fact;
   confirm live which error a restricted application gets for an unlinked bank.
-- `raw_transactions` accumulates one row per transaction id (a refetch replaces the older copy). A pending row
+- `raw_transactions` accumulates one row per transaction id (a refetch replaces the older copy). Rows older than
+  365 days (`RAW_RETENTION_DAYS`) are dropped on each sync to keep the tab bounded. A pending row
   that later books under a new id stays as its own pending row there; the `transactions` tab drops it.
   Cancelled, rejected and scheduled rows are skipped by the normalizer, so they do not appear.
 

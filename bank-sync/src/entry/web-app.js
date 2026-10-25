@@ -4,7 +4,8 @@
  */
 (function (ns) {
   /**
-   * Handles the redirect: completes the session or reports the bank's error.
+   * Handles the redirect: completes the session or reports the bank's error. If the script lock
+   * stays taken the login is not completed and the page says to retry.
    * @param {{parameter: Object<string,string>}} e - doGet event.
    * @returns {string} Plain-text result, free of secrets.
    */
@@ -13,7 +14,10 @@
     if (p.error) return 'Authorization failed: ' + ns.Redact.text(p.error);
     if (!p.code || !p.state) return 'Missing code or state in the redirect.';
     try {
-      const summary = ns.Container.services().auth.complete(p.code, p.state);
+      // Completing a login rewrites shared Script Properties, so it waits for a running sync or connect.
+      const summary = ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, function () {
+        return ns.Container.services().auth.complete(p.code, p.state);
+      });
       return 'Authorized ' + summary.connectionKey + ' (' + summary.accountCount +
         ' accounts). Consent valid until ' + summary.validUntil + '. You can close this tab.';
     } catch (err) {

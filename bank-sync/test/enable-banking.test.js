@@ -151,7 +151,7 @@ test('raw sync collects balances per account and writes both tabs with labels', 
     { accountId: 'a2', bank: 'Revolut', connection: 'revolut-niklas', accountName: '', ibanMasked: '****1', product: 'Savings' }];
   const provider = { getBalances: (id) => [{ accountId: id }] };
   const data = BS.RawSync.collect(provider, accounts);
-  assert.deepStrictEqual(BS.RawSync.write(writer, data), { accounts: 2, balances: 2, transactions: 0 });
+  assert.deepStrictEqual(BS.RawSync.write(writer, data, [], '2026-04-01'), { accounts: 2, balances: 2, transactions: 0 });
   assert.deepStrictEqual(written.raw_balances.map((b) => [b.connection, b.accountName]),
     [['revolut-niklas', 'Main'], ['revolut-niklas', 'Savings']]);
   assert.strictEqual(written.raw_transactions.length, 0);

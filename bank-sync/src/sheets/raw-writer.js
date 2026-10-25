@@ -124,16 +124,29 @@
   }
 
   /**
-   * Stored rows plus fresh ones, one row per key (the fresh copy wins), in the requested order.
+   * @typedef {Object} Accumulate
+   * @property {function(Object): string} keyOf - Identity of a row; '' means it has none and is kept as it is.
+   * @property {function(Object, Object): number} compare - Order of the written rows.
+   * @property {function(Object): boolean} keep - False for rows that have aged out and are dropped.
+   */
+
+  /**
+   * Stored rows plus fresh ones, one row per key (the fresh copy wins), aged-out rows dropped,
+   * in the requested order.
    * @param {Array<Object>} stored - Rows read from the tab.
    * @param {Array<Object>} fresh - Fresh flat rows.
-   * @param {{keyOf: function(Object): string, compare: function(Object, Object): number}} how - Identity and order.
+   * @param {Accumulate} how - Identity, retention and order.
    * @returns {Array<Object>} Rows to write.
    */
   function accumulated(stored, fresh, how) {
     const byKey = {};
-    stored.concat(fresh).forEach(function (row) { byKey[how.keyOf(row)] = row; });
-    return Object.keys(byKey).map(function (key) { return byKey[key]; }).sort(how.compare);
+    const unkeyed = [];
+    stored.concat(fresh).forEach(function (row) {
+      const key = how.keyOf(row);
+      if (key) byKey[key] = row;
+      else unkeyed.push(row);
+    });
+    return Object.keys(byKey).map(function (key) { return byKey[key]; }).concat(unkeyed).filter(how.keep).sort(how.compare);
   }
 
   /**
@@ -153,9 +166,9 @@
        * @param {Array<Column>} fixed - Fixed columns; API columns are added from the rows.
        * @param {Array<Object>} rows - Fresh flat rows (see `toRow`).
        * @param {Array<string>} [refreshed] - Connection keys the fresh rows replace.
-       * @param {{keyOf: function(Object): string, compare: function(Object, Object): number}} [accumulate] - Keep every
-       *   row ever written instead: a fresh row replaces the stored row with the same key, all other stored rows stay,
-       *   and the result is ordered by `compare`. Replaces the `refreshed` behaviour.
+       * @param {Accumulate} [accumulate] - Keep rows across runs instead: a fresh row replaces the stored row
+       *   with the same key, other stored rows stay until `keep` says they have aged out, and the result is
+       *   ordered by `compare`. Replaces the `refreshed` behaviour.
        * @returns {number} Number of data rows now on the tab.
        */
       writeTable: function (tabName, fixed, rows, refreshed, accumulate) {
