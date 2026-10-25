@@ -20,7 +20,9 @@
    * @typedef {Object} ImportRecord
    * @property {string} at - ISO date-time of the read.
    * @property {Object<string, SourceRead>} sources - Per format id.
-   * @property {Array<string>} skipped - Files not imported, each with the reason (redacted).
+   * @property {Array<string>} skipped - Files not imported, each with the reason (redacted); the first
+   *   `CSV.MAX_SKIPPED_LISTED` only, each cut to `CSV.MAX_SKIPPED_CHARS`.
+   * @property {number} [skippedMore] - Further files not imported and not named.
    */
 
   /**
@@ -90,7 +92,9 @@
       return '  ' + id + ': ' + s.files + (s.files === 1 ? ' file, ' : ' files, ') + s.rows + ' transactions' +
         (s.from ? ', ' + s.from + ' to ' + s.to : '');
     });
-    return sources.concat(record.skipped.map(function (s) { return '  skipped ' + s; }));
+    const skipped = record.skipped.map(function (s) { return '  skipped ' + s; });
+    if (record.skippedMore) skipped.push('  and ' + record.skippedMore + ' more skipped files');
+    return sources.concat(skipped);
   }
 
   /**

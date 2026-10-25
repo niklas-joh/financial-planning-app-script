@@ -2,8 +2,9 @@
 
 Modular Apps Script project that pulls bank data via
 [Enable Banking](https://enablebanking.com), and cash, holdings and history from
-[Trading 212](https://docs.trading212.com/api), and CSV exports from a Drive folder (BIL, and the
-Trading 212 report for card details), into a dedicated Google Sheet ("Bank Sync"). Independent of the legacy `src/` project in this repo.
+[Trading 212](https://docs.trading212.com/api), and CSV exports from a Drive folder (BIL, and
+the Trading 212 report for card details), into a dedicated Google Sheet ("Bank Sync").
+Independent of the legacy `src/` project in this repo.
 
 ## Layout
 
@@ -284,5 +285,10 @@ the other files still import. Nothing is guessed: a new bank needs its export la
 `src/providers/csv/csv-formats.js`.
 
 New OAuth scope: `drive.readonly`, to list the folder and read files you uploaded (`drive.file` only covers
-files the script created). The script never changes, moves or deletes files. Re-authorize after the push
-(the daily sync fails until you do).
+files the script created or you picked through a Google file picker, so it cannot see a folder you fill by
+hand). Google offers no scope for one folder: `drive.readonly` lets the script read **all** of your Drive. The
+code only opens the folders named in `CSV_FOLDER_<HOLDER>` (`lib/gas-adapters.js` `driveFolder` is the one place
+that calls DriveApp) and never changes, moves or deletes files. Chosen on purpose (2026-10-25) over pasting
+into a tab (no scope, but Sheets re-parses numbers and dates) and an upload dialog (no scope, one manual step
+per file), so new files are picked up by the daily sync. Re-authorize after the push (the daily sync fails
+until you do).

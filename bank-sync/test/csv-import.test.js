@@ -292,3 +292,17 @@ test('csv t212 report: Sync all adds merchant and category to the API rows, adds
   const record = JSON.parse(r.props.map.CSV_IMPORTS_ALEX);
   assert.deepStrictEqual(record.sources['trading212-report'], { files: 1, rows: 4, from: '2026-08-19', to: '2026-08-22' });
 });
+
+test('csv provider: the last-read record names only the first skipped files, so it fits one Script Property', () => {
+  const bad = Array.from({ length: 200 }, (_, i) => file('export-' + 'x'.repeat(300) + '-' + i + '.csv', 'Datum;Belopp\n2026-01-01;5\n'));
+  const r = folderRun([file('good.csv', bil(ROWS.rent))].concat(bad));
+  const out = r.run();
+  assert.strictEqual(out.results[0].transactions.added, 1);
+  const stored = r.props.map.CSV_IMPORTS_ALEX;
+  assert.ok(stored.length < 9000, 'record is ' + stored.length + ' characters');
+  const record = JSON.parse(stored);
+  assert.strictEqual(record.skipped.length, BS.Config.CSV.MAX_SKIPPED_LISTED);
+  assert.ok(record.skipped.every((s) => s.length <= BS.Config.CSV.MAX_SKIPPED_CHARS));
+  assert.strictEqual(record.skippedMore, 190);
+  assert.strictEqual(BS.CsvFolders.statusLines(r.props).pop(), '  and 190 more skipped files');
+});

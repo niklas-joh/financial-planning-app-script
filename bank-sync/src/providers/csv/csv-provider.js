@@ -3,8 +3,9 @@
  * run reads every `.csv` file in the folder, so a sync merges the whole folder; the idempotent
  * upsert makes files already imported change nothing. Rows that appear in two overlapping files
  * have the same id and count once. Details files (e.g. the Trading 212 report) add no rows: their
- * details are handed to Sync all through `getEnrichments` and applied to the rows they name. A file that matches no format, or cannot be read, is skipped
- * and named in the last-read record; the other files still import.
+ * details are handed to Sync all through `getEnrichments` and applied to the rows they name. A
+ * file that matches no format, or cannot be read, is skipped and named in the last-read record
+ * (the first few, so the record fits one Script Property); the other files still import.
  */
 (function (ns) {
   const CSV = ns.Config.CSV;
@@ -68,7 +69,7 @@
     const accounts = {};
     const byKey = {};
     const detailsByKey = {};
-    const record = { at: new Date(deps.nowMs()).toISOString(), sources: {}, skipped: [] };
+    const record = { at: new Date(deps.nowMs()).toISOString(), sources: {}, skipped: [], skippedMore: 0 };
     deps.folder.files()
       .filter(function (f) { return /\.csv$/i.test(f.name); })
       .sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; })
@@ -87,7 +88,11 @@
           accounts[out.account.accountId] = out.account;
           count(record.sources, found.format.id, fresh.map(function (t) { return t.bookingDate; }));
         } catch (e) {
-          record.skipped.push(ns.Redact.text(f.name + ' (' + e.message + ')'));
+          if (record.skipped.length < CSV.MAX_SKIPPED_LISTED) {
+            record.skipped.push(ns.Redact.text(f.name + ' (' + e.message + ')').slice(0, CSV.MAX_SKIPPED_CHARS));
+          } else {
+            record.skippedMore++;
+          }
         }
       });
     return {

@@ -373,8 +373,12 @@ As built (see `bank-sync/README.md`, "CSV import"):
   order`, `Credit`, `Card payment`); the counterparty comes from `Beneficiary:` / `By order of:` in the message,
   or the merchant text before the date for card payments.
 - New OAuth scope `drive.readonly` (in `bank-sync/src/appsscript.json` and `scripts/allowed-scopes.json`): DriveApp
-  needs a Drive scope to read files the script did not create (`drive.file` does not cover files uploaded by hand).
-  Read-only: files are never changed, moved or deleted. The web-app path is unchanged.
+  needs a Drive scope to read files the script did not create (`drive.file` covers only files the script created
+  or the user picked in a Google Picker, not a folder filled by hand). There is no per-folder scope, so it grants
+  read access to **all** of Drive; the code opens only the `CSV_FOLDER_<HOLDER>` folders (`Gas.driveFolder` is the
+  only DriveApp use) and never writes. Accepted by the owner for the hands-off daily import (review #69). Narrower
+  later, if wanted: an upload dialog or a Google Picker with `drive.file`, at the cost of a manual step per file.
+  The web-app path is unchanged.
 - Deploy steps: `clasp push --force` from `bank-sync/` after diffing the manifest (time zone and the new scope),
   reload the sheet and re-authorize (the daily trigger fails until then), create the folder, set
   `CSV_FOLDER_NIKLAS`, upload a BIL export, run *Import CSV files* twice (the second reports 0 added, 0 updated)

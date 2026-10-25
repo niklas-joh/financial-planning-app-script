@@ -39,7 +39,8 @@
    *   (live), page size (the API's maximum), pages per history feed the one-time backfill reads per run, and
    *   the longest wait for a rate-limit reset before a call gives up.
    * @property {Object} CSV - CSV import: provider id, display name of its connections (one Drive folder per
-   *   holder) and the largest file read.
+   *   holder), the largest file read, and how many skipped files (and characters each) the last-read record
+   *   names, so it stays far below the 9 KB Script Property limit.
    * @property {{WARN_DAYS: Array<number>}} CONSENT - Days before a consent lapses on which a warning
    *   email is sent (each once per consent); one more is sent once it has lapsed.
    */
@@ -123,7 +124,9 @@
     CSV: Object.freeze({
       PROVIDER_ID: 'csv',
       BANK_NAME: 'CSV import',
-      MAX_FILE_BYTES: 5000000
+      MAX_FILE_BYTES: 5000000,
+      MAX_SKIPPED_LISTED: 10,
+      MAX_SKIPPED_CHARS: 200
     }),
     CONSENT: Object.freeze({
       WARN_DAYS: Object.freeze([30, 14, 7, 1])
