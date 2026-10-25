@@ -27,6 +27,11 @@
    * @property {Object} FX - Exchange rates: Frankfurter v2 base URL and rate provider (ECB), how many
    *   days a rate may be older than the date it converts (weekends and holidays), how long CacheService
    *   keeps the rates and the "already checked" markers, and the largest cache value in characters.
+   * @property {Object} AUTOMATION - Daily sync: the global functions the daily and the follow-up
+   *   triggers call, the hour of the daily run (script time zone), how long after an unfinished run
+   *   the follow-up starts (ms), and how many follow-ups one daily run may chain.
+   * @property {{WARN_DAYS: Array<number>}} CONSENT - Days before a consent lapses on which a warning
+   *   email is sent (each once per consent); one more is sent once it has lapsed.
    */
 
   /** @type {BankSyncConfig} */
@@ -52,7 +57,9 @@
       EB_CONNECTIONS: 'EB_CONNECTIONS',
       EB_MIGRATED: 'EB_MIGRATED',
       EB_SESSION_PREFIX: 'EB_SESSION_',
-      EB_API_PREFIX: 'EB_API_'
+      EB_API_PREFIX: 'EB_API_',
+      LAST_RUN: 'BS_LAST_RUN',
+      CONSENT_WARNED_PREFIX: 'BS_CONSENT_WARNED_'
     }),
     TABS: Object.freeze({
       RAW_ACCOUNTS: 'raw_accounts',
@@ -79,6 +86,16 @@
       MAX_FALLBACK_DAYS: 7,
       CACHE_SECONDS: 21600,
       CACHE_MAX_CHARS: 90000
+    }),
+    AUTOMATION: Object.freeze({
+      DAILY_HANDLER: 'triggerDailySync',
+      CONTINUE_HANDLER: 'triggerSyncContinue',
+      DAILY_HOUR: 6,
+      CONTINUE_AFTER_MS: 300000,
+      MAX_CONTINUATIONS: 3
+    }),
+    CONSENT: Object.freeze({
+      WARN_DAYS: Object.freeze([30, 14, 7, 1])
     })
   });
 })(globalThis.BankSync);

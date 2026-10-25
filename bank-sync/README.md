@@ -131,3 +131,29 @@ from [Frankfurter](https://frankfurter.dev) (`/v2/rates?...&providers=ecb`, no A
   until today's rate is published (around 16:00 CET) and is converted on a later sync.
 - A currency the ECB does not publish (or a failed fetch) leaves those rows' EUR columns
   as they were; *Sync all* names the currency in its summary.
+
+## Daily sync and consent warnings (Phase 4)
+
+*Bank Sync > Enable daily sync* creates one time-driven trigger that runs *Sync all* every day
+between 06:00 and 07:00 (Europe/Luxembourg); *Disable daily sync* removes it. Enabling twice never
+creates a second trigger (duplicates are removed). The trigger runs as the account that enabled it.
+
+- The triggered run is the same *Sync all* as the menu item, under the same script lock. If it ends at
+  the time budget (or the lock is busy because you are syncing by hand), it schedules one follow-up
+  run 5 minutes later, which continues from where it stopped; at most 3 follow-ups per day.
+- Every run (daily, follow-up or from the menu) records its outcome, counts only, in the
+  `BS_LAST_RUN` Script Property. *Show status* shows whether the daily sync is on and the last run
+  (OK or FAILED, per-connection counts, EUR conversion, warnings sent). A run that fails as a whole
+  is also rethrown, so Apps Script sends its own failure email.
+- **Consent warnings**: after each daily run, a connection whose consent lapses in 30, 14, 7 or 1 days
+  (`CONSENT.WARN_DAYS`), or has lapsed, gets one email per threshold to the account the script runs as
+  (the address is read at run time and never stored). Reaching several thresholds at once sends one
+  email. What was sent is kept in `BS_CONSENT_WARNED_<connection>` together with the expiry date, so
+  renewing the consent starts afresh. The email names the connection, the date and how to renew
+  (*Connect a bank...* with the same country, bank and holder); no balances, amounts, counterparties
+  or account numbers. Warnings are only sent by the daily sync.
+- *Show status* marks consents within 30 days with "renew soon" and lapsed ones with "LAPSED".
+
+New OAuth scopes (re-authorize after the push; the first menu click asks):
+`script.scriptapp` (create and delete triggers), `script.send_mail` (MailApp) and
+`userinfo.email` (`Session.getEffectiveUser().getEmail()`, the warning recipient).
