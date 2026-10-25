@@ -14,6 +14,7 @@
     "src/lib/hash.js",
     "src/lib/flatten.js",
     "src/core/connections.js",
+    "src/core/legacy-migration.js",
     "src/core/account-labels.js",
     "src/core/date-range.js",
     "src/core/txn-merge.js",

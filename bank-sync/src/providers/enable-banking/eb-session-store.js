@@ -70,9 +70,15 @@
        * so sessions of several connections must not share one).
        * @param {string} connectionKey - Connection key.
        * @param {StoredSession} session - Session to persist.
+       * @throws {Error} ConfigError if Script Properties refuse the write (e.g. the quota is used up).
        */
       saveSession: function (connectionKey, session) {
-        props.setProperty(KEYS.EB_SESSION_PREFIX + connectionKey, JSON.stringify(session));
+        try {
+          props.setProperty(KEYS.EB_SESSION_PREFIX + connectionKey, JSON.stringify(session));
+        } catch (e) {
+          throw ns.Errors.config('Could not store the session for ' + connectionKey +
+            ' (Script Properties may be full); remove unused connections or properties and connect again');
+        }
       },
 
       /**
@@ -110,13 +116,18 @@
        * per account so they never compete with the session for space.
        * @param {string} accountId - Account uid.
        * @param {Object<string,*>} fields - Flat, IBAN-masked fields.
-       * @returns {boolean} False if the fields are too large for one property and were not stored
+       * @returns {boolean} False if the fields are too large for one property, or Script Properties refused the
+       *   write, and were not stored
        *   (the account then has no `api.*` columns; it never blocks a connect or a sync).
        */
       saveApiFields: function (accountId, fields) {
         const json = JSON.stringify(fields);
         if (json.length > MAX_PROPERTY_CHARS) return false;
-        props.setProperty(KEYS.EB_API_PREFIX + accountId, json);
+        try {
+          props.setProperty(KEYS.EB_API_PREFIX + accountId, json);
+        } catch (e) {
+          return false;
+        }
         return true;
       },
 

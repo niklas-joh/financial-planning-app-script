@@ -489,3 +489,124 @@ test('balances name their description column clearly and keep the bank text', ()
   assert.ok(BS.RawWriter.BALANCE_COLUMNS.some((c) => c.key === 'description'));
   assert.ok(!BS.RawWriter.BALANCE_COLUMNS.some((c) => c.key === 'name'));
 });
+
+function migrationSetup(session) {
+  const props = memProps();
+  if (session) props.setProperty('EB_SESSION_revolut', JSON.stringify(session));
+  const store = BS.EbSessionStore.create(props, () => NOW);
+  const connections = BS.Connections.create(memProps());
+  return { props, store, connections };
+}
+
+test('legacy migration moves the session, records the connection once, and is a no-op after the flag', () => {
+  const { props, store, connections } = migrationSetup({ sessionId: 'old', accounts: [] });
+  BS.LegacyMigration.run(props, store, connections);
+  assert.strictEqual(store.loadSession('revolut-niklas').sessionId, 'old');
+  assert.strictEqual(store.loadSession('revolut'), null);
+  assert.deepStrictEqual(connections.all().map((c) => c.key), ['revolut-niklas']);
+  assert.ok(props.getProperty('EB_MIGRATED'));
+  props.setProperty('EB_SESSION_revolut', JSON.stringify({ sessionId: 'newer' }));
+  BS.LegacyMigration.run(props, store, connections);
+  assert.strictEqual(store.loadSession('revolut').sessionId, 'newer', 'flag set: nothing is touched again');
+});
+
+test('legacy migration repairs a run that stopped after moving the session but before saving the connection', () => {
+  const { props, store, connections } = migrationSetup(null);
+  store.saveSession('revolut-niklas', { sessionId: 'moved', accounts: [] });
+  BS.LegacyMigration.run(props, store, connections);
+  assert.deepStrictEqual(connections.all().map((c) => c.key), ['revolut-niklas']);
+});
+
+test('legacy migration converges when two callers run it one after the other', () => {
+  const { props, store, connections } = migrationSetup({ sessionId: 'old', accounts: [] });
+  const second = memProps();
+  BS.LegacyMigration.run(props, store, connections);
+  BS.LegacyMigration.run(second, store, connections);
+  assert.deepStrictEqual(connections.all().map((c) => c.key), ['revolut-niklas']);
+  assert.strictEqual(store.loadSession('revolut-niklas').sessionId, 'old');
+});
+
+test('legacy migration with no old session records no connection', () => {
+  const { props, store, connections } = migrationSetup(null);
+  BS.LegacyMigration.run(props, store, connections);
+  assert.deepStrictEqual(connections.all(), []);
+  assert.ok(props.getProperty('EB_MIGRATED'));
+});
+
+test('a full Script Properties quota gives a clear error for the session and is tolerated for API fields', () => {
+  const full = { getProperty: () => null, setProperty: () => { throw new Error('Exceeded storage quota'); }, deleteProperty() {} };
+  const store = BS.EbSessionStore.create(full, () => NOW);
+  assert.throws(() => store.saveSession('revolut-niklas', { sessionId: 's' }), /Script Properties may be full/);
+  assert.strictEqual(store.saveApiFields('a1', { k: 'v' }), false);
+});
+
+test('a connect that cannot store API fields still completes', () => {
+  const props = memProps();
+  const real = props.setProperty;
+  props.setProperty = (k, v) => { if (k.startsWith('EB_API_')) throw new Error('quota'); real(k, v); };
+  const store = BS.EbSessionStore.create(props, () => NOW);
+  const connections = BS.Connections.create(memProps());
+  const connection = BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'niklas' });
+  const auth = BS.EbAuth.create({ client: { createSession: () => ({ session_id: 's', accounts: [{ uid: 'a1', currency: 'EUR' }] }) },
+    store, connections, nowMs: () => NOW, uuid: () => 's', getRedirectUrl: () => 'x' });
+  store.savePending('p', { connection, validUntil: '2027-01-01T00:00:00Z' });
+  assert.strictEqual(auth.complete('code', 'p').accountCount, 1);
+  assert.strictEqual(connections.all().length, 1);
+});
+
+test('refreshStale stops reading details once the time budget is spent and leaves the rest for next time', () => {
+  const store = BS.EbSessionStore.create(memProps(), () => NOW);
+  const connection = BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'niklas' });
+  store.saveSession(connection.key, { sessionId: 's', accessValidUntil: '2027-01-01T00:00:00Z',
+    accounts: [acct({ accountId: 'a1', detailsAt: '' }), acct({ accountId: 'a2', detailsAt: '' }), acct({ accountId: 'a3', detailsAt: '' })] });
+  const asked = [];
+  const client = { getAccountDetails: (uid) => { asked.push(uid); return { uid, currency: 'EUR', details: 'N-' + uid }; } };
+  const auth = BS.EbAuth.create({ client, store, connections: BS.Connections.create(memProps()), nowMs: () => NOW, uuid: () => 's', getRedirectUrl: () => 'x' });
+  const accounts = auth.refreshStale(connection, () => asked.length >= 1);
+  assert.deepStrictEqual(asked, ['a1']);
+  assert.deepStrictEqual(accounts.map((a) => a.detailsAt !== ''), [true, false, false]);
+  asked.length = 0;
+  auth.refreshStale(connection);
+  assert.deepStrictEqual(asked, ['a2', 'a3'], 'the next sync picks up the rest');
+});
+
+test('sync all hands the shared time check to listAccounts', () => {
+  const { deps } = runAll({ isConnected: () => true });
+  let received;
+  deps.connections = deps.connections.slice(0, 1);
+  deps.providerFor = () => ({
+    listAccounts: (options) => { received = options; return [acct({})]; },
+    getBalances: () => [], getTransactions: () => []
+  });
+  BS.SyncAll.run(deps);
+  assert.strictEqual(typeof received.outOfTime, 'function');
+  assert.strictEqual(received.outOfTime(), false);
+});
+
+test('a failing details call does not block reading accounts, balances or transactions', () => {
+  const store = BS.EbSessionStore.create(memProps(), () => NOW);
+  const connection = BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'niklas' });
+  store.saveSession(connection.key, { sessionId: 's', accessValidUntil: '2027-01-01T00:00:00Z', accounts: [acct({ detailsAt: '' })] });
+  const client = {
+    getSession: () => ({ status: 'AUTHORIZED' }),
+    getAccountDetails: () => { throw BS.Errors.http(500, 'down'); },
+    getBalances: () => ({ balances: [{ name: 'b', balance_type: 'ITAV', balance_amount: { amount: '5', currency: 'EUR' } }] }),
+    getTransactions: () => ({ transactions: [], continuation_key: null })
+  };
+  const auth = BS.EbAuth.create({ client, store, connections: BS.Connections.create(memProps()), nowMs: () => NOW, uuid: () => 's', getRedirectUrl: () => 'x' });
+  const provider = BS.EnableBankingProvider.create({ connection, client, store, auth, nowMs: () => NOW });
+  const accounts = provider.listAccounts();
+  assert.strictEqual(accounts.length, 1);
+  assert.strictEqual(provider.getBalances('a1')[0].amount, 5);
+  assert.deepStrictEqual(provider.getTransactions('a1', { dateFrom: '2026-01-01', dateTo: '2026-01-31' }), []);
+});
+
+test('holders that differ only in punctuation map to the same connection, so they replace rather than duplicate', () => {
+  const a = BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'A B' });
+  const b = BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'A-B' });
+  assert.strictEqual(a.key, b.key);
+  const store = BS.Connections.create(memProps());
+  store.save(a);
+  store.save(b);
+  assert.strictEqual(store.all().length, 1, 'one connection and one session key, never two that fight');
+});

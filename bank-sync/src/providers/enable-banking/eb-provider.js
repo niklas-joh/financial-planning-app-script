@@ -50,13 +50,13 @@
         return deps.auth.begin(deps.connection);
       },
 
-      listAccounts: function () {
+      listAccounts: function (options) {
         const session = requireSession();
         const state = deps.client.getSession(session.sessionId);
         if (state.status && state.status !== 'AUTHORIZED') {
           throw ns.Errors.auth('Session status is ' + state.status + '; re-authorize');
         }
-        return deps.auth.refreshStale(deps.connection).map(stampAccount);
+        return deps.auth.refreshStale(deps.connection, options && options.outOfTime).map(stampAccount);
       },
 
       getBalances: function (accountId) {

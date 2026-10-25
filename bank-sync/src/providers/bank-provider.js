@@ -59,7 +59,7 @@
   /**
    * @typedef {Object} BankProvider
    * @property {function(Object): Object} authorize - Starts user authorization.
-   * @property {function(): Array<Account>} listAccounts
+   * @property {function(Object=): Array<Account>} listAccounts - Optional `{outOfTime: function(): boolean}`.
    * @property {function(string): Array<Balance>} getBalances
    * @property {function(string, Object): Array<Transaction>} getTransactions
    */

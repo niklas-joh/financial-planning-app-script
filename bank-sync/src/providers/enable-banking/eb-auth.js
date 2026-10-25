@@ -155,15 +155,17 @@
        * every API field stay current without any manual step. A transient failure keeps the old
        * account and is retried on the next sync; a 401/403 (consent problem) is re-thrown.
        * @param {import('../../core/config.js').ConnectionConfig} connection - Connected login.
+       * @param {function(): boolean} [outOfTime] - True once the shared time budget is spent; the
+       *   remaining stale accounts are then left for the next sync.
        * @returns {Array<import('../bank-provider.js').Account>} The session's accounts, refreshed where due.
        * @throws {Error} AuthError if the connection has no session; HttpError 401/403 from the bank.
        */
-      refreshStale: function (connection) {
+      refreshStale: function (connection, outOfTime) {
         const session = deps.store.loadSession(connection.key);
         if (!session) throw ns.Errors.auth('Not authorized yet; connect first');
         let changed = false;
         const accounts = session.accounts.map(function (account) {
-          if (!isStale(account)) return account;
+          if (!isStale(account) || (outOfTime && outOfTime())) return account;
           try {
             const fresh = keepAccounts([deps.client.getAccountDetails(account.accountId)], true)[0];
             changed = true;

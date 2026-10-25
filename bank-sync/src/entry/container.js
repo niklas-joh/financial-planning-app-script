@@ -3,23 +3,6 @@
  */
 (function (ns) {
   /**
-   * One-time move of the pre-connections session (stored under the bank key) to its
-   * connection key, creating the connection record. Guarded by a property flag so it
-   * does not touch Script Properties again.
-   * @param {Object} props - Script Properties.
-   * @param {Object} store - EbSessionStore.
-   * @param {{save: function(Object): void}} connections - Connection store.
-   */
-  function migrateLegacy(props, store, connections) {
-    const flag = ns.Config.PROPERTY_KEYS.EB_MIGRATED;
-    if (props.getProperty(flag)) return;
-    const legacy = ns.Config.LEGACY_CONNECTION;
-    const connection = ns.Connections.build(legacy);
-    if (store.migrateKey(legacy.sessionKey, connection.key)) connections.save(connection);
-    props.setProperty(flag, '1');
-  }
-
-  /**
    * Builds the object graph for Enable Banking.
    * @returns {{store: Object, auth: Object, client: Object, props: Object, connections: Object,
    *   nowMs: function(): number}} Wired services.
@@ -36,7 +19,7 @@
     const client = ns.EbClient.create(ns.Gas.http(), token.getToken);
     const store = ns.EbSessionStore.create(props, nowMs);
     const connections = ns.Connections.create(props);
-    migrateLegacy(props, store, connections);
+    ns.LegacyMigration.run(props, store, connections);
     const auth = ns.EbAuth.create({
       client: client,
       store: store,

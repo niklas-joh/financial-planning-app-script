@@ -33,8 +33,9 @@
    */
   function syncOne(connection, deps, budgetMs, startedAt) {
     const provider = deps.providerFor(connection);
-    const accounts = provider.listAccounts();
-    const data = ns.RawSync.collect(provider, accounts, function () { return deps.nowMs() - startedAt > ns.Config.TRANSACTIONS.TIME_BUDGET_MS; });
+    const outOfTime = function () { return deps.nowMs() - startedAt > ns.Config.TRANSACTIONS.TIME_BUDGET_MS; };
+    const accounts = provider.listAccounts({ outOfTime: outOfTime });
+    const data = ns.RawSync.collect(provider, accounts, outOfTime);
     const transactions = ns.TxnSync.run({
       provider: provider, accounts: accounts, store: deps.store,
       nowMs: deps.nowMs, todayIso: deps.todayIso, budgetMs: budgetMs

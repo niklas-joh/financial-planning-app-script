@@ -63,7 +63,7 @@ body, CI green, ask before merging, and stop after each phase for review.
 
 Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`).
 
-- `core/`: `config` (static, non-secret), `errors`, `redact`, `connections` (bank picker
+- `core/`: `config` (static, non-secret), `errors`, `redact`, `legacy-migration` (one-time, removable), `connections` (bank picker
   helpers and the connection store in Script Properties), `account-labels` (labels joined from
   the accounts list), `raw-sync` (collect and write the three raw tabs), `date-range` (pure
   windows), `txn-merge` (pure upsert), `txn-sync`, `sync-all` (all connections, shared time
@@ -237,10 +237,11 @@ after merging.
 
 ## Follow-ups from reviews (small, not blocking)
 
-- Remove `LEGACY_CONNECTION`, `migrateLegacy` (container) and the single-map fallback in
-  `EbSessionStore.loadSession` once the live Revolut session has been migrated.
-- `refreshStale` runs inside `listAccounts`; if it ever needs its own time budget, move it to a
-  separate step in `SyncAll` before `listAccounts`.
+- Remove `LEGACY_CONNECTION`, `core/legacy-migration.js` and the single-map fallback in
+  `EbSessionStore.loadSession` once the live Revolut session has been migrated (it is repeat-safe
+  and repairs a half-finished run, so there is no urgency).
+- `refreshStale` still runs inside `listAccounts` (it now receives the shared time check through
+  `listAccounts({outOfTime})`); moving it to its own step in `SyncAll` would be cleaner but is not needed.
 - Enable Banking keeps no list of enabled banks, so "not enabled" is detected after the fact;
   confirm live which error a restricted application gets for an unlinked bank.
 - `raw_transactions` shows only what the latest sync fetched per connection; cancelled, rejected and
