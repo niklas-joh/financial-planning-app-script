@@ -86,9 +86,10 @@
     };
 
     /**
-     * Continues the one-time backfill of every feed not done yet. The position of a feed only moves
-     * once its items are normalized, so an item that fails is never skipped; progress is saved also
-     * when a later feed fails.
+     * Continues the one-time backfill of every feed not done yet. The new positions are saved only
+     * once every feed's items are read and normalized, together with returning those rows: if any
+     * feed fails, nothing is saved and the next run reads the same pages again (the upsert makes that
+     * harmless), so no page is ever skipped.
      * @param {string} accountId - Account id.
      * @returns {Array<import('../bank-provider.js').Transaction>} Older transactions read in this run.
      */
@@ -96,16 +97,15 @@
       if (!deps.history) return [];
       const state = deps.history.load();
       let rows = [];
-      try {
-        ns.T212History.FEEDS.forEach(function (name) {
-          if (state[name].done) return;
-          const read = ns.T212History.step(feeds[name].readPage, state[name], ns.Config.TRADING212.BACKFILL_PAGES_PER_RUN);
-          rows = rows.concat(read.items.map(function (i) { return feeds[name].normalize(i, accountId, toLocalDate); }));
-          state[name] = read.feed;
-        });
-      } finally {
-        deps.history.save(state);
-      }
+      let moved = false;
+      ns.T212History.FEEDS.forEach(function (name) {
+        if (state[name].done) return;
+        const read = ns.T212History.step(feeds[name].readPage, state[name], ns.Config.TRADING212.BACKFILL_PAGES_PER_RUN);
+        rows = rows.concat(read.items.map(function (i) { return feeds[name].normalize(i, accountId, toLocalDate); }));
+        moved = moved || read.feed.next !== state[name].next || read.feed.done !== state[name].done;
+        state[name] = read.feed;
+      });
+      if (moved) deps.history.save(state);
       return rows;
     }
 

@@ -298,7 +298,8 @@ As built (see `bank-sync/README.md`, "Trading 212"):
 - One-time full history backfill (`t212-history`): on top of the incremental read, each feed continues from its
   saved `nextPagePath` (Script Property `T212_HISTORY_<HOLDER>`, `{transactions|dividends: {next, done}}`) for up to
   `TRADING212.BACKFILL_PAGES_PER_RUN` (40) pages per run; a rate limit, HTTP error or the time budget pauses it
-  until the next sync, and a feed's position only moves once its items are normalized. When both feeds reach
+  until the next sync, and the positions are saved only after every feed's items are read and normalized (a
+  failure saves nothing, so the same pages are read again rather than skipped). When both feeds reach
   their last page it stops; deleting the property starts it again. Older rows go through the same upsert.
 - Rate limits: no client-side pacer (a run makes about four calls per account, far below the burst limits).
   `lib/http` gained an optional `retryDelayMs` hook: for Trading 212 a 429 waits until `x-ratelimit-reset`

@@ -334,3 +334,32 @@ test('t212 provider: an item that fails to normalize never moves the backfill po
   assert.throws(() => provider.getTransactions('acc', { dateFrom: '2026-10-01', dateTo: '2026-11-02' }), /not numeric/);
   assert.deepStrictEqual(history.load().transactions, { next: null, done: false });
 });
+
+test('t212 provider: when a later feed fails, no feed position is saved, so the read pages are not lost', () => {
+  const props = fakeProps({});
+  const history = BS.T212History.store(props, CONN);
+  const client = {
+    summary: () => SUMMARY,
+    positions: () => [],
+    transactionsPage: (path) => (path === null
+      ? { items: [{ type: 'DEPOSIT', amount: 1, dateTime: '2026-11-01T10:00:00Z', reference: 'new' }], nextPagePath: '/api/v0/p1' }
+      : { items: [{ type: 'DEPOSIT', amount: 1, dateTime: '2024-01-01T10:00:00Z', reference: 'old' }], nextPagePath: null }),
+    dividendsPage: () => ({ items: [{ amount: 'x', paidOn: '2024-01-01T10:00:00Z', reference: 'bad' }], nextPagePath: null })
+  };
+  const provider = BS.Trading212Provider.create({ connection: CONN, client, nowMs: () => NOW, toLocalDate, history });
+  assert.throws(() => provider.getTransactions('acc', { dateFrom: '2026-10-01', dateTo: '2026-11-02' }), /not numeric/);
+  assert.strictEqual(props.getProperty('T212_HISTORY_ALEX'), null, 'the transactions feed did not move either');
+  assert.deepStrictEqual(history.load().transactions, { next: null, done: false });
+});
+
+test('t212 provider: a run that reads no new backfill pages writes no state', () => {
+  const props = fakeProps({});
+  const history = BS.T212History.store(props, CONN);
+  history.save({ transactions: { next: null, done: true }, dividends: { next: null, done: true } });
+  let writes = 0;
+  const counting = { load: history.load, save: (st) => { writes++; history.save(st); } };
+  const client = { summary: () => SUMMARY, positions: () => [], transactionsPage: () => ({ items: [], nextPagePath: null }), dividendsPage: () => ({ items: [], nextPagePath: null }) };
+  BS.Trading212Provider.create({ connection: CONN, client, nowMs: () => NOW, toLocalDate, history: counting })
+    .getTransactions('acc', { dateFrom: '2026-10-01', dateTo: '2026-11-02' });
+  assert.strictEqual(writes, 0);
+});
