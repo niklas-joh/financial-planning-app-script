@@ -35,9 +35,14 @@
     "src/core/txn-sync.js",
     "src/fx/frankfurter.js",
     "src/fx/fx-service.js",
+    "src/core/schedule.js",
+    "src/core/consent-warnings.js",
+    "src/core/last-run.js",
     "src/core/sync-all.js",
+    "src/core/auto-sync.js",
     "src/entry/container.js",
     "src/entry/menu.js",
-    "src/entry/web-app.js"
+    "src/entry/web-app.js",
+    "src/entry/triggers.js"
   ]
 }

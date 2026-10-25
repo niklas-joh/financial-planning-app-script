@@ -160,6 +160,15 @@ export function analyse(root = REPO_ROOT) {
         add('scopes', `OAuth scope "${s}" is not in scripts/allowed-scopes.json. Add it there deliberately if it is needed.`, `${dir}/appsscript.json`);
       }
     }
+    // bank-sync/ is a separate Apps Script project; its scopes go through the same allow-list.
+    const bankSyncManifest = join(root, 'bank-sync', 'src', 'appsscript.json');
+    if (existsSync(bankSyncManifest)) {
+      for (const s of readJson(bankSyncManifest).oauthScopes || []) {
+        if (!allowed.includes(s)) {
+          add('scopes', `OAuth scope "${s}" is not in scripts/allowed-scopes.json. Add it there deliberately if it is needed.`, 'bank-sync/src/appsscript.json');
+        }
+      }
+    }
   }
 
   // ── timezone ────────────────────────────────────────────────────────────

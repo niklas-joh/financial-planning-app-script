@@ -106,34 +106,52 @@
     guarded(function () {
       withLock(function () {
         const wired = ns.Container.services();
-        const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
-        const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-        const todayIso = function () { return formatDate(new Date()); };
-        const outcome = ns.SyncAll.run({
-          connections: wired.connections.all(),
-          isConnected: function (c) { return Boolean(wired.store.loadSession(c.key)); },
-          providerFor: function (c) { return ns.Container.providerFor(c, wired); },
-          store: ns.TransactionsStore.create(spreadsheet, formatDate),
-          rawWriter: ns.RawWriter.create(spreadsheet),
-          nowMs: wired.nowMs,
-          todayIso: todayIso,
-          fx: ns.Container.fxService(spreadsheet, formatDate, todayIso)
-        });
+        const lastRun = ns.LastRun.create(wired.props);
+        const now = function () { return ns.Gas.dateTimeFormatter(ns.Config.TIMEZONE)(new Date()); };
+        let outcome;
+        try {
+          outcome = ns.SyncAll.run(ns.Container.syncAllDeps(wired));
+        } catch (e) {
+          ns.AutoSync.recordManual(lastRun, { error: e }, now());
+          throw e;
+        }
+        ns.AutoSync.recordManual(lastRun, { outcome: outcome }, now());
         SpreadsheetApp.getUi().alert(ns.SyncAll.summarize(outcome));
       });
     });
   }
 
-  /** Shows non-secret setup status: which settings exist and when each consent lapses. */
+  /** Turns the daily sync on (one trigger, never duplicated). */
+  function enableDailySync() {
+    guarded(function () {
+      const created = ns.AutoSync.enable(ns.Gas.triggers());
+      SpreadsheetApp.getUi().alert((created ? 'Daily sync is on.' : 'Daily sync was already on.') +
+        ' Sync all runs every day ' + ns.AutoSync.scheduleText() +
+        ' and emails you before a bank consent lapses. Show status shows the last run.');
+    });
+  }
+
+  /** Turns the daily sync off, including a pending follow-up run. */
+  function disableDailySync() {
+    guarded(function () {
+      const removed = ns.AutoSync.disable(ns.Gas.triggers());
+      SpreadsheetApp.getUi().alert(removed ? 'Daily sync is off. Consent warnings are no longer emailed.' : 'Daily sync was already off.');
+    });
+  }
+
+  /** Shows non-secret setup status: settings, daily sync and last run, and when each consent lapses. */
   function status() {
     guarded(function () {
       const s = ns.Container.services();
       const keys = ns.Config.PROPERTY_KEYS;
       const yesNo = function (key) { return s.props.getProperty(key) ? 'set' : 'MISSING'; };
+      const consentByKey = {};
+      ns.Container.consents(s).forEach(function (x) { consentByKey[x.connection.key] = x; });
       const connections = s.connections.all().map(function (c) {
-        const session = s.store.loadSession(c.key);
-        const consent = session
-          ? session.accessValidUntil + ' (' + Math.floor((Date.parse(session.accessValidUntil) - s.nowMs()) / 86400000) + ' days left)'
+        const found = consentByKey[c.key];
+        const consent = found
+          ? found.validUntil + ' (' + ns.ConsentWarnings.daysLeft(found.validUntil, s.nowMs()) + ' days left)' +
+            ns.ConsentWarnings.statusNote(found.validUntil, s.nowMs(), ns.Config.CONSENT.WARN_DAYS)
           : 'not connected';
         return ns.Connections.label(c) + ': ' + consent;
       });
@@ -141,11 +159,13 @@
         'EB_APP_ID: ' + yesNo(keys.EB_APP_ID),
         'EB_PRIVATE_KEY: ' + yesNo(keys.EB_PRIVATE_KEY),
         'EB_REDIRECT_URL: ' + yesNo(keys.EB_REDIRECT_URL)
-      ].concat(connections.length ? connections : ['No bank connected yet: use "Connect a bank..."']).join('\n'));
+      ].concat(connections.length ? connections : ['No bank connected yet: use "Connect a bank..."'])
+        .concat(ns.AutoSync.statusLines(ns.Gas.triggers().list(), ns.LastRun.create(s.props).load()))
+        .join('\n'));
     });
   }
 
-  ns.Menu = { connect: connect, syncAll: syncAll, status: status };
+  ns.Menu = { connect: connect, syncAll: syncAll, status: status, enableDailySync: enableDailySync, disableDailySync: disableDailySync };
 })(globalThis.BankSync);
 
 /** Adds the Bank Sync menu when the spreadsheet opens. */
@@ -154,6 +174,9 @@ function onOpen() {
     .addItem('Connect a bank...', 'menuConnect')
     .addItem('Sync all', 'menuSyncAll')
     .addItem('Show status', 'menuStatus')
+    .addSeparator()
+    .addItem('Enable daily sync', 'menuEnableDailySync')
+    .addItem('Disable daily sync', 'menuDisableDailySync')
     .addToUi();
 }
 
@@ -165,3 +188,9 @@ function menuSyncAll() { BankSync.Menu.syncAll(); }
 
 /** Menu entry: show setup status. */
 function menuStatus() { BankSync.Menu.status(); }
+
+/** Menu entry: turn the daily sync on. */
+function menuEnableDailySync() { BankSync.Menu.enableDailySync(); }
+
+/** Menu entry: turn the daily sync off. */
+function menuDisableDailySync() { BankSync.Menu.disableDailySync(); }

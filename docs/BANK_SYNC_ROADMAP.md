@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-25 (after phase 3, FX, went live).
+Last updated: 2026-10-25 (phase 4, daily sync and consent warnings, in review).
 
 ## Setup in one paragraph
 
@@ -27,7 +27,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 2 | Transactions: paginated fetch, normalization, idempotent upsert, `transactions` tab | Merged (#44), live-tested on Revolut (sync twice gives 0 added/updated/removed). Hardened in #48 after the first Claude review |
 | 2.5 | Connections, Connect flow with live bank list, labels, `raw_*` tabs with every API field | Merged (#49), live on the Bank Sync sheet (Revolut and Danske Bank SE) |
 | 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Merged (#56), live: first sync converted the full history, a second converted 0 |
-| 4 | Automation and consent-expiry warnings | Planned |
+| 4 | Automation and consent-expiry warnings | In review (draft PR): daily trigger, follow-up runs, last-run record, consent warning emails. Not pushed to Apps Script yet |
 | 5 | Trading212 provider | Planned |
 | 6 | CSV import provider (Avanza, BIL) | Planned |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
@@ -48,7 +48,7 @@ body, open as draft and mark ready when CI is green (that starts the review), as
   field as `api.*` columns; `raw_transactions` accumulates, see below), `transactions` (the full deduplicated
   history, signed amounts, label columns, `amountEur`/`fxRate`/`fxRateDate` filled), and `rates` (ECB rates per
   currency and date). `raw_balances` also carries `amountEur`/`fxRate`/`fxRateDate` at the latest rate.
-- Menu: *Connect a bank...*, *Sync all*, *Show status*. Sync all is idempotent: a second run
+- Menu: *Connect a bank...*, *Sync all*, *Show status* (Phase 4 adds *Enable daily sync* and *Disable daily sync* once pushed). Sync all is idempotent: a second run
   reports 0 added, 0 updated, 0 removed, and 0 transactions converted to EUR.
 - Apps Script: web-app deployment (the redirect `/exec`) is pinned to version 3; the script
   itself is pushed from `main` after #56 (Phase 3 did not change the web app, so no redeploy). The web app only changes when `auth.complete`,
@@ -67,10 +67,12 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   helpers and the connection store in Script Properties), `account-labels` (labels joined from
   the accounts list), `raw-sync` (collect and write the three raw tabs), `date-range` (pure
   windows), `txn-merge` (pure upsert), `txn-sync`, `sync-all` (all connections, shared time
-  budget, failures isolated).
+  budget, failures isolated), `schedule` (pure trigger de-duplication and follow-up decisions),
+  `consent-warnings` (which warnings are due, the email text, the sent record), `last-run` (outcome
+  record for Show status), `auto-sync` (daily trigger on/off and the triggered run).
 - `lib/`: `jwt`, `http` (retry/backoff, carries the API error code), `hash` (FNV-1a),
   `flatten` (API object to dotted keys, account numbers masked), `gas-adapters` (the only
-  place touching Apps Script services directly).
+  place touching Apps Script services directly, including ScriptApp triggers, MailApp and Session).
 - `fx/`: `fx` (pure: rate lookup with previous-business-day fallback, conversion, missing
   ranges), `frankfurter` (rates client), `fx-service` (injectable: rates tab + cache + fetch,
   converts transactions and balances). `sheets/rates-store` reads and writes the `rates` tab.
@@ -80,7 +82,8 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   `eb-token`, `eb-session-store`, `eb-normalize`, `eb-provider`.
 - `sheets/`: `raw-writer` (fixed columns plus one `api.*` column per API field, per-connection
   replace, never a whole-tab clear), `transactions-store` (loads by header name).
-- `entry/`: `container` (composition root), `menu`, `web-app`. Only these touch globals.
+- `entry/`: `container` (composition root; `syncAllDeps` is shared by the menu and the trigger), `menu`, `web-app`,
+  `triggers` (the two global trigger handlers). Only these touch globals.
 - Tests: `bank-sync/test/*.test.js` (`npm test` in `bank-sync/`), using the real modules
   loaded in push order by `test/load.js`.
 
@@ -206,11 +209,33 @@ own conversion only inside the description text ("Amount received: EUR 500.00 ..
 EUR/SEK ..."); the API's `exchange_rate` field is empty. Phase 3 uses the ECB rate per booking date;
 the bank's stated rate is a possible cross-check, not a source.
 
-## Phase 4: automation and consent expiry
+## Phase 4: automation and consent expiry (in review)
 
-Time-driven refresh guarded by `LockService`, resumable under the 6-minute limit. Track
-consent expiry per connection and email a warning well before it lapses (Revolut:
-2027-01-22). Bank logins and consent renewals are done by the owner; the code only warns.
+As built (see `bank-sync/README.md`, "Daily sync and consent warnings"):
+
+- *Enable daily sync* / *Disable daily sync* create or remove one daily time-driven trigger
+  (`triggerDailySync`, 06:00-07:00 script time zone). `Schedule.plan` keeps exactly one per handler,
+  so enabling twice or a stray duplicate never leaves two.
+- The trigger runs the same `SyncAll.run` (deps built by `Container.syncAllDeps`, shared with the menu)
+  under `Lock.run`. An unfinished run (time budget, or the lock busy) schedules one one-off follow-up
+  (`triggerSyncContinue`, 5 minutes later), at most 3 per daily run; old one-off triggers are deleted
+  at the start of each triggered run because Apps Script keeps them listed after they fire.
+- Each run's outcome (counts and redacted errors only) is stored in `BS_LAST_RUN` and shown by
+  *Show status*; a manual run is recorded too (also when it fails) and keeps the follow-up chain. A run that throws (other than a busy lock) is recorded and rethrown so Apps Script's
+  own failure email fires too.
+- Consent warnings at 30, 14, 7 and 1 days before expiry and once after it lapses, one email per
+  threshold. Dedupe: `BS_CONSENT_WARNED_<connection>` = `{validUntil, sent: [..]}`; a new expiry date
+  (renewed consent) resets it; an email is recorded only after it was sent. Reaching several thresholds
+  at once (e.g. the daily sync turned on late) sends one email. Sent only by the daily sync, also when its
+  sync fails; errors are collected per connection so one failure never silences the others.
+- Recipient: `Session.getEffectiveUser().getEmail()` at run time (the trigger owner), never stored.
+- New scopes, verified in the Apps Script reference: `script.scriptapp` (ScriptApp triggers),
+  `script.send_mail` (MailApp.sendEmail), `userinfo.email` (Session user email). Added to
+  `bank-sync/src/appsscript.json` and `scripts/allowed-scopes.json`; `check:manifest` now also checks
+  bank-sync's manifest against the allow-list (before, it only checked `src/`).
+- Deploy: `clasp push --force` from `bank-sync/` after diffing the manifest (time zone and scopes),
+  then reload the sheet and re-authorize. The web-app path (`auth.complete`, `doGet`) is unchanged, so
+  no `clasp deploy`. Then *Enable daily sync* once.
 
 ## Phase 5: Trading212 provider
 
