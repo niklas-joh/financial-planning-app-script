@@ -29,7 +29,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 2.5 | Connections, Connect flow with live bank list, labels, `raw_*` tabs with every API field | Merged (#49), live on the Bank Sync sheet (Revolut and Danske Bank SE) |
 | 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Merged (#56), live: first sync converted the full history, a second converted 0 |
 | 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
-| 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#PR): daily total from Trading 212's own total, one-time full history backfill |
+| 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#65): daily total from Trading 212's own total, one-time full history backfill |
 | 6 | CSV import provider (Avanza, BIL) | Planned |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
@@ -64,7 +64,7 @@ quirks) goes into the next phase's PR.
   `doGet` or what they call change: then run `clasp deploy -i <deployment id>`.
 - Trading 212 (Phase 5): `trading212-niklas` is live (key and secret pasted 2026-10-25); the partner's
   pair is added once she has her own key. The first *Sync all* added the `holdings` and `daily_values`
-  tabs and read 90 days of history; with the fix (#PR) the rest of the history backfills over the next
+  tabs and read 90 days of history; with the fix (#65) the rest of the history backfills over the next
   syncs (*Show status* shows "history: complete" when done). Seen on the first live sync:
   - `investments.currentValue` already contains the cash in pies (the holdings sum plus `cash.inPies`), so
     the first version counted pie cash twice; and `totalValue` was slightly above available cash plus
