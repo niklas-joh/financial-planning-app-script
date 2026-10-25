@@ -38,3 +38,18 @@ test('gives up after maxRetries', () => {
   assert.throws(() => http.request({ method: 'GET', url: 'u' }), { status: 500 });
   assert.strictEqual(calls(), 3);
 });
+
+test('a retryDelayMs hook decides the wait from the headers, and null gives up', () => {
+  const seen = [];
+  let calls = 0;
+  const sleeps = [];
+  const http = Http.create({
+    fetch: () => { calls++; return { getResponseCode: () => 429, getContentText: () => '', getAllHeaders: () => ({ h: String(calls) }) }; },
+    sleep: (ms) => sleeps.push(ms),
+    retryDelayMs: (status, headers, attempt) => { seen.push([status, headers.h, attempt]); return attempt === 0 ? 1234 : null; }
+  });
+  assert.throws(() => http.request({ method: 'GET', url: 'u' }), { status: 429 });
+  assert.deepStrictEqual(seen, [[429, '1', 0], [429, '2', 1]]);
+  assert.deepStrictEqual(sleeps, [1234]);
+  assert.strictEqual(calls, 2);
+});

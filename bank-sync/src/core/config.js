@@ -8,7 +8,12 @@
    * @typedef {Object} ConnectionConfig
    * @property {string} key - Stable key, bank plus holder (e.g. 'revolut-niklas'); one login and consent.
    * @property {string} holder - Short label of the person the login belongs to.
-   * @property {{aspspName: string, country: string}} bank - Bank as listed by Enable Banking `GET /aspsps`.
+   * @property {{aspspName: string, country: string}} bank - Bank as listed by Enable Banking `GET /aspsps`
+   *   (for Trading 212: name 'Trading 212', no country).
+   * @property {string} [provider] - Provider id serving the connection; missing means 'enablebanking'
+   *   (stored Enable Banking connections predate the field).
+   * @property {string} [propertySuffix] - Trading 212 only: the holder part of the Script Property names
+   *   (e.g. 'NIKLAS' in `T212_API_KEY_NIKLAS`). Never the secret itself.
    */
 
   /**
@@ -30,6 +35,8 @@
    * @property {Object} AUTOMATION - Daily sync: the global functions the daily and the follow-up
    *   triggers call, the hour of the daily run (script time zone), how long after an unfinished run
    *   the follow-up starts (ms), and how many follow-ups one daily run may chain.
+   * @property {Object} TRADING212 - Trading 212 public API: provider id, display name, origin and API path
+   *   (live), page size (the API's maximum), and the longest wait for a rate-limit reset before a call gives up.
    * @property {{WARN_DAYS: Array<number>}} CONSENT - Days before a consent lapses on which a warning
    *   email is sent (each once per consent); one more is sent once it has lapsed.
    */
@@ -58,6 +65,8 @@
       EB_MIGRATED: 'EB_MIGRATED',
       EB_SESSION_PREFIX: 'EB_SESSION_',
       EB_API_PREFIX: 'EB_API_',
+      T212_API_KEY_PREFIX: 'T212_API_KEY_',
+      T212_API_SECRET_PREFIX: 'T212_API_SECRET_',
       LAST_RUN: 'BS_LAST_RUN',
       CONSENT_WARNED_PREFIX: 'BS_CONSENT_WARNED_'
     }),
@@ -66,7 +75,9 @@
       RAW_BALANCES: 'raw_balances',
       RAW_TRANSACTIONS: 'raw_transactions',
       TRANSACTIONS: 'transactions',
-      RATES: 'rates'
+      RATES: 'rates',
+      HOLDINGS: 'holdings',
+      DAILY_VALUES: 'daily_values'
     }),
     TRANSACTIONS: Object.freeze({
       INITIAL_LOOKBACK_DAYS: 90,
@@ -93,6 +104,14 @@
       DAILY_HOUR: 6,
       CONTINUE_AFTER_MS: 300000,
       MAX_CONTINUATIONS: 3
+    }),
+    TRADING212: Object.freeze({
+      PROVIDER_ID: 'trading212',
+      BANK_NAME: 'Trading 212',
+      ORIGIN: 'https://live.trading212.com',
+      API_PATH: '/api/v0',
+      PAGE_LIMIT: 50,
+      MAX_RETRY_WAIT_MS: 65000
     }),
     CONSENT: Object.freeze({
       WARN_DAYS: Object.freeze([30, 14, 7, 1])

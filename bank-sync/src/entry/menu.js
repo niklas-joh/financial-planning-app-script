@@ -139,27 +139,11 @@
     });
   }
 
-  /** Shows non-secret setup status: settings, daily sync and last run, and when each consent lapses. */
+  /** Shows non-secret setup status: each provider's settings and connections, daily sync and last run. */
   function status() {
     guarded(function () {
       const s = ns.Container.services();
-      const keys = ns.Config.PROPERTY_KEYS;
-      const yesNo = function (key) { return s.props.getProperty(key) ? 'set' : 'MISSING'; };
-      const consentByKey = {};
-      ns.Container.consents(s).forEach(function (x) { consentByKey[x.connection.key] = x; });
-      const connections = s.connections.all().map(function (c) {
-        const found = consentByKey[c.key];
-        const consent = found
-          ? found.validUntil + ' (' + ns.ConsentWarnings.daysLeft(found.validUntil, s.nowMs()) + ' days left)' +
-            ns.ConsentWarnings.statusNote(found.validUntil, s.nowMs(), ns.Config.CONSENT.WARN_DAYS)
-          : 'not connected';
-        return ns.Connections.label(c) + ': ' + consent;
-      });
-      SpreadsheetApp.getUi().alert([
-        'EB_APP_ID: ' + yesNo(keys.EB_APP_ID),
-        'EB_PRIVATE_KEY: ' + yesNo(keys.EB_PRIVATE_KEY),
-        'EB_REDIRECT_URL: ' + yesNo(keys.EB_REDIRECT_URL)
-      ].concat(connections.length ? connections : ['No bank connected yet: use "Connect a bank..."'])
+      SpreadsheetApp.getUi().alert(ns.ProviderRegistry.statusLines(s)
         .concat(ns.AutoSync.statusLines(ns.Gas.triggers().list(), ns.LastRun.create(s.props).load()))
         .join('\n'));
     });

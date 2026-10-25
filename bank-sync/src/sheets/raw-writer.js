@@ -14,20 +14,39 @@
    * @property {boolean} [numeric] - Number column; text columns are formatted as plain text.
    */
 
-  /** @type {Array<Column>} */
-  const ACCOUNT_COLUMNS = ['provider', 'bank', 'connection', 'holderName', 'accountId', 'accountName', 'currency',
-    'ibanMasked', 'accountType', 'product', 'detailsAt']
-    .map(function (k) { return { header: k, key: k }; });
+  /**
+   * Columns from keys; the listed keys are numeric.
+   * @param {Array<string>} keys - Column keys, in order.
+   * @param {Array<string>} numericKeys - Keys holding numbers.
+   * @returns {Array<Column>} Columns.
+   */
+  function columns(keys, numericKeys) {
+    return keys.map(function (k) { return { header: k, key: k, numeric: numericKeys.indexOf(k) !== -1 }; });
+  }
 
   /** @type {Array<Column>} */
-  const BALANCE_COLUMNS = ['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
-    'balanceType', 'description', 'amount', 'currency', 'amountEur', 'fxRate', 'fxRateDate', 'referenceDate', 'lastChange', 'fetchedAt']
-    .map(function (k) { return { header: k, key: k, numeric: k === 'amount' || k === 'amountEur' || k === 'fxRate' }; });
+  const ACCOUNT_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountId', 'accountName', 'currency',
+    'ibanMasked', 'accountType', 'product', 'detailsAt'], []);
 
   /** @type {Array<Column>} */
-  const TRANSACTION_COLUMNS = ['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
-    'transactionId', 'status', 'bookingDate', 'valueDate', 'amount', 'currency', 'counterparty', 'description']
-    .map(function (k) { return { header: k, key: k, numeric: k === 'amount' }; });
+  const BALANCE_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
+    'balanceType', 'description', 'valueKind', 'amount', 'currency', 'amountEur', 'fxRate', 'fxRateDate', 'referenceDate', 'lastChange', 'fetchedAt'],
+  ['amount', 'amountEur', 'fxRate']);
+
+  /** @type {Array<Column>} */
+  const TRANSACTION_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
+    'transactionId', 'status', 'bookingDate', 'valueDate', 'amount', 'currency', 'counterparty', 'description'], ['amount']);
+
+  /** @type {Array<Column>} Open positions; values in the account currency, prices in the instrument's. */
+  const HOLDING_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountName', 'accountId', 'ticker', 'isin',
+    'name', 'instrumentCurrency', 'quantity', 'averagePrice', 'currentPrice', 'amount', 'currency', 'amountEur', 'fxRate',
+    'fxRateDate', 'totalCost', 'unrealizedPnl', 'fxImpact', 'openedAt', 'asOf'],
+  ['quantity', 'averagePrice', 'currentPrice', 'amount', 'amountEur', 'fxRate', 'totalCost', 'unrealizedPnl', 'fxImpact']);
+
+  /** @type {Array<Column>} One row per account per day (see `core/daily-values.js`). */
+  const DAILY_VALUE_COLUMNS = columns(['date', 'provider', 'bank', 'connection', 'holderName', 'accountName', 'accountId',
+    'currency', 'cash', 'investments', 'total', 'cashEur', 'investmentsEur', 'totalEur', 'fxRate', 'fxRateDate', 'fetchedAt'],
+  ['cash', 'investments', 'total', 'cashEur', 'investmentsEur', 'totalEur', 'fxRate']);
 
   /**
    * Turns an account, balance or transaction into a flat row: its own fields, plus each API field as `api.<name>`.
@@ -200,6 +219,8 @@
     toMatrix: toMatrix,
     ACCOUNT_COLUMNS: ACCOUNT_COLUMNS,
     BALANCE_COLUMNS: BALANCE_COLUMNS,
+    HOLDING_COLUMNS: HOLDING_COLUMNS,
+    DAILY_VALUE_COLUMNS: DAILY_VALUE_COLUMNS,
     TRANSACTION_COLUMNS: TRANSACTION_COLUMNS,
     API_PREFIX: API_PREFIX
   };

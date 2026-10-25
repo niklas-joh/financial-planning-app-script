@@ -1,7 +1,8 @@
 # Bank Sync
 
 Modular Apps Script project that pulls bank data via
-[Enable Banking](https://enablebanking.com) into a dedicated Google Sheet
+[Enable Banking](https://enablebanking.com), and cash, holdings and history from
+[Trading 212](https://docs.trading212.com/api), into a dedicated Google Sheet
 ("Bank Sync"). Independent of the legacy `src/` project in this repo.
 
 ## Layout
@@ -31,7 +32,7 @@ tested locally: `npm test` (Node 20+).
 
 ## Secrets
 
-The application ID and private key live only in Script Properties. Never put
+The application ID and private key, and the Trading 212 API keys and secrets, live only in Script Properties. Never put
 them in the repo, logs, sheets or chat. `.gitignore` excludes `*.pem`, `*.key`,
 `.env`, `client_secret*.json` and `.clasprc.json`. Tests and docs use fake data.
 
@@ -160,3 +161,57 @@ creates a second trigger (duplicates are removed). The trigger runs as the accou
 New OAuth scopes (re-authorize after the push; the first menu click asks):
 `script.scriptapp` (create and delete triggers), `script.send_mail` (MailApp) and
 `userinfo.email` (`Session.getEffectiveUser().getEmail()`, the warning recipient).
+
+## Trading 212 (Phase 5)
+
+Each Trading 212 account (yours, your partner's, an ISA) is one connection, read with its own API key
+over the [public API](https://docs.trading212.com/api) (live, v0). There is no login flow: the key is
+pasted in Script Properties and *Sync all* picks it up.
+
+1. In the Trading 212 app (Invest or Stocks ISA account): **Settings > API (Beta)**, create a key.
+   Give it only these permissions: `account`, `portfolio`, `history:transactions`,
+   `history:dividends`. Nothing that places or cancels orders. Leave the IP restriction off (Apps
+   Script's addresses change). Each person creates their own key while logged in to their own account.
+2. In the Apps Script editor, **Project Settings > Script Properties**, add one pair per account,
+   with the holder in upper case:
+   - `T212_API_KEY_<HOLDER>`: the API key, e.g. `T212_API_KEY_NIKLAS`
+   - `T212_API_SECRET_<HOLDER>`: the API secret, e.g. `T212_API_SECRET_NIKLAS`
+
+   A second account of the same person gets its own suffix, e.g. `T212_API_KEY_NIKLAS_ISA`
+   (connection `trading212-niklas-isa`).
+3. *Show status* lists each pair as `set`/`MISSING` (never the values). *Sync all* (and the daily
+   sync) now includes every complete pair.
+
+What it writes:
+
+- `daily_values` (new): one row per account and day with `cash` (available to trade + in pies +
+  reserved for orders), `investments` (current value), `total`, and the same in EUR. A second run on
+  the same day replaces that day's row, so the tab is a daily history; the 06:00 daily sync records
+  the previous market close. Rows are built from the balances (`raw_balances.valueKind`), not from a
+  separate API call or rate.
+- `holdings` (new): the open positions per account (ticker, ISIN, name, quantity, average and current
+  price in the instrument currency, value, cost and unrealized result in the account currency,
+  `amountEur`), replaced on each sync, with every API field as `api.*` columns.
+- `raw_accounts` / `raw_balances`: one account per key (the account number from the API is its
+  `accountId`); balances `cash.availableToTrade`, `cash.inPies`, `cash.reservedForOrders`,
+  `investments.currentValue` and `totalValue` (the last as reported, for checking; not summed).
+- `transactions` and `raw_transactions`: cash movements (deposits, withdrawals, fees, interest,
+  transfers; `description` is the type) and dividends (id `div:<reference>`, counterparty the
+  instrument). Withdrawals and fees are negative, deposits, interest and dividends positive. Orders
+  (buys and sells) are not imported: they move money between cash and investments, which
+  `daily_values` already shows. The first run reads 90 days back, later runs from the latest booked
+  date minus 7 days, like the banks; EUR at the booking-date rate.
+
+Notes:
+
+- Card payments are not documented in the API (no card type, no merchant). If they appear, they
+  come as plain `WITHDRAW` rows; check `api.type` on `raw_transactions`. A transfer from a bank
+  account to Trading 212 currently shows up twice in `transactions` (the bank's outflow and the
+  Trading 212 deposit).
+- Rate limits are per Trading 212 account, whatever the key: summary 1 per 5 s, positions 1 per s,
+  history 20 per minute. A sync makes about four calls per account. On HTTP 429 the call waits until
+  the `x-ratelimit-reset` time (at most 65 s and never past the run's time budget), then retries.
+  Other tools using the same account (e.g. the old portfolio sheet) share the limit.
+- All amounts come in the account's primary currency; multi-currency accounts are not supported by
+  the API. Only Invest and Stocks ISA accounts have API access.
+- No new OAuth scope: `script.external_request` already covers the calls.

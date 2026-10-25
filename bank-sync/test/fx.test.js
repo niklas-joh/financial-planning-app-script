@@ -211,7 +211,7 @@ test('sync all with fx: balances get EUR columns before the raw write, stored tr
   });
   assert.deepStrictEqual([raw.raw_balances[0].amountEur, raw.raw_balances[0].fxRate], [100, 11.2]);
   assert.deepStrictEqual([rows[0].amountEur, rows[0].fxRateDate], [10, '2026-04-01']);
-  assert.deepStrictEqual(outcome.fx, { changed: 1, missing: 0, waiting: 0, balancesMissing: 0, failed: [] });
+  assert.deepStrictEqual(outcome.fx, { changed: 1, missing: 0, waiting: 0, balancesMissing: 0, holdingsMissing: 0, failed: [] });
   assert.match(BS.SyncAll.summarize(outcome), /EUR conversion: 1 transactions converted\./);
   assert.ok(BS.RawWriter.BALANCE_COLUMNS.some((c) => c.key === 'amountEur' && c.numeric));
 });

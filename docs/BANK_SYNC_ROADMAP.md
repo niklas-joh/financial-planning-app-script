@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-25 (after phase 4, daily sync and consent warnings, went live).
+Last updated: 2026-10-25 (phase 5, the Trading 212 provider, as it stands once merged and deployed).
 
 ## Setup in one paragraph
 
@@ -16,7 +16,8 @@ Two independent Apps Script projects, each bound to its own Sheet:
   SaltEdge code. **Not being developed further**; the smoke test of it was dropped
   because its `Transactions` sheet is empty. Retirement is a pending decision (below).
 - **bank-sync** (`bank-sync/`, own `.clasp.json`, namespace `BankSync`): sheet "Bank Sync".
-  Enable Banking is the data source. Europe/Luxembourg time zone, EUR reporting currency.
+  Enable Banking (banks) and the Trading 212 public API (one API key per account) are the data sources.
+  Europe/Luxembourg time zone, EUR reporting currency.
 
 ## Status
 
@@ -28,7 +29,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 2.5 | Connections, Connect flow with live bank list, labels, `raw_*` tabs with every API field | Merged (#49), live on the Bank Sync sheet (Revolut and Danske Bank SE) |
 | 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Merged (#56), live: first sync converted the full history, a second converted 0 |
 | 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
-| 5 | Trading212 provider | Planned |
+| 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live once the owner pasted the keys and pushed (see Live state) |
 | 6 | CSV import provider (Avanza, BIL) | Planned |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
@@ -61,6 +62,12 @@ quirks) goes into the next phase's PR.
   89 days left; the first warning emails (30 days) are due around 2026-12-23 (Revolut) and 2026-12-24 (Danske).
   Check after the first daily run that *Show status* shows `(daily): OK` with 0 added/updated/removed. The web app only changes when `auth.complete`,
   `doGet` or what they call change: then run `clasp deploy -i <deployment id>`.
+- Trading 212 (Phase 5): one connection per pasted key pair (`T212_API_KEY_<HOLDER>`,
+  `T212_API_SECRET_<HOLDER>`), e.g. `trading212-niklas` and the partner's own account. Tabs `holdings` and
+  `daily_values` are added by the first *Sync all* after the keys are set; `raw_balances` gains a `valueKind`
+  column. Still to check on the first live sync: that `totalValue` equals cash plus investments, which
+  `api.type` values `raw_transactions` shows (are card payments in there as `WITHDRAW`?), and that a
+  second sync reports 0 added and 0 updated for Trading 212.
 - Known data quirks: Revolut returns one transaction in 90 days (a zero-amount card check);
   its SEK balance has a reference date in 2024 (dormant). Danske history starts at the 90-day
   lookback; older history may need a longer `INITIAL_LOOKBACK_DAYS` (check what the bank serves).
@@ -85,12 +92,22 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   ranges), `frankfurter` (rates client), `fx-service` (injectable: rates tab + cache + fetch,
   converts transactions and balances). `sheets/rates-store` reads and writes the `rates` tab.
 - `providers/bank-provider.js`: the contract (`authorize`, `listAccounts`, `getBalances`,
-  `getTransactions`) and the `Account`, `Balance`, `Transaction` typedefs.
+  `getTransactions`, plus the optional `maxWindowDays` and `getHoldings`) and the `Account`, `Balance`,
+  `Transaction`, `Holding`, `DailyValue` typedefs.
+- `core/provider-registry.js`: one entry per provider (its connections, whether one can sync, how to build
+  its provider, its Show status lines and expiring consents). Sync all, Show status and the consent warnings
+  loop over it; a new provider is a new entry. `core/daily-values.js`: pure daily value per account from the
+  balances tagged `cash`/`investments`.
+- `providers/trading212/`: `t212-normalize` (pure), `t212-rate-limit` (pure 429 wait from
+  `x-ratelimit-reset`, plugged into `lib/http` as `retryDelayMs`), `t212-credentials` (key pairs in Script
+  Properties), `t212-client` (one method per endpoint, Basic auth), `t212-provider`.
 - `providers/enable-banking/`: `eb-client` (one method per endpoint), `eb-auth`,
   `eb-token`, `eb-session-store`, `eb-normalize`, `eb-provider`.
 - `sheets/`: `raw-writer` (fixed columns plus one `api.*` column per API field, per-connection
-  replace, never a whole-tab clear), `transactions-store` (loads by header name).
-- `entry/`: `container` (composition root; `syncAllDeps` is shared by the menu and the trigger), `menu`, `web-app`,
+  replace or accumulate by key, never a whole-tab clear; also the `holdings` and `daily_values` columns),
+  `transactions-store` (loads by header name).
+- `entry/`: `container` (composition root; `syncAllDeps` is shared by the menu and the trigger, and hands
+  providers the Apps Script helpers: HTTP, Base64, local dates, time left), `menu`, `web-app`,
   `triggers` (the two global trigger handlers). Only these touch globals.
 - Tests: `bank-sync/test/*.test.js` (`npm test` in `bank-sync/`), using the real modules
   loaded in push order by `test/load.js`.
@@ -246,10 +263,52 @@ As built (see `bank-sync/README.md`, "Daily sync and consent warnings"):
   (`auth.complete`, `doGet`) is unchanged, so no `clasp deploy`.
 - Not yet seen live: a daily run's record, a follow-up run, and a warning email.
 
-## Phase 5: Trading212 provider
+## Phase 5: Trading212 provider (live once deployed)
 
-Own API key in Script Properties (pasted by the owner). Holdings and cash are modeled
-explicitly, not as transactions. Adding it must not touch existing providers.
+As built (see `bank-sync/README.md`, "Trading 212"):
+
+- One connection per API key pair in Script Properties, `T212_API_KEY_<HOLDER>` and `T212_API_SECRET_<HOLDER>`
+  (found with `getKeys()`, holder slugged: `trading212-niklas`, `trading212-niklas-isa`). Pairs are never
+  stored elsewhere; *Show status* shows `set`/`MISSING`; `Redact` scrubs `Basic ...` headers.
+- `listAccounts` builds one account from `GET /equity/account/summary` (its `id` is the `accountId`). The
+  summary is read once per run (the limit is 1 per 5 s) and also gives the five balances:
+  `cash.availableToTrade`, `cash.inPies`, `cash.reservedForOrders` (`valueKind: cash`),
+  `investments.currentValue` (`investments`), `totalValue` (no kind, kept for checking).
+- `getHoldings` (new optional contract method) maps `GET /equity/positions` to `Holding` rows; `amount` is the
+  value in the account currency so the unchanged `FxService.convertBalances` converts it.
+- `daily_values` is built in `RawSync.write` from the converted balances by `DailyValues.fromBalances` (no second
+  FX path); accumulated by connection, account and date, so a same-day re-run replaces the row. Banks can be
+  added later by tagging their booked balance `cash` in the Enable Banking normalizer.
+- `getTransactions` reads `/equity/history/transactions` and `/equity/history/dividends` newest first
+  (`limit=50`, following `nextPagePath`) until a page reaches back past `dateFrom`; `maxWindowDays: Infinity`
+  makes `TxnSync` ask for one window, so its lookback, restart and idempotent upsert are reused unchanged.
+  Withdrawals and fees negative; deposits, interest and dividends positive; TRANSFER and unknown types keep the
+  API's sign. Dividend ids are `div:<reference>`. Orders are not imported.
+- Rate limits: no client-side pacer (a run makes about four calls per account, far below the burst limits).
+  `lib/http` gained an optional `retryDelayMs` hook: for Trading 212 a 429 waits until `x-ratelimit-reset`
+  (seconds or ms accepted), at most `TRADING212.MAX_RETRY_WAIT_MS` (65 s) and never past the run's time budget;
+  Enable Banking keeps the plain backoff.
+- No new OAuth scope (`script.external_request` covers UrlFetchApp; `Utilities.base64Encode` needs none). The
+  web-app path (`auth.complete`, `doGet`) is unchanged, so `clasp push --force` without `clasp deploy`.
+- Deploy steps: the owner creates each key (permissions `account`, `portfolio`, `history:transactions`,
+  `history:dividends`, no IP restriction), pastes the pairs, `clasp push --force` from `bank-sync/` after diffing
+  the manifest, reloads the sheet, runs *Show status* and *Sync all*.
+
+Trading 212 facts (verified against docs.trading212.com/api and its OpenAPI file, 2026-10-25):
+
+- Base URLs: live `https://live.trading212.com/api/v0`, demo `https://demo.trading212.com/api/v0`. Beta; Invest and
+  Stocks ISA accounts only; multi-currency accounts not supported; amounts in the primary account currency
+  (instrument prices in the instrument currency).
+- Auth: HTTP Basic, API key as user and API secret as password. A legacy scheme (`Authorization: <key>`) is still
+  listed, which is why the old portfolio sheet works. Keys are scoped: a missing scope gives
+  `403 Scope(<name>) missing`; optional IP restriction.
+- Endpoints used and limits: `GET /equity/account/summary` 1/5 s; `GET /equity/positions` 1/1 s;
+  `GET /equity/history/transactions` (`cursor`, `time`, `limit` <= 50) 20/min; `GET /equity/history/dividends`
+  (`cursor`, `ticker`, `limit`) 20/min. Limits count per account whatever the key or IP; bursts allowed; every
+  response carries `x-ratelimit-limit/-period/-remaining/-reset/-used`. `equity/account/cash` and
+  `equity/portfolio`, used by the old sheet, are no longer documented.
+- History types: WITHDRAW, DEPOSIT, FEE, TRANSFER, INTEREST_ON_FREE_CASH, LENDING_INTEREST. No card type and no
+  merchant field; the CSV report (`POST /equity/history/exports`, 1/30 s) is the only other history source.
 
 ## Phase 6: CSV import provider
 
@@ -306,6 +365,15 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
   Cancelled, rejected and scheduled rows are skipped by the normalizer, so they do not appear.
 
 ## Open decisions (raise, do not act)
+
+- **Internal transfers:** a bank-to-Trading 212 transfer appears twice in `transactions` (the bank's outflow and
+  the Trading 212 `DEPOSIT`). Decide whether Trading 212 history stays in `transactions`, moves to its own tab, or
+  transfers get matched and marked as internal so analysis does not count them as spending or income.
+- **Card spending detail:** the API exposes no merchant data; the Trading 212 CSV report might (unverified),
+  which would fit Phase 6.
+- **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer.
+- **Old portfolio sheet:** it calls Trading 212 with the legacy key and shares the per-account rate limit; retire
+  it or move what is still used.
 
 - **One sheet:** move toward a single sheet. Options once Phase 2 is in: migrate the legacy
   views into Bank Sync, or split the repo.

@@ -15,3 +15,9 @@ test('maskIban keeps only the last four characters', () => {
   assert.strictEqual(Redact.maskIban('GB82 WEST 1234 5698 7654 32'), '****5432');
   assert.strictEqual(Redact.maskIban(undefined), '');
 });
+
+test('redacts HTTP Basic credentials but leaves the word "basic" in ordinary text alone', () => {
+  const out = Redact.text('Authorization: Basic ZmFrZS1rZXk6ZmFrZS1zZWNyZXQ= failed; basic information is fine');
+  assert.ok(!out.includes('ZmFrZS1rZXk6ZmFrZS1zZWNyZXQ='));
+  assert.match(out, /Basic \[REDACTED\] failed; basic information is fine/);
+});

@@ -3,7 +3,7 @@
  */
 (function (ns) {
   /**
-   * Builds the object graph for Enable Banking.
+   * Builds the shared object graph (Enable Banking client, sessions and connections, Script Properties, clock).
    * @returns {{store: Object, auth: Object, client: Object, props: Object, connections: Object,
    *   nowMs: function(): number}} Wired services.
    */
@@ -32,16 +32,29 @@
   }
 
   /**
+   * Apps Script helpers a provider may need (Trading 212: HTTP with its rate-limit hook, Base64, local dates).
+   * @param {function(): number} [msLeft] - Time left in the current sync run.
+   * @returns {import('../core/provider-registry.js').ProviderEnv} Helpers.
+   */
+  function providerEnv(msLeft) {
+    const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
+    return {
+      http: ns.Gas.http,
+      base64: ns.Gas.base64,
+      toLocalDate: function (iso) { return formatDate(new Date(iso)); },
+      msLeft: msLeft
+    };
+  }
+
+  /**
    * Builds a provider for one connection.
-   * @param {import('../core/config.js').ConnectionConfig} connection - Login to serve.
+   * @param {import('../core/config.js').ConnectionConfig} connection - Login or API key to serve.
    * @param {Object} [wired] - Services from `services()`, to avoid wiring twice.
+   * @param {import('../core/provider-registry.js').ProviderEnv} [env] - Helpers; built when omitted.
    * @returns {import('../providers/bank-provider.js').BankProvider} Provider.
    */
-  function providerFor(connection, wired) {
-    const s = wired || services();
-    return ns.EnableBankingProvider.create({
-      connection: connection, client: s.client, store: s.store, auth: s.auth, nowMs: s.nowMs
-    });
+  function providerFor(connection, wired, env) {
+    return ns.ProviderRegistry.create(connection, wired || services(), env || providerEnv());
   }
 
   /**
@@ -71,27 +84,18 @@
     const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
     const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     const todayIso = function () { return formatDate(new Date()); };
+    const startedAt = wired.nowMs();
+    const env = providerEnv(function () { return startedAt + ns.Config.TRANSACTIONS.TIME_BUDGET_MS - wired.nowMs(); });
     return {
-      connections: wired.connections.all(),
-      isConnected: function (c) { return Boolean(wired.store.loadSession(c.key)); },
-      providerFor: function (c) { return providerFor(c, wired); },
+      connections: ns.ProviderRegistry.connections(wired),
+      isConnected: function (c) { return ns.ProviderRegistry.isConnected(c, wired); },
+      providerFor: function (c) { return providerFor(c, wired, env); },
       store: ns.TransactionsStore.create(spreadsheet, formatDate),
       rawWriter: ns.RawWriter.create(spreadsheet),
       nowMs: wired.nowMs,
       todayIso: todayIso,
       fx: fxService(spreadsheet, formatDate, todayIso)
     };
-  }
-
-  /**
-   * @param {Object} wired - Services from `services()`.
-   * @returns {Array<{connection: Object, validUntil: string}>} Every connection with a session and its consent expiry.
-   */
-  function consents(wired) {
-    return wired.connections.all().map(function (c) {
-      const session = wired.store.loadSession(c.key);
-      return session ? { connection: c, validUntil: session.accessValidUntil } : null;
-    }).filter(Boolean);
   }
 
   /**
@@ -109,7 +113,7 @@
           return ns.SyncAll.run(syncAllDeps(wired));
         });
       },
-      consents: function () { return consents(wired); },
+      consents: function () { return ns.ProviderRegistry.consents(wired); },
       send: ns.Gas.mailOwner(),
       props: wired.props,
       nowMs: wired.nowMs,
@@ -119,6 +123,6 @@
 
   ns.Container = {
     services: services, providerFor: providerFor, fxService: fxService,
-    syncAllDeps: syncAllDeps, consents: consents, autoSyncDeps: autoSyncDeps
+    syncAllDeps: syncAllDeps, autoSyncDeps: autoSyncDeps
   };
 })(globalThis.BankSync);
