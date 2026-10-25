@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-25 (phase 4, daily sync and consent warnings, in review).
+Last updated: 2026-10-25 (after phase 4, daily sync and consent warnings, went live).
 
 ## Setup in one paragraph
 
@@ -27,7 +27,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 2 | Transactions: paginated fetch, normalization, idempotent upsert, `transactions` tab | Merged (#44), live-tested on Revolut (sync twice gives 0 added/updated/removed). Hardened in #48 after the first Claude review |
 | 2.5 | Connections, Connect flow with live bank list, labels, `raw_*` tabs with every API field | Merged (#49), live on the Bank Sync sheet (Revolut and Danske Bank SE) |
 | 3 | FX (ECB via Frankfurter): `amountEur`/`fxRate`/`fxRateDate` on transactions and balances, `rates` tab | Merged (#56), live: first sync converted the full history, a second converted 0 |
-| 4 | Automation and consent-expiry warnings | In review (draft PR): daily trigger, follow-up runs, last-run record, consent warning emails. Not pushed to Apps Script yet |
+| 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
 | 5 | Trading212 provider | Planned |
 | 6 | CSV import provider (Avanza, BIL) | Planned |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
@@ -37,6 +37,9 @@ Rules for every phase: branch per task, one small PR per phase, squash merge, ne
 commit to `main`, conventional-commit PR title with a lowercase subject (e.g.
 `feat(bank-sync): add transactions writer (phase 2)`), summary and test plan in the PR
 body, open as draft and mark ready when CI is green (that starts the review), ask before merging, and stop after each phase for review.
+**Update this file in the same PR as the phase**, written as the state after merge and deploy (status
+row, live state, deploy steps), so no follow-up docs PR is needed. Anything only seen live (counts,
+quirks) goes into the next phase's PR.
 
 ## Live state (2026-10-25)
 
@@ -48,10 +51,15 @@ body, open as draft and mark ready when CI is green (that starts the review), as
   field as `api.*` columns; `raw_transactions` accumulates, see below), `transactions` (the full deduplicated
   history, signed amounts, label columns, `amountEur`/`fxRate`/`fxRateDate` filled), and `rates` (ECB rates per
   currency and date). `raw_balances` also carries `amountEur`/`fxRate`/`fxRateDate` at the latest rate.
-- Menu: *Connect a bank...*, *Sync all*, *Show status* (Phase 4 adds *Enable daily sync* and *Disable daily sync* once pushed). Sync all is idempotent: a second run
+- Menu: *Connect a bank...*, *Sync all*, *Show status*, *Enable daily sync*, *Disable daily sync*. Sync all is idempotent: a second run
   reports 0 added, 0 updated, 0 removed, and 0 transactions converted to EUR.
 - Apps Script: web-app deployment (the redirect `/exec`) is pinned to version 3; the script
-  itself is pushed from `main` after #56 (Phase 3 did not change the web app, so no redeploy). The web app only changes when `auth.complete`,
+  itself is pushed from `main` after #58 (Phases 3 and 4 did not change the web app, so no redeploy). The three
+  Phase 4 scopes (`script.scriptapp`, `script.send_mail`, `userinfo.email`) are authorized.
+- Daily sync: on (one trigger, 06:00-07:00 Europe/Luxembourg, owned by the owner's account). On 2026-10-25
+  *Show status* said "Last sync: none recorded yet"; the first daily run is due 2026-10-26. Both consents had
+  89 days left; the first warning emails (30 days) are due around 2026-12-23 (Revolut) and 2026-12-24 (Danske).
+  Check after the first daily run that *Show status* shows `(daily): OK` with 0 added/updated/removed. The web app only changes when `auth.complete`,
   `doGet` or what they call change: then run `clasp deploy -i <deployment id>`.
 - Known data quirks: Revolut returns one transaction in 90 days (a zero-amount card check);
   its SEK balance has a reference date in 2024 (dormant). Danske history starts at the 90-day
@@ -209,7 +217,7 @@ own conversion only inside the description text ("Amount received: EUR 500.00 ..
 EUR/SEK ..."); the API's `exchange_rate` field is empty. Phase 3 uses the ECB rate per booking date;
 the bank's stated rate is a possible cross-check, not a source.
 
-## Phase 4: automation and consent expiry (in review)
+## Phase 4: automation and consent expiry (live)
 
 As built (see `bank-sync/README.md`, "Daily sync and consent warnings"):
 
@@ -233,9 +241,10 @@ As built (see `bank-sync/README.md`, "Daily sync and consent warnings"):
   `script.send_mail` (MailApp.sendEmail), `userinfo.email` (Session user email). Added to
   `bank-sync/src/appsscript.json` and `scripts/allowed-scopes.json`; `check:manifest` now also checks
   bank-sync's manifest against the allow-list (before, it only checked `src/`).
-- Deploy: `clasp push --force` from `bank-sync/` after diffing the manifest (time zone and scopes),
-  then reload the sheet and re-authorize. The web-app path (`auth.complete`, `doGet`) is unchanged, so
-  no `clasp deploy`. Then *Enable daily sync* once.
+- Deployed 2026-10-25: `clasp push --force` from `bank-sync/` after diffing the manifest (time zone and
+  scopes), sheet reloaded and re-authorized, *Enable daily sync* run once. The web-app path
+  (`auth.complete`, `doGet`) is unchanged, so no `clasp deploy`.
+- Not yet seen live: a daily run's record, a follow-up run, and a warning email.
 
 ## Phase 5: Trading212 provider
 
@@ -266,9 +275,10 @@ another route. Decide only when this phase starts.
 1. Read `CLAUDE.md`, this file, then `docs/HANDOFF.md`.
 2. `git fetch`, branch off `origin/main` (never commit to `main`), run `npm test` in
    `bank-sync/` and `npm run check` at the root to confirm a green baseline.
-3. Do the next phase in one small PR, opened as a draft; mark it ready when CI is green, read the
-   review comment and its `code-review` issues, fix the real ones on the branch, and stop after the
-   phase. Do not re-run the review yourself.
+3. Do the next phase in one small PR, opened as a draft, with this file updated in the same PR (as the
+   state after merge and deploy); mark it ready when CI is green, read the review comment and its
+   `code-review` issues, fix the real ones on the branch, and stop after the phase. Do not re-run the
+   review yourself.
 4. Deploy only when asked: `clasp push --force` from `bank-sync/` after diffing the manifest,
    and `clasp deploy -i <deployment id>` only if the web-app path changed.
 
