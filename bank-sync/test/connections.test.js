@@ -6,7 +6,7 @@ const { fakeSheetBook } = require('./fake-sheet');
 const NOW = Date.parse('2026-04-01T12:00:00Z');
 const memProps = () => {
   const m = {};
-  return { getProperty: (k) => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = v; } };
+  return { getProperty: (k) => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = v; }, deleteProperty: (k) => { delete m[k]; } };
 };
 const acct = (o) => ({
   provider: 'enablebanking', accountId: 'a1', bank: 'Revolut', connection: 'revolut-niklas',
@@ -330,4 +330,79 @@ test('connections.choose accepts listed numbers only', () => {
   const list = [{ key: 'a' }, { key: 'b' }];
   assert.strictEqual(BS.Connections.choose(list, ' 2 ').key, 'b');
   ['0', '3', '', 'x', '1.5', '-1'].forEach((bad) => assert.throws(() => BS.Connections.choose(list, bad), { name: 'InputError' }));
+});
+
+test('flatten: account and card numbers are masked by key, the holder name is kept', () => {
+  const f = BS.Flatten.flat({
+    name: 'Jane Holder', account_id: { other: { identification: '12-34-56 98765432', scheme_name: 'BBAN' } },
+    all_account_ids: [{ identification: '12345678' }], card_number: '5500000000000004', sort_code: '123456'
+  });
+  assert.strictEqual(f.name, 'Jane Holder');
+  assert.strictEqual(f['account_id.other.identification'], '****5432');
+  assert.strictEqual(f['all_account_ids[0].identification'], '****5678');
+  assert.strictEqual(f.card_number, '****0004');
+  assert.strictEqual(f.sort_code, '****3456');
+  assert.strictEqual(f['account_id.other.scheme_name'], 'BBAN');
+  assert.ok(!JSON.stringify(f).includes('98765432'));
+});
+
+test('slug: accents are dropped so names like Asa still work', () => {
+  assert.strictEqual(BS.Connections.slug('Åsa Öberg'), 'asa-oberg');
+  assert.strictEqual(BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'Åsa' }).key, 'revolut-asa');
+});
+
+test('a freshly connected login has its details read on the first sync (detailsAt starts empty)', () => {
+  const store = BS.EbSessionStore.create(memProps(), () => NOW);
+  const connections = BS.Connections.create(memProps());
+  const connection = BS.Connections.build({ bankName: 'Revolut', country: 'LU', holder: 'niklas' });
+  const asked = [];
+  const client = {
+    createSession: () => ({ session_id: 's', accounts: [{ uid: 'n1', currency: 'EUR' }] }),
+    getAccountDetails: (uid) => { asked.push(uid); return { uid, currency: 'EUR', details: 'Main' }; }
+  };
+  const auth = BS.EbAuth.create({ client, store, connections, nowMs: () => NOW, uuid: () => 's', getRedirectUrl: () => 'x' });
+  store.savePending('p', { connection, validUntil: '2027-01-01T00:00:00Z' });
+  auth.complete('code', 'p');
+  assert.strictEqual(store.loadSession(connection.key).accounts[0].detailsAt, '');
+  assert.strictEqual(auth.refreshStale(connection)[0].accountName, 'Main');
+  assert.deepStrictEqual(asked, ['n1']);
+});
+
+test('refreshStale re-throws consent problems (401/403) but tolerates transient errors', () => {
+  [401, 403].forEach((status) => {
+    const { connection, auth } = staleSetup({ getAccountDetails: () => { throw BS.Errors.http(status, 'no'); } });
+    assert.throws(() => auth.refreshStale(connection), { name: 'HttpError', status });
+  });
+  [429, 500].forEach((status) => {
+    const { connection, auth } = staleSetup({ getAccountDetails: () => { throw BS.Errors.http(status, 'later'); } });
+    assert.doesNotThrow(() => auth.refreshStale(connection));
+  });
+});
+
+test('API fields too large for one property are skipped without failing', () => {
+  const store = BS.EbSessionStore.create(memProps(), () => NOW);
+  assert.strictEqual(store.saveApiFields('a1', { k: 'x'.repeat(9000) }), false);
+  assert.deepStrictEqual(store.loadApiFields('a1'), {});
+  assert.strictEqual(store.saveApiFields('a1', { k: 'small' }), true);
+  assert.strictEqual(store.loadApiFields('a1').k, 'small');
+});
+
+test('sync all: a connection that fails while reading balances writes nothing for it and keeps its raw rows', () => {
+  const book = fakeSheetBook();
+  const ok = (c) => ({ listAccounts: () => [acct({ accountId: 'a-' + c.key, connection: c.key })], getBalances: (id) => [{ accountId: id, amount: 1 }], getTransactions: () => [] });
+  const first = runAll({ rawWriter: BS.RawWriter.create(book), isConnected: () => true, providerFor: ok });
+  first.deps.connections = first.deps.connections.slice(0, 2);
+  BS.SyncAll.run(first.deps);
+  const second = runAll({
+    rawWriter: BS.RawWriter.create(book), isConnected: () => true,
+    providerFor: (c) => (c.key === 'revolut-partner'
+      ? { listAccounts: () => [acct({ accountId: 'a-x', connection: c.key })], getBalances: () => { throw BS.Errors.http(500, 'down'); } }
+      : ok(c))
+  });
+  second.deps.connections = second.deps.connections.slice(0, 2);
+  const outcome = BS.SyncAll.run(second.deps);
+  assert.deepStrictEqual(outcome.results.map((r) => r.status), ['ok', 'error']);
+  const grid = book.sheets.raw_accounts.grid;
+  const col = grid[0].indexOf('connection');
+  assert.ok(grid.slice(1).some((r) => r[col] === 'revolut-partner'), 'its earlier raw row is still there');
 });

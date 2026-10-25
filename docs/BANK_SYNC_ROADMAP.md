@@ -183,6 +183,16 @@ review before merging; #44 and #48 both had useful findings. A PR that edits the
 itself is skipped by design; test those with `gh workflow run claude-code-review.yml -f pr_number=N`
 after merging.
 
+## Follow-ups from reviews (small, not blocking)
+
+- Remove `LEGACY_CONNECTION`, `migrateLegacy` (container) and the single-map fallback in
+  `EbSessionStore.loadSession` once the live Revolut session has been migrated.
+- `refreshStale` runs inside `listAccounts`; if it ever needs its own time budget, move it to a
+  separate step in `SyncAll` before `listAccounts`.
+- Enable Banking keeps no list of enabled banks, so "not enabled" is detected after the fact;
+  confirm live which error a restricted application gets for an unlinked bank.
+- A `raw_transactions` tab with every transaction API field is not built; add it if needed.
+
 ## Open decisions (raise, do not act)
 
 - **One sheet:** move toward a single sheet. Options once Phase 2 is in: migrate the legacy

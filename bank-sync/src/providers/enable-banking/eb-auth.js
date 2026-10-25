@@ -69,10 +69,12 @@
     /**
      * Normalizes full AccountResources, keeps their API fields and returns the lean accounts.
      * @param {Array<Object>} resources - AccountResources.
+     * @param {boolean} detailsRead - True if they came from the details endpoint; otherwise
+     *   `detailsAt` stays empty so the first sync reads the details once.
      * @returns {Array<import('../bank-provider.js').Account>} Accounts for the session.
      */
-    function keepAccounts(resources) {
-      const at = new Date(deps.nowMs()).toISOString();
+    function keepAccounts(resources, detailsRead) {
+      const at = detailsRead ? new Date(deps.nowMs()).toISOString() : '';
       return resources.map(function (raw) {
         const account = ns.EbNormalize.normalizeAccount(raw, at);
         deps.store.saveApiFields(account.accountId, account.apiFields);
@@ -136,7 +138,7 @@
           throw ns.Errors.create('AuthError', 'The bank granted no accounts', { apiCode: 'NO_ACCOUNTS_ADDED' });
         }
         const validUntil = (session.access && session.access.valid_until) || pending.validUntil;
-        const accounts = keepAccounts(resources);
+        const accounts = keepAccounts(resources, false);
         deps.connections.save(connection);
         deps.store.saveSession(connection.key, {
           sessionId: session.session_id,
@@ -150,11 +152,11 @@
       /**
        * Reads the full details of accounts whose details are missing or older than
        * `DETAILS_MAX_AGE_DAYS` (one bank call each), so names set by the user or bank and
-       * every API field stay current without any manual step. A failed read keeps the old
-       * account and is retried on the next sync.
+       * every API field stay current without any manual step. A transient failure keeps the old
+       * account and is retried on the next sync; a 401/403 (consent problem) is re-thrown.
        * @param {import('../../core/config.js').ConnectionConfig} connection - Connected login.
        * @returns {Array<import('../bank-provider.js').Account>} The session's accounts, refreshed where due.
-       * @throws {Error} AuthError if the connection has no session.
+       * @throws {Error} AuthError if the connection has no session; HttpError 401/403 from the bank.
        */
       refreshStale: function (connection) {
         const session = deps.store.loadSession(connection.key);
@@ -163,10 +165,11 @@
         const accounts = session.accounts.map(function (account) {
           if (!isStale(account)) return account;
           try {
-            const fresh = keepAccounts([deps.client.getAccountDetails(account.accountId)])[0];
+            const fresh = keepAccounts([deps.client.getAccountDetails(account.accountId)], true)[0];
             changed = true;
             return fresh;
           } catch (e) {
+            if (e.status === 401 || e.status === 403) throw e;
             return account;
           }
         });

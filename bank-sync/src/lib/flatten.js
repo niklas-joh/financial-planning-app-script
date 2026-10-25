@@ -1,21 +1,28 @@
 /**
  * @fileoverview Flattens an API object into one level of dotted keys so every
- * field can be shown as a sheet column. IBAN-looking values are masked.
+ * field can be shown as a sheet column. IBANs and other account or card numbers are
+ * masked to their last four characters (the holder's name is kept on purpose).
  */
 (function (ns) {
   const IBAN = /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/;
+  /** Last path segments that hold an account or card number whatever its shape. */
+  const SENSITIVE_KEY = /^(iban|bban|identification|account_?number|card_?number|pan|sort_?code)$/i;
   const MAX_TEXT = 1000;
 
   /**
    * Converts one leaf to a cell-safe value.
    * @param {*} value - Leaf value.
-   * @returns {string|number|boolean} Number or boolean as is; text truncated and IBANs masked; null as ''.
+   * @param {string} path - Dotted path of the value.
+   * @returns {string|number|boolean} Number or boolean as is; text truncated; IBAN-shaped values and
+   *   values under account/card-number keys masked to their last four characters; null as ''.
    */
-  function leaf(value) {
+  function leaf(value, path) {
     if (value === null || value === undefined) return '';
-    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    const last = path.split('.').pop().replace(/\[\d+\]$/, '');
     const text = String(value);
-    return IBAN.test(text) ? ns.Redact.maskIban(text) : text.slice(0, MAX_TEXT);
+    if (IBAN.test(text) || (SENSITIVE_KEY.test(last) && text)) return ns.Redact.maskIban(text);
+    if (typeof value === 'number' || typeof value === 'boolean') return value;
+    return text.slice(0, MAX_TEXT);
   }
 
   /**
@@ -35,7 +42,7 @@
         flat(value[key], path, result);
       });
     } else if (prefix) {
-      result[prefix] = leaf(value);
+      result[prefix] = leaf(value, prefix);
     }
     return result;
   }

@@ -4,6 +4,7 @@
  */
 (function (ns) {
   const KEYS = ns.Config.PROPERTY_KEYS;
+  const MAX_PROPERTY_CHARS = 8000;
   const PENDING_TTL_MS = ns.Config.ENABLE_BANKING.PENDING_AUTH_TTL_SECONDS * 1000;
 
   /**
@@ -17,7 +18,7 @@
 
   /**
    * Creates a store.
-   * @param {{getProperty: function(string): ?string, setProperty: function(string, string): *}} props - Script Properties.
+   * @param {{getProperty: function(string): ?string, setProperty: function(string, string): *, deleteProperty: function(string): *}} props - Script Properties.
    * @param {function(): number} nowMs - Clock in epoch milliseconds.
    * @returns {Object} Store with savePending, consumePending, saveSession, loadSession, migrateKey, saveApiFields, loadApiFields.
    */
@@ -100,7 +101,7 @@
           delete legacy[fromKey];
           writeMap(KEYS.EB_SESSIONS, legacy);
         }
-        props.setProperty(KEYS.EB_SESSION_PREFIX + fromKey, '');
+        props.deleteProperty(KEYS.EB_SESSION_PREFIX + fromKey);
         return true;
       },
 
@@ -109,9 +110,14 @@
        * per account so they never compete with the session for space.
        * @param {string} accountId - Account uid.
        * @param {Object<string,*>} fields - Flat, IBAN-masked fields.
+       * @returns {boolean} False if the fields are too large for one property and were not stored
+       *   (the account then has no `api.*` columns; it never blocks a connect or a sync).
        */
       saveApiFields: function (accountId, fields) {
-        props.setProperty(KEYS.EB_API_PREFIX + accountId, JSON.stringify(fields));
+        const json = JSON.stringify(fields);
+        if (json.length > MAX_PROPERTY_CHARS) return false;
+        props.setProperty(KEYS.EB_API_PREFIX + accountId, json);
+        return true;
       },
 
       /**

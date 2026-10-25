@@ -5,7 +5,7 @@ const BS = require('./load');
 const NOW = Date.parse('2026-01-01T00:00:00Z');
 const memProps = () => {
   const m = {};
-  return { getProperty: (k) => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = v; } };
+  return { getProperty: (k) => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = v; }, deleteProperty: (k) => { delete m[k]; } };
 };
 
 test('normalizeAccount masks the IBAN, keeps holder and label, keeps every API field, requires uid', () => {

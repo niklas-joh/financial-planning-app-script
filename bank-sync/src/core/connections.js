@@ -11,10 +11,10 @@
   /**
    * Lowercase, dash-separated form of free text.
    * @param {string} text - Any text.
-   * @returns {string} e.g. 'Danske Bank' becomes 'danske-bank'.
+   * @returns {string} e.g. 'Danske Bank' becomes 'danske-bank'; accents are dropped ('Åsa' becomes 'asa').
    */
   function slug(text) {
-    return String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    return String(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   }
 
   /**
