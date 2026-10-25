@@ -47,7 +47,7 @@
       provider: PROVIDER_ID,
       accountId: accountId,
       balanceType: raw.balance_type || '',
-      name: raw.name || '',
+      description: raw.name || '',
       amount: amount,
       currency: raw.balance_amount.currency || '',
       referenceDate: raw.reference_date || '',

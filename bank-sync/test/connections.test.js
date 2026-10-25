@@ -468,3 +468,24 @@ test('sync all: raw_transactions shows each connection\'s latest fetch with api.
   assert.strictEqual(by('revolut-partner')[header.indexOf('api.creditor.name')], 'First');
   assert.strictEqual(by('revolut-niklas')[header.indexOf('accountName')], 'Main');
 });
+
+test('raw writer: no column for an API field that is only a null parent of nested fields', () => {
+  const book = fakeSheetBook();
+  const mk = (api) => BS.RawWriter.toRow({ provider: 'p', connection: 'c', accountId: 'x' + Math.random(), apiFields: api });
+  BS.RawWriter.create(book).writeTable('raw_transactions', BS.RawWriter.TRANSACTION_COLUMNS, [
+    mk({ creditor: '', 'creditor_account.iban': '****1', note: '' }),
+    mk({ 'creditor.name': 'Shop', 'creditor_account.iban': '', note: 'n' })]);
+  const header = book.sheets.raw_transactions.grid[0];
+  assert.ok(header.includes('api.creditor.name') && header.includes('api.note'));
+  assert.ok(!header.includes('api.creditor'), 'null parent column dropped');
+  assert.ok(header.includes('api.creditor_account.iban'));
+});
+
+test('balances name their description column clearly and keep the bank text', () => {
+  const b = BS.EbNormalize.normalizeBalance({ name: 'Available balance', balance_type: 'ITAV',
+    balance_amount: { amount: '1.00', currency: 'SEK' } }, 'a1', 't');
+  assert.strictEqual(b.description, 'Available balance');
+  assert.strictEqual(b.name, undefined);
+  assert.ok(BS.RawWriter.BALANCE_COLUMNS.some((c) => c.key === 'description'));
+  assert.ok(!BS.RawWriter.BALANCE_COLUMNS.some((c) => c.key === 'name'));
+});

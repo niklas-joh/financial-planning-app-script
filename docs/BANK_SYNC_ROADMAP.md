@@ -145,6 +145,11 @@ previous business day for weekends and holidays; balances use the latest rate. C
 `Rates` tab plus `CacheService`; one fetch per date range, never per row. Fills `amountEur`,
 `fxRate`, `fxRateDate`. Pure conversion logic is tested in Node.
 
+Observed on live Danske data: cross-border credits (EUR sent to the SEK account) state the bank's
+own conversion only inside the description text ("Amount received: EUR 500.00 ... Exchange rate:
+EUR/SEK ..."); the API's `exchange_rate` field is empty. Phase 3 keeps the planned ECB rate per
+booking date; the bank's stated rate is a possible cross-check, not a source.
+
 ## Phase 4: automation and consent expiry
 
 Time-driven refresh guarded by `LockService`, resumable under the 6-minute limit. Track

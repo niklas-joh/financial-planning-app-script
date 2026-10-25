@@ -24,7 +24,7 @@
    * @property {string} provider - Provider id.
    * @property {string} accountId - Account the balance belongs to.
    * @property {string} balanceType - Provider balance type code (e.g. CLBD).
-   * @property {string} name - Provider balance label.
+   * @property {string} description - What the balance type means (Enable Banking balance `name`).
    * @property {number} amount - Amount in the account currency.
    * @property {string} currency - ISO 4217 code.
    * @property {string} referenceDate - ISO date, or ''.

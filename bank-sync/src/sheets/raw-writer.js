@@ -21,7 +21,7 @@
 
   /** @type {Array<Column>} */
   const BALANCE_COLUMNS = ['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
-    'balanceType', 'name', 'amount', 'currency', 'referenceDate', 'lastChange', 'fetchedAt']
+    'balanceType', 'description', 'amount', 'currency', 'referenceDate', 'lastChange', 'fetchedAt']
     .map(function (k) { return { header: k, key: k, numeric: k === 'amount' }; });
 
   /** @type {Array<Column>} */
@@ -42,7 +42,9 @@
   }
 
   /**
-   * Fixed columns followed by one column per distinct API field, sorted by name.
+   * Fixed columns followed by one column per distinct API field, sorted by name. A field that
+   * is only ever empty because some rows send `null` where others send an object (`creditor`
+   * next to `creditor.name`) gets no column of its own.
    * @param {Array<Column>} fixed - Fixed columns.
    * @param {Array<Object>} rows - Flat rows.
    * @returns {Array<Column>} All columns.
@@ -52,7 +54,12 @@
     rows.forEach(function (row) {
       Object.keys(row).forEach(function (key) { if (key.indexOf(API_PREFIX) === 0) seen[key] = true; });
     });
-    return fixed.concat(Object.keys(seen).sort().map(function (key) { return { header: key, key: key }; }));
+    const keys = Object.keys(seen).sort();
+    const parents = keys.filter(function (key) {
+      return keys.some(function (other) { return other.indexOf(key + '.') === 0 || other.indexOf(key + '[') === 0; });
+    });
+    return fixed.concat(keys.filter(function (key) { return parents.indexOf(key) === -1; })
+      .map(function (key) { return { header: key, key: key }; }));
   }
 
   /**
