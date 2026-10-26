@@ -36,6 +36,8 @@
     "src/providers/trading212/t212-history.js",
     "src/providers/trading212/t212-provider.js",
     "src/providers/csv/csv-parse.js",
+    "src/providers/csv/formats/bil.js",
+    "src/providers/csv/formats/trading212-report.js",
     "src/providers/csv/csv-formats.js",
     "src/providers/csv/csv-normalize.js",
     "src/providers/csv/csv-folders.js",

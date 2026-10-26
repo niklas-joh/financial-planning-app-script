@@ -15,6 +15,20 @@
   }
 
   /**
+   * Shows a summary in a modeless window: unlike `ui.alert`, it does not keep the run waiting until it
+   * is closed, so the execution ends as soon as the work is done. Text is escaped and kept as written.
+   * @param {string} title - Window title.
+   * @param {string} text - Summary (counts and names only).
+   */
+  function showSummary(title, text) {
+    const lines = String(text).split('\n').length;
+    const html = HtmlService.createHtmlOutput(
+      '<pre style="font:13px/1.4 monospace;white-space:pre-wrap;margin:0">' + escapeHtml(text) + '</pre>')
+      .setWidth(560).setHeight(Math.min(560, 80 + lines * 20));
+    SpreadsheetApp.getUi().showModelessDialog(html, title);
+  }
+
+  /**
    * Runs an action, showing any failure as a redacted alert.
    * @param {function(): void} action - Menu action.
    */
@@ -93,8 +107,7 @@
   }
 
   /**
-   * Runs an action under the script lock so syncs never overlap. Show popups after it returns: an
-   * open alert keeps the server call (and so the lock) waiting until it is closed.
+   * Runs an action under the script lock so syncs never overlap. Show results after it returns.
    * @param {function(): *} action - Work to run while holding the lock.
    * @returns {*} What the action returns.
    * @throws {Error} LockError if another sync holds the lock.
@@ -120,7 +133,7 @@
         ns.AutoSync.recordManual(lastRun, { outcome: outcome }, now());
         return ns.SyncAll.summarize(outcome);
       });
-      SpreadsheetApp.getUi().alert(summary);
+      showSummary('Bank Sync: Sync all', summary);
     });
   }
 
@@ -141,7 +154,7 @@
         const outcome = ns.SyncAll.run(deps);
         return ns.SyncAll.summarize(outcome) + '\n\n' + ns.CsvFolders.statusLines(wired.props).join('\n');
       });
-      SpreadsheetApp.getUi().alert(summary);
+      showSummary('Bank Sync: Import CSV files', summary);
     });
   }
 
@@ -167,7 +180,7 @@
   function status() {
     guarded(function () {
       const s = ns.Container.services();
-      SpreadsheetApp.getUi().alert(ns.ProviderRegistry.statusLines(s)
+      showSummary('Bank Sync: Status', ns.ProviderRegistry.statusLines(s)
         .concat(ns.AutoSync.statusLines(ns.Gas.triggers().list(), ns.LastRun.create(s.props).load()))
         .join('\n'));
     });

@@ -55,7 +55,10 @@
    * @property {string} fxRateDate
    * @property {string} counterparty
    * @property {string} description
-   * @property {string} [category] - Category added by another source (e.g. a card's merchant category), or ''.
+   * @property {string} [category] - Kind of movement or spending category (e.g. a card's merchant category), or ''.
+   * @property {string} [counterpartyAccount] - The other party's account, masked to its last four characters, or ''.
+   * @property {string} [counterpartyBank] - The other party's bank, or ''.
+   * @property {string} [reference] - Payment reference (e.g. end-to-end id), masked like account numbers, or ''.
    * @property {Object<string,*>} [apiFields] - Every API field, flattened (raw tab only; never stored on `transactions`).
    */
 

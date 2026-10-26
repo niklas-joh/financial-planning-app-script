@@ -32,7 +32,10 @@
     { key: 'fxRateDate', text: true },
     { key: 'counterparty', text: true },
     { key: 'description', text: true },
-    { key: 'category', text: true, optional: true }
+    { key: 'category', text: true, optional: true },
+    { key: 'counterpartyAccount', text: true, optional: true },
+    { key: 'counterpartyBank', text: true, optional: true },
+    { key: 'reference', text: true, optional: true }
   ];
 
   /**

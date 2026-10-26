@@ -159,7 +159,7 @@ test('store round-trips rows, forces text format on text columns, tolerates Date
   const rows = [tx({ transactionId: '007', description: '=SUM(A1)', amountEur: -0.5, fxRate: 0.1 })];
   assert.strictEqual(store.save(rows), 1);
   // A row without a category reads back with an empty one.
-  assert.deepStrictEqual(store.load(), rows.map((r) => ({ ...r, category: '' })));
+  assert.deepStrictEqual(store.load(), rows.map((r) => ({ ...r, category: '', counterpartyAccount: '', counterpartyBank: '', reference: '' })));
   store.save([{ ...rows[0], category: 'GROCERIES' }]);
   assert.strictEqual(store.load()[0].category, 'GROCERIES');
   const sheet = book.sheets.transactions;
@@ -197,8 +197,9 @@ test('store: load fails loudly when the header was changed', () => {
 
 test('store: an older tab without the label or category columns, or with reordered columns, still loads', () => {
   const keys = BS.TransactionsStore.COLUMNS.map((c) => c.key);
-  const legacyKeys = keys.filter((k) => !['bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'category'].includes(k));
-  const row = tx({ transactionId: 'a', amount: -2, category: '' });
+  const added = ['category', 'counterpartyAccount', 'counterpartyBank', 'reference'];
+  const legacyKeys = keys.filter((k) => !['bank', 'connection', 'holderName', 'accountName', 'ibanMasked'].concat(added).includes(k));
+  const row = tx({ transactionId: 'a', amount: -2, category: '', counterpartyAccount: '', counterpartyBank: '', reference: '' });
   const cells = (order) => order.map((k) => (row[k] === null ? '' : row[k]));
   const book = fakeSheetBook();
   const sheet = book.insertSheet('transactions');
@@ -341,4 +342,12 @@ test('enrich: details fill the empty fields of rows with the same provider and i
   assert.ok(!('date' in once.rows[0]));
   assert.strictEqual(rows[0].counterparty, '');
   assert.strictEqual(BS.TxnMerge.enrich(once.rows, details).enriched, 0);
+});
+
+test('merge: a field the provider does not set equals the empty cell read back from the sheet', () => {
+  const fromSheet = tx({ transactionId: 'a', category: '', counterpartyAccount: '', counterpartyBank: '', reference: '' });
+  const again = BS.TxnMerge.merge([fromSheet], [tx({ transactionId: 'a' })], []);
+  assert.deepStrictEqual([again.added, again.updated], [0, 0]);
+  const filled = BS.TxnMerge.merge([fromSheet], [tx({ transactionId: 'a', counterpartyBank: 'DEMO BANK' })], []);
+  assert.strictEqual(filled.updated, 1);
 });

@@ -46,11 +46,13 @@
 
   /**
    * @param {Object<string,string>} record - CSV record.
-   * @returns {Object<string,*>} The record as flat `apiFields`, trimmed and masked.
+   * @param {Object<string,string>} [extra] - Parts the format parsed out of it, added as `parsed.<name>`.
+   * @returns {Object<string,*>} The record (and parts) as flat `apiFields`, trimmed and masked.
    */
-  function apiFields(record) {
+  function apiFields(record, extra) {
     const masked = {};
     Object.keys(record).forEach(function (k) { masked[k] = maskNumbers(String(record[k]).trim()); });
+    Object.keys(extra || {}).forEach(function (k) { masked['parsed.' + k] = maskNumbers(String(extra[k]).trim()); });
     return ns.Flatten.flat(masked);
   }
 
@@ -138,7 +140,11 @@
         fxRateDate: '',
         counterparty: maskNumbers(row.counterparty),
         description: maskNumbers(row.description),
-        apiFields: apiFields(records[i])
+        category: row.category || '',
+        counterpartyAccount: maskNumbers(row.counterpartyAccount || ''),
+        counterpartyBank: row.counterpartyBank || '',
+        reference: maskNumbers(row.reference || ''),
+        apiFields: apiFields(records[i], row.extra)
       };
     });
     return { account: account, transactions: transactions };

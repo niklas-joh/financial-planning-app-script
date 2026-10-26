@@ -93,9 +93,14 @@ test('csv bil: signed amounts with thousands commas, dates, counterparty, number
     ['2026-08-14', '2026-08-14', -9.99, 'EUR', 'booked'],
     ['2026-08-07', '2026-08-07', -1500, 'EUR', 'booked']
   ]);
-  assert.deepStrictEqual(t.map((x) => x.counterparty), ['DEMO PERSON', 'DEMO EMPLOYER', 'DEMO SHOP LUX', '']);
-  assert.match(t[0].description, /^Payment order: Standing order .* Beneficiary account: \*\*\*\*5678 At:/);
-  assert.match(t[2].description, /10:58 \*\*\*\*1234$/);
+  assert.deepStrictEqual(t.map((x) => [x.category, x.counterparty, x.description, x.counterpartyAccount, x.counterpartyBank, x.reference]), [
+    ['STANDING_ORDER', 'DEMO PERSON', 'Rent', '****5678', 'DEMOLULL - DEMO BANK', ''],
+    ['CREDIT', 'DEMO EMPLOYER', 'SALARY', '', 'DEMOLULL - DEMO BANK', ''],
+    ['CARD_PAYMENT', 'DEMO SHOP LUX', 'DEMO SHOP LUX 12/08/2026 10:58 ****1234', '', '', ''],
+    ['INSTANT_PAYMENT', '', 'Savings', '', '', '']
+  ]);
+  assert.strictEqual(t[0].apiFields['parsed.Beneficiary account'], '****5678');
+  assert.strictEqual(t[0].apiFields['parsed.Remittance Info'], 'Rent');
   const stored = JSON.stringify(t);
   assert.ok(!stored.includes('4000000000001234') && !stored.includes('LU990000000000005678') && !stored.includes('LU120000000000001234'));
   assert.strictEqual(t[2].apiFields.Message, 'DEMO SHOP LUX 12/08/2026 10:58 ****1234');
@@ -120,6 +125,52 @@ test('csv detect: unknown headers are not guessed; an invalid UTF-8 decode falls
   const found = BS.CsvNormalize.detect(decode);
   assert.strictEqual(found.format.id, 'bil');
   assert.deepStrictEqual(asked, ['UTF-8', 'windows-1252']);
+});
+
+test('csv bil: the message is split on BIL labels only; a colon inside the remittance stays in it', () => {
+  const msg = 'Credit Remittance Info: REFUND - 18 BENEFICIAIRE: 1111111111111 DATE CISS: 19.08.2026 By order of: DEMO FUND ' +
+    'Paying bank: DEMOLULL - DEMO BANK End-to-end Identification: 22222222222222222 Payment initiation reference: NSCT0001';
+  const p = BS.CsvBil.parts(msg);
+  assert.strictEqual(p.lead, 'Credit');
+  assert.deepStrictEqual(p.fields, {
+    'Remittance Info': 'REFUND - 18 BENEFICIAIRE: 1111111111111 DATE CISS: 19.08.2026',
+    'By order of': 'DEMO FUND',
+    'Paying bank': 'DEMOLULL - DEMO BANK',
+    'End-to-end Identification': '22222222222222222',
+    'Payment initiation reference': 'NSCT0001'
+  });
+  const row = normalize(bil('20/08/2026;20/08/2026;Credit;"' + msg + ' ";517.34')).transactions[0];
+  assert.deepStrictEqual([row.category, row.counterparty, row.counterpartyBank, row.reference],
+    ['CREDIT', 'DEMO FUND', 'DEMOLULL - DEMO BANK', '****2222']);
+  assert.strictEqual(row.description, 'REFUND - 18 BENEFICIAIRE: ****1111 DATE CISS: 19.08.2026');
+  // Without any label: the whole message is the description and the BIL type the category.
+  assert.deepStrictEqual(BS.CsvBil.describe('Payment order', 'Fee for July').description, 'Fee for July');
+  assert.deepStrictEqual(BS.CsvBil.describe('Payment order', 'Fee for July').category, 'PAYMENT_ORDER');
+});
+
+test('csv bil: a label typed inside the remittance stays in it; the real labels after it still count', () => {
+  const typed = BS.CsvBil.parts('Standing order Remittance Info: Meet At: the club Beneficiary: DEMO PERSON ' +
+    'Beneficiary account: LU990000000000005678 At: DEMOLULL - DEMO BANK');
+  assert.deepStrictEqual(typed.fields, {
+    'Remittance Info': 'Meet At: the club',
+    Beneficiary: 'DEMO PERSON',
+    'Beneficiary account': 'LU990000000000005678',
+    At: 'DEMOLULL - DEMO BANK'
+  });
+  const twice = BS.CsvBil.parts('Credit Remittance Info: re Beneficiary: someone By order of: DEMO FUND Paying bank: DEMOLULL - DEMO BANK');
+  assert.deepStrictEqual(twice.fields, {
+    'Remittance Info': 're Beneficiary: someone',
+    'By order of': 'DEMO FUND',
+    'Paying bank': 'DEMOLULL - DEMO BANK'
+  });
+  assert.strictEqual(twice.lead, 'Credit');
+});
+
+test('csv bil: ids depend on the raw columns only, so a new way of splitting the message keeps them', () => {
+  const id = normalize(bil(ROWS.rent)).transactions[0].transactionId;
+  const print = JSON.stringify(['2026-08-28', '2026-08-31', 'Payment order',
+    'Standing order Remittance Info: Rent Beneficiary: DEMO PERSON Beneficiary account: LU990000000000005678 At: DEMOLULL - DEMO BANK', -824.5]);
+  assert.strictEqual(id, 'h20260828-' + BS.Hash.fnv1a(print) + '-1');
 });
 
 // --- Provider over a Drive folder, and a full Sync all ---

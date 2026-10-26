@@ -125,14 +125,16 @@
 
   /**
    * Whether two rows differ in any field. Compares values field by field, so the order the keys
-   * were set in (a provider's row vs. a row read back from the sheet) does not count as a change.
+   * were set in (a provider's row vs. a row read back from the sheet) does not count as a change, and
+   * a field a provider does not set equals the empty cell the sheet reads back for it.
    * @param {Object} a - First row.
    * @param {Object} b - Second row.
    * @returns {boolean} True if any field differs.
    */
   function changed(a, b) {
     const keys = Object.keys(a).concat(Object.keys(b));
-    return keys.some(function (k) { return JSON.stringify(a[k]) !== JSON.stringify(b[k]); });
+    const comparable = function (v) { return JSON.stringify(v === undefined ? '' : v); };
+    return keys.some(function (k) { return comparable(a[k]) !== comparable(b[k]); });
   }
 
   /**
