@@ -52,7 +52,7 @@
   /** @type {BankSyncConfig} */
   ns.Config = Object.freeze({
     REPORTING_CURRENCY: 'EUR',
-    TIMEZONE: 'Europe/Luxembourg',
+    TIMEZONE: 'Europe/Brussels',
     ENABLE_BANKING: Object.freeze({
       PROVIDER_ID: 'enablebanking',
       BASE_URL: 'https://api.enablebanking.com',
