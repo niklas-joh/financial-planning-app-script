@@ -36,6 +36,12 @@ test('routing: banks and card spending to transactions, Trading 212 to investmen
   const tabFor = BS.TxnRouting.tabFor;
   assert.strictEqual(tabFor(tx({})), TABS.TRANSACTIONS);
   assert.strictEqual(tabFor(tx({ provider: 'csv' })), TABS.TRANSACTIONS);
+  // CSV rows follow their source: Avanza exports to investments, BIL (and any other source) to transactions.
+  assert.strictEqual(tabFor(tx({ provider: 'csv', accountId: 'avanza-1a2b3c4d' })), TABS.INVESTMENT_TRANSACTIONS);
+  assert.strictEqual(tabFor(tx({ provider: 'csv', accountId: 'bil-1a2b3c4d' })), TABS.TRANSACTIONS);
+  assert.strictEqual(tabFor(tx({ provider: 'enablebanking', accountId: 'avanza-1a2b3c4d' })), TABS.TRANSACTIONS);
+  assert.strictEqual(tabFor(tx({ provider: 'csv', accountId: 'avanza' })), TABS.TRANSACTIONS);
+  assert.ok(BS.Config.ROUTING.INVESTMENT_CSV_SOURCES.includes(BS.CsvAvanza.FORMAT.id));
   assert.strictEqual(tabFor(t212({ description: 'WITHDRAW' })), TABS.UNCLASSIFIED_TRANSACTIONS);
   assert.strictEqual(tabFor(t212({ description: 'DEPOSIT' })), TABS.UNCLASSIFIED_TRANSACTIONS);
   ['INTEREST_ON_FREE_CASH', 'LENDING_INTEREST', 'FEE', 'TRANSFER', 'Dividend ORDINARY', 'NEW_TYPE'].forEach((type) =>

@@ -1,7 +1,7 @@
 /**
  * @fileoverview Which tab a transaction is stored on, and one store over the three transaction tabs.
  * Rule (owner decision B1, 2026-10-26): `transactions` holds current-account cash flow and card spending;
- * `investment_transactions` holds movements of investment accounts (Trading 212); `unclassified_transactions`
+ * `investment_transactions` holds movements of investment accounts (Trading 212, Avanza); `unclassified_transactions`
  * holds the Trading 212 rows the API cannot tell apart (a WITHDRAW or DEPOSIT may be a card payment, cashback
  * or a bank transfer) until a Trading 212 report labels them. The routed store loads all three tabs as one
  * list and writes each row to its tab on save, so the sync, the merge, the report details and the EUR
@@ -15,9 +15,21 @@
   }
 
   /**
+   * Whether a CSV row comes from an investment account's export. CSV account ids are `<source>-<hash>`
+   * (`csv-normalize.js`), so the source is the part before the last hyphen.
+   * @param {import('../providers/bank-provider.js').Transaction} t - Row.
+   * @returns {boolean} True for a CSV row of a source in `Config.ROUTING.INVESTMENT_CSV_SOURCES`.
+   */
+  function isInvestmentCsv(t) {
+    if (t.provider !== ns.Config.CSV.PROVIDER_ID) return false;
+    const id = String(t.accountId);
+    return ns.Config.ROUTING.INVESTMENT_CSV_SOURCES.indexOf(id.slice(0, id.lastIndexOf('-'))) !== -1;
+  }
+
+  /**
    * The tab a row belongs on. A row the report labelled follows its label; otherwise rows of an
-   * investment provider go to `investment_transactions`, except the movement types that stay unclear
-   * without a report; every other row goes to `transactions`.
+   * investment provider or an investment CSV source (Avanza) go to `investment_transactions`, except the
+   * movement types that stay unclear without a report; every other row goes to `transactions`.
    * @param {import('../providers/bank-provider.js').Transaction} t - Row (`classification` set by a report, or empty).
    * @returns {string} Tab name.
    */
@@ -25,6 +37,7 @@
     const names = ns.Config.TABS;
     if (t.classification === 'card') return names.TRANSACTIONS;
     if (t.classification === 'investment') return names.INVESTMENT_TRANSACTIONS;
+    if (isInvestmentCsv(t)) return names.INVESTMENT_TRANSACTIONS;
     const providers = ns.Config.ROUTING.INVESTMENT_PROVIDERS;
     if (!Object.prototype.hasOwnProperty.call(providers, t.provider)) return names.TRANSACTIONS;
     return providers[t.provider].unclearTypes.indexOf(t.description) !== -1
