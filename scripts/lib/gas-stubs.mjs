@@ -73,7 +73,7 @@ export function installGasStubs(g) {
   };
 
   g.Session = strictService('Session', {
-    getScriptTimeZone: () => 'Europe/Luxembourg',
+    getScriptTimeZone: () => 'Europe/Brussels',
   });
 
   g.Utilities = strictService('Utilities', {

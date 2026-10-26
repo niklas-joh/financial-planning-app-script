@@ -279,7 +279,7 @@ test('auto sync: status lines show whether the daily sync is on and the last run
   const off = BS.AutoSync.statusLines([], null);
   assert.match(off[0], /^Daily sync: off/);
   const on = BS.AutoSync.statusLines([{ id: '1', handler: A.DAILY_HANDLER }], null);
-  assert.match(on[0], /^Daily sync: on, between 6:00 and 7:00 \(Europe\/Luxembourg\)/);
+  assert.match(on[0], /^Daily sync: on, between 6:00 and 7:00 \(Europe\/Brussels\)/);
   assert.strictEqual(on[1], 'Last sync: none recorded yet');
 });
 

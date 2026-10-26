@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-26 (B1: investment and unclassified transaction tabs, as they stand once merged and deployed; first daily sync seen OK; Avanza options compared).
+Last updated: 2026-10-26 (time zone Europe/Brussels; B1: investment and unclassified transaction tabs, as they stand once merged and deployed; first daily sync seen OK; Avanza options compared).
 
 ## Setup in one paragraph
 
@@ -19,7 +19,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
   Enable Banking (banks), the Trading 212 public API (one API key per account) and CSV exports in a
   Drive folder per holder (BIL; the Trading 212 report for card details) are the data sources.
   Transactions are kept on three tabs (B1): `transactions` (cash flow and card spending),
-  `investment_transactions` and `unclassified_transactions`. Europe/Luxembourg time zone, EUR reporting currency.
+  `investment_transactions` and `unclassified_transactions`. Europe/Brussels time zone (the same clock as Luxembourg), EUR reporting currency.
 
 ## Status
 
@@ -74,7 +74,7 @@ Earlier (2026-10-25):
 - Apps Script: web-app deployment (the redirect `/exec`) is pinned to version 3; the script
   itself is pushed from `main` after #58 (Phases 3 and 4 did not change the web app, so no redeploy). The three
   Phase 4 scopes (`script.scriptapp`, `script.send_mail`, `userinfo.email`) are authorized.
-- Daily sync: on (one trigger, 06:00-07:00 Europe/Luxembourg, owned by the owner's account). On 2026-10-25
+- Daily sync: on (one trigger, 06:00-07:00 Europe/Brussels, owned by the owner's account). On 2026-10-25
   *Show status* said "Last sync: none recorded yet"; the first daily run is due 2026-10-26. Both consents had
   89 days left; the first warning emails (30 days) are due around 2026-12-23 (Revolut) and 2026-12-24 (Danske).
   Check after the first daily run that *Show status* shows `(daily): OK` with 0 added/updated/removed. The web app only changes when `auth.complete`,
@@ -102,9 +102,11 @@ Earlier (2026-10-25):
 - Known data quirks: Revolut returns one transaction in 90 days (a zero-amount card check);
   its SEK balance has a reference date in 2024 (dormant). Danske history starts at the 90-day
   lookback; older history may need a longer `INITIAL_LOOKBACK_DAYS` (check what the bank serves).
-- `clasp push` asks about the manifest every time because the live manifest says
-  Europe/Brussels; the repo says Europe/Luxembourg. Diff it, then `clasp push --force`. A push left waiting at that
-  prompt pushes nothing: the first Phase 6 test ran the old code until it was answered.
+- Time zone: since tzdata 2022b `Europe/Luxembourg` is only an alias of `Europe/Brussels` (identical since 1944), and
+  Apps Script stores the alias as Brussels, so a repo saying Luxembourg made `clasp push` ask about the manifest every
+  time. All three manifests and `Config.TIMEZONE` say `Europe/Brussels` since 2026-10-26; dates, rates and the daily
+  trigger hour are unchanged. If `clasp push` still asks about the manifest, diff it: the time zone is no longer the
+  reason. A push left waiting at that prompt pushes nothing (the first Phase 6 test ran the old code until it was answered).
 - CSV import (Phase 6): `csv-niklas` is live (folder set 2026-10-25). The first *Import CSV files* added 159 BIL
   rows (converted to EUR) and gave 8 Trading 212 rows their report details; a repeat run reported 0 added, 0
   updated and "0 transactions updated (8 read)". The summary alert kept the run open until it was clicked, which
@@ -615,7 +617,8 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 - Run `npm run check` (repo root) and `npm test` (`bank-sync/`) before every push and PR.
 - `clasp push` may ask to overwrite a changed manifest: diff the remote one first
   (`clasp clone` into a scratch folder) and only force if the difference is understood.
-  The first Phase 2 push only corrected the time zone to Europe/Luxembourg.
+  The first Phase 2 push set the time zone to Europe/Luxembourg, which Apps Script stores as Europe/Brussels (an alias);
+  the repo says Europe/Brussels since 2026-10-26, so the time zone no longer triggers the prompt.
 - After a push the user reloads the sheet (menus are built in `onOpen`) and may need to
   re-authorize.
 

@@ -137,7 +137,7 @@ from [Frankfurter](https://frankfurter.dev) (`/v2/rates?...&providers=ecb`, no A
 ## Daily sync and consent warnings (Phase 4)
 
 *Bank Sync > Enable daily sync* creates one time-driven trigger that runs *Sync all* every day
-between 06:00 and 07:00 (Europe/Luxembourg); *Disable daily sync* removes it. Enabling twice never
+between 06:00 and 07:00 (Europe/Brussels, the same time as Luxembourg); *Disable daily sync* removes it. Enabling twice never
 creates a second trigger (duplicates are removed). The trigger runs as the account that enabled it.
 
 - The triggered run is the same *Sync all* as the menu item, under the same script lock. If it ends at

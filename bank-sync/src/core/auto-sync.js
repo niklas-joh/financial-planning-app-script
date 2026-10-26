@@ -28,7 +28,7 @@
    */
 
   /**
-   * @returns {string} When the daily run happens, e.g. "between 6:00 and 7:00 (Europe/Luxembourg)".
+   * @returns {string} When the daily run happens, e.g. "between 6:00 and 7:00 (Europe/Brussels)".
    */
   function scheduleText() {
     const hour = ns.Config.AUTOMATION.DAILY_HOUR;

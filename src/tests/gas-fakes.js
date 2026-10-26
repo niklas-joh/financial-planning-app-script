@@ -289,7 +289,7 @@ var FakeGas = (function() {
       getName: () => 'Fake Spreadsheet',
       getUrl: () => 'https://docs.google.com/spreadsheets/d/fake-spreadsheet-id/edit',
       getSpreadsheetLocale: () => 'en_GB',
-      getSpreadsheetTimeZone: () => 'Europe/Luxembourg',
+      getSpreadsheetTimeZone: () => 'Europe/Brussels',
       getSheets: () => ss._sheets.slice(),
       getSheetByName: (n) => ss._sheets.find((s) => s.getName() === n) || null,
       insertSheet: function(n, index) {
