@@ -303,7 +303,8 @@ What it writes:
 - `transactions` (BIL) and `investment_transactions` (Avanza): one booked row per movement, `provider` `csv`,
   `bank` the source (`BIL`, `Avanza`), `connection` the folder (`csv-niklas`), `accountName` the product from the
   account line (BIL) or the `Konto` name (Avanza), `ibanMasked` the account number's last four characters (BIL;
-  empty for Avanza, whose export has no number), and the columns above per source. Account and card numbers inside the texts are
+  empty for Avanza, whose export has no number), and the columns above per source. An Avanza account's currency on
+  `raw_accounts` is the one most of its rows have; each row keeps its own `Transaktionsvaluta`. Account and card numbers inside the texts are
   masked to their last four digits. EUR at the booking-date rate, like every other row.
 - `raw_accounts` and `raw_transactions`: the account and every CSV column as `api.*` (masked the same way).
 - `transactions` ends with five columns that only some sources fill: `category` (BIL, the Trading 212 report),

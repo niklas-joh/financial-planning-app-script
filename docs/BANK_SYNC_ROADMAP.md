@@ -498,7 +498,8 @@ As built (see `bank-sync/README.md`, "CSV import"), with the owner's decisions o
 - Several accounts per file: a format without a file-level `account` (BIL keeps its account line above the header)
   names each row's account (Avanza: `Konto`), and `CsvNormalize.file` returns `accounts` (one per account seen).
   `accountId` = source + hash of the number, or of the name when there is none (`avanza-<fnv1a(Konto)>`);
-  `ibanMasked` empty. The identical-row counter is per account (for BIL, one account per file, so its ids are unchanged).
+  `ibanMasked` empty; the account's currency is the one most of its rows have (rows keep their own). The identical-row
+  counter is per account (for BIL, one account per file, so its ids are unchanged).
 - Rename: accepted and documented (owner). A renamed `Konto` gets a new `accountId`; the next import adds its rows again
   and the old ones stay; the README gives the fix (rename back, or delete the old rows and exports). A name mapping
   (new name to old) can be added later without migration if it ever happens.

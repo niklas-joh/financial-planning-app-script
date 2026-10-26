@@ -25,7 +25,8 @@
   function isInvestmentCsv(t) {
     if (t.provider !== ns.Config.CSV.PROVIDER_ID) return false;
     const id = String(t.accountId);
-    return ns.Config.ROUTING.INVESTMENT_CSV_SOURCES.indexOf(id.slice(0, id.lastIndexOf('-'))) !== -1;
+    const cut = id.lastIndexOf('-');
+    return cut > 0 && ns.Config.ROUTING.INVESTMENT_CSV_SOURCES.indexOf(id.slice(0, cut)) !== -1;
   }
 
   /**

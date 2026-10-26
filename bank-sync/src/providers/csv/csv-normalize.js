@@ -93,6 +93,16 @@
   }
 
   /**
+   * @param {Array<string>} values - Values (at least one).
+   * @returns {string} The value that occurs most often; on a tie, the one seen first.
+   */
+  function mostCommon(values) {
+    const counts = {};
+    values.forEach(function (v) { counts[v] = (counts[v] || 0) + 1; });
+    return values.reduce(function (best, v) { return counts[v] > counts[best] ? v : best; }, values[0]);
+  }
+
+  /**
    * The normalized account for one account of a file.
    * @param {import('./csv-formats.js').CsvFormat} format - The file's format.
    * @param {import('./csv-formats.js').CsvAccountInfo} info - The account as the file names it.
@@ -169,6 +179,15 @@
         apiFields: apiFields(records[i], row.extra)
       };
     });
+    if (!fileInfo) {
+      // An account named per row takes the currency most of its rows have, so one foreign-currency row
+      // (e.g. a withholding tax) does not label the whole account; rows keep their own currency.
+      Object.keys(accounts).forEach(function (accountId) {
+        accounts[accountId].currency = mostCommon(transactions
+          .filter(function (t) { return t.accountId === accountId; })
+          .map(function (t) { return t.currency; }));
+      });
+    }
     return {
       accounts: Object.keys(accounts).map(function (id) { return accounts[id]; }),
       transactions: transactions

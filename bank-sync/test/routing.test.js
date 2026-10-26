@@ -41,6 +41,8 @@ test('routing: banks and card spending to transactions, Trading 212 to investmen
   assert.strictEqual(tabFor(tx({ provider: 'csv', accountId: 'bil-1a2b3c4d' })), TABS.TRANSACTIONS);
   assert.strictEqual(tabFor(tx({ provider: 'enablebanking', accountId: 'avanza-1a2b3c4d' })), TABS.TRANSACTIONS);
   assert.strictEqual(tabFor(tx({ provider: 'csv', accountId: 'avanza' })), TABS.TRANSACTIONS);
+  assert.strictEqual(tabFor(tx({ provider: 'csv', accountId: 'avanzax' })), TABS.TRANSACTIONS);
+  assert.strictEqual(tabFor(tx({ provider: 'csv', accountId: '-avanza' })), TABS.TRANSACTIONS);
   assert.ok(BS.Config.ROUTING.INVESTMENT_CSV_SOURCES.includes(BS.CsvAvanza.FORMAT.id));
   assert.strictEqual(tabFor(t212({ description: 'WITHDRAW' })), TABS.UNCLASSIFIED_TRANSACTIONS);
   assert.strictEqual(tabFor(t212({ description: 'DEPOSIT' })), TABS.UNCLASSIFIED_TRANSACTIONS);

@@ -448,6 +448,11 @@ test('csv avanza: one file holds both accounts; each account id is the source pl
     ['avanza-' + BS.Hash.fnv1a('Demo Pension'), 'Avanza', 'Demo Pension', 'SEK', '', 'csv', 'csv-alex']
   ]);
   assert.deepStrictEqual(out.transactions.map((t) => t.accountId), [0, 1, 1, 0].map((i) => out.accounts[i].accountId));
+  // The account takes the currency most of its rows have, even when its first row is in another one.
+  const usd = AV.withholding.replace(';SEK;;;USD;', ';USD;;;USD;');
+  const mixed = normalize(avanza(usd, AV.sale, AV.buy));
+  assert.deepStrictEqual(mixed.accounts.map((a) => a.currency), ['SEK']);
+  assert.deepStrictEqual(mixed.transactions.map((t) => t.currency), ['USD', 'SEK', 'SEK']);
 });
 
 test('csv avanza: amount from Belopp as signed, type as description and code, security as counterparty, ISIN as reference', () => {
