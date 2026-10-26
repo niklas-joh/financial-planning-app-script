@@ -12,6 +12,7 @@
    * @property {Array<{connection: string, status: string, added: number, updated: number, removed: number,
    *   complete: boolean, error: (string|undefined)}>} connections - Per-connection counts.
    * @property {?{changed: number, missing: number, waiting: number, failed: number, error: (string|undefined)}} fx - EUR conversion counts.
+   * @property {?Object<string,number>} [moved] - Rows moved into each transaction tab (counts only).
    * @property {number} warningsSent - Consent warning emails sent.
    * @property {string} [warningsError] - Redacted error from the warning step.
    * @property {string} [error] - Redacted error that stopped the whole run.
@@ -39,7 +40,7 @@
     const ok = !connections.some(function (c) { return c.status === 'error'; }) &&
       !(fx && (fx.error || fx.failed)) && !(outcome.details && outcome.details.error) && !meta.warningsError;
     return {
-      at: meta.at, source: meta.source, ok: ok, connections: connections, fx: fx,
+      at: meta.at, source: meta.source, ok: ok, connections: connections, fx: fx, moved: outcome.moved || null,
       warningsSent: meta.warningsSent, warningsError: meta.warningsError, followUp: meta.followUp, chain: meta.chain
     };
   }
@@ -80,6 +81,8 @@
         (run.fx.failed ? ', rates unavailable for ' + run.fx.failed + ' currencies' : '') +
         (run.fx.error ? ', failed (' + run.fx.error + ')' : ''));
     }
+    const moved = ns.TxnRouting.movedText(run.moved);
+    if (moved) lines.push('  Moved between tabs: ' + moved);
     if (run.warningsSent) lines.push('  Consent warnings emailed: ' + run.warningsSent);
     if (run.warningsError) lines.push('  Consent warnings failed (' + run.warningsError + ')');
     return lines;

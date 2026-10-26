@@ -26,6 +26,10 @@
    *   Connect menu and kept in Script Properties.
    * @property {Object<string,string>} PROPERTY_KEYS - Script Properties key names.
    * @property {Object<string,string>} TABS - Sheet tab names.
+   * @property {Object} ROUTING - Which of the three transaction tabs a row is stored on (see
+   *   `core/txn-routing.js`): the providers whose rows are investment-account movements, and per provider
+   *   the movement types (`description`) that stay unclassified until a report labels them (Trading 212
+   *   card payments and cashback come through the API as plain WITHDRAW and DEPOSIT rows).
    * @property {Object<string,number>} TRANSACTIONS - Sync tuning: first-run lookback and
    *   re-fetch overlap in days, fetch window size in days, page cap per fetch, and the
    *   run time budget in ms (kept under the 6-minute Apps Script limit).
@@ -82,9 +86,16 @@
       RAW_BALANCES: 'raw_balances',
       RAW_TRANSACTIONS: 'raw_transactions',
       TRANSACTIONS: 'transactions',
+      INVESTMENT_TRANSACTIONS: 'investment_transactions',
+      UNCLASSIFIED_TRANSACTIONS: 'unclassified_transactions',
       RATES: 'rates',
       HOLDINGS: 'holdings',
       DAILY_VALUES: 'daily_values'
+    }),
+    ROUTING: Object.freeze({
+      INVESTMENT_PROVIDERS: Object.freeze({
+        trading212: Object.freeze({ unclearTypes: Object.freeze(['WITHDRAW', 'DEPOSIT']) })
+      })
     }),
     TRANSACTIONS: Object.freeze({
       INITIAL_LOOKBACK_DAYS: 90,

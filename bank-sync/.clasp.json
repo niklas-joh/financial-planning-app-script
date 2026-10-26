@@ -45,6 +45,7 @@
     "src/core/provider-registry.js",
     "src/sheets/raw-writer.js",
     "src/sheets/transactions-store.js",
+    "src/core/txn-routing.js",
     "src/sheets/rates-store.js",
     "src/core/raw-sync.js",
     "src/core/txn-sync.js",

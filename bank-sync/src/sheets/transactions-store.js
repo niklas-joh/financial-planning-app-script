@@ -1,5 +1,6 @@
 /**
- * @fileoverview Reads and writes the `transactions` tab, one batch call each way.
+ * @fileoverview Reads and writes one transactions tab (`transactions`, `investment_transactions` or
+ * `unclassified_transactions`, all with the same columns), one batch call each way.
  * Text columns are forced to plain-text format so bank-supplied strings can never
  * be interpreted as formulas and ids/dates are not reinterpreted by Sheets.
  */
@@ -35,7 +36,8 @@
     { key: 'category', text: true, optional: true },
     { key: 'counterpartyAccount', text: true, optional: true },
     { key: 'counterpartyBank', text: true, optional: true },
-    { key: 'reference', text: true, optional: true }
+    { key: 'reference', text: true, optional: true },
+    { key: 'kind', text: true, optional: true }
   ];
 
   /**
@@ -87,10 +89,11 @@
    * Finds where each column sits, so older tabs without the label columns (or with
    * reordered columns) still load. Fails loudly if a required column is missing.
    * @param {Array<*>} header - First row as read from the sheet.
+   * @param {string} tab - Tab name, for the error.
    * @returns {Object<string,number>} Column position by key.
    * @throws {Error} DataError naming the missing required columns.
    */
-  function indexByHeader(header) {
+  function indexByHeader(header, tab) {
     const index = {};
     COLUMNS.forEach(function (column) {
       const position = header.indexOf(column.key);
@@ -99,7 +102,7 @@
     const missing = COLUMNS.filter(function (c) { return !c.optional && index[c.key] === undefined; })
       .map(function (c) { return c.key; });
     if (missing.length) {
-      throw ns.Errors.create('DataError', 'The ' + ns.Config.TABS.TRANSACTIONS +
+      throw ns.Errors.create('DataError', 'The ' + tab +
         ' tab is missing columns (' + missing.join(', ') + '); restore the header or delete the tab to rebuild it');
     }
     return index;
@@ -109,10 +112,11 @@
    * Creates the store.
    * @param {Object} spreadsheet - Spreadsheet-like (getSheetByName, insertSheet).
    * @param {function(Date): string} formatDate - Date to ISO date (YYYY-MM-DD).
+   * @param {string} [tabName] - Tab to use (default `transactions`).
    * @returns {{load: function(): Array<Object>, save: function(Array<Object>): number}} Store.
    */
-  function create(spreadsheet, formatDate) {
-    const tab = ns.Config.TABS.TRANSACTIONS;
+  function create(spreadsheet, formatDate, tabName) {
+    const tab = tabName || ns.Config.TABS.TRANSACTIONS;
 
     /** @returns {Object} The tab, created if absent. */
     function sheet() {
@@ -128,7 +132,7 @@
         const existing = spreadsheet.getSheetByName(tab);
         if (!existing || existing.getLastRow() < 1) return [];
         const data = existing.getRange(1, 1, existing.getLastRow(), existing.getLastColumn()).getValues();
-        return fromMatrix(data.slice(1), indexByHeader(data[0]), formatDate);
+        return fromMatrix(data.slice(1), indexByHeader(data[0], tab), formatDate);
       },
 
       /**

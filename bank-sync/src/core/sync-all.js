@@ -13,7 +13,9 @@
    * @property {Array<import('./config.js').ConnectionConfig>} connections - What to sync.
    * @property {function(import('./config.js').ConnectionConfig): boolean} isConnected - Whether a session exists.
    * @property {function(import('./config.js').ConnectionConfig): import('../providers/bank-provider.js').BankProvider} providerFor
-   * @property {{load: function(): Array<Object>, save: function(Array<Object>): number}} store - Transactions store.
+   * @property {{load: function(): Array<Object>, save: function(Array<Object>): number,
+   *   moved: (function(): Object<string,number>|undefined)}} store - Transactions store (the routed store over the
+   *   three transaction tabs; `moved` counts rows moved between them).
    * @property {{writeTable: function(string, Array<Object>, Array<Object>, Array<string>=): number}} rawWriter - Raw tab writer.
    * @property {function(): number} nowMs - Clock.
    * @property {function(): string} todayIso - Today's date in the configured time zone.
@@ -85,9 +87,10 @@
   /**
    * Runs the sync for all connections.
    * @param {SyncAllDeps} deps - Injected services.
-   * @returns {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome}}
-   *   Per-connection outcome, the row counts from `RawSync.write` (null if no connection could be read), the
-   *   details applied (null if none were read) and the EUR conversion counts (null without `deps.fx`). No
+   * @returns {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome,
+   *   moved: ?Object<string,number>}} Per-connection outcome, the row counts from `RawSync.write` (null if no
+   *   connection could be read), the details applied (null if none were read), the EUR conversion counts (null
+   *   without `deps.fx`) and the rows moved into each tab (null for a store that does not route). No
    *   transaction content.
    */
   function run(deps) {
@@ -156,7 +159,8 @@
         fx.failed = converted.failed;
       });
     }
-    return { results: results, raw: raw, details: details, fx: fx };
+    const moved = typeof deps.store.moved === 'function' ? deps.store.moved() : null;
+    return { results: results, raw: raw, details: details, fx: fx, moved: moved };
   }
 
   /**
@@ -175,7 +179,8 @@
 
   /**
    * Turns a run into the text shown to the user. Counts only, no transaction content.
-   * @param {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome}} outcome - From `run`.
+   * @param {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome,
+   *   moved: (?Object<string,number>|undefined)}} outcome - From `run`.
    * @returns {string} Multi-line summary.
    */
   function summarize(outcome) {
@@ -206,6 +211,8 @@
       fx.failed.forEach(function (f) { lines.push('Rates unavailable for ' + f); });
       if (fx.error) lines.push('EUR conversion failed (' + fx.error + ')');
     }
+    const moved = ns.TxnRouting.movedText(outcome.moved);
+    if (moved) lines.push('Moved between tabs: ' + moved + '.');
     return lines.join('\n');
   }
 
