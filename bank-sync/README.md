@@ -200,8 +200,8 @@ What it writes:
 - `raw_accounts` / `raw_balances`: one account per key (the account number from the API is its
   `accountId`); balances `cash.availableToTrade`, `cash.inPies`, `cash.reservedForOrders` (detail),
   `investments.currentValue` (`valueKind: investments`) and `totalValue` (`valueKind: total`).
-- `investment_transactions` (and `raw_transactions`): cash movements (deposits, withdrawals, fees, interest,
-  transfers; `description` is the type) and dividends (id `div:<reference>`, counterparty the
+- `investment_transactions` (and `raw_transactions`): cash movements (fees, interest, transfers between Trading 212
+  accounts; `description` is the type) and dividends (id `div:<reference>`, counterparty the
   instrument). Withdrawals and fees are negative, deposits, interest and dividends positive. Orders
   (buys and sells) are not imported: they move money between cash and investments, which
   `daily_values` already shows. Each run reads from the latest booked date minus 7 days (the first
@@ -209,16 +209,17 @@ What it writes:
   40 older pages per feed per run, continuing where the last run stopped (kept in the Script Property
   `T212_HISTORY_<HOLDER>`), so an account with a long history completes over a few syncs. Delete
   that property to backfill again. EUR at the booking-date rate. `WITHDRAW` and `DEPOSIT` rows wait in
-  `unclassified_transactions` until a Trading 212 report says what they are (see "Transaction tabs").
+  `unclassified_transactions` until a Trading 212 report says what they are (card spending or a bank transfer); then
+  they move to `transactions` (see "Transaction tabs").
 
 Notes:
 
 - Card payments are in the API only as plain `WITHDRAW` rows (cashback as small `DEPOSIT` rows), with no
   card type, merchant or category, so they cannot be told apart from other withdrawals and deposits. Dropping
   the Trading 212 report in your CSV folder adds the merchant and category to them (see "CSV import") and moves
-  the card payments and cashback to `transactions` (see "Transaction tabs"). A transfer from a bank account to
-  Trading 212 shows up once in `transactions` (the bank's outflow) and once in `investment_transactions` (the
-  deposit).
+  the card payments and cashback to `transactions` (see "Transaction tabs"). Bank transfers to and from Trading 212
+  move to `transactions` too, because its cash is used like a current account: both sides of such a transfer (the
+  bank's outflow and the Trading 212 deposit) are then in `transactions`, until B2 pairs them as internal.
 - Rate limits are per Trading 212 account, whatever the key: summary 1 per 5 s, positions 1 per s,
   history 20 per minute. A sync makes about four calls per account. On HTTP 429 the call waits until
   the `x-ratelimit-reset` time (at most 65 s and never past the run's time budget), then retries.
@@ -270,8 +271,10 @@ Supported exports:
   merchant name, else the notes (e.g. `Bank Transfer`). Only empty fields are filled: what the API gave (e.g. a
   dividend's instrument) is kept. Orders are not imported, so their report rows change nothing. A report row
   whose API row is not there yet is applied on a later sync. Each row also gets a `classification`: `card` (a merchant, a
-  card action such as `CARD_DEBIT`, or `SPENDING_CASHBACK`) or `investment` (everything else); it decides the
-  row's tab (see "Transaction tabs"). Comma-separated, UTF-8, times in UTC.
+  card action such as `CARD_DEBIT`, or `SPENDING_CASHBACK`), `transfer` (`Deposit`, `Withdrawal`: money moved to or
+  from a bank account) or `investment` (everything else); it decides the row's tab (see "Transaction tabs"). Unlike
+  the other details, the report's classification replaces a stored one, so a changed rule applies to rows already
+  stored. Comma-separated, UTF-8, times in UTC.
 
 What it writes:
 
@@ -312,16 +315,16 @@ until you do).
 ## Transaction tabs (B1)
 
 Transactions are kept on three tabs with the same columns, so spending and income totals are not mixed with
-money moved in and out of investment accounts:
+movements inside investment accounts:
 
 | Tab | What is on it |
 |---|---|
-| `transactions` | Bank and BIL rows (current-account cash flow), and Trading 212 card payments and cashback once a report names them |
-| `investment_transactions` | Trading 212 interest, lending interest, dividends, fees and transfers, and deposits and withdrawals a report names as such |
+| `transactions` | Bank and BIL rows (current-account cash flow), and Trading 212 card payments, cashback and bank transfers (deposits, withdrawals) once a report names them |
+| `investment_transactions` | Trading 212 interest, lending interest, dividends, fees and transfers between Trading 212 accounts |
 | `unclassified_transactions` | Trading 212 `WITHDRAW` and `DEPOSIT` rows no report has named yet: the API cannot tell a card payment or cashback from a bank transfer |
 
-- The rule is `src/core/txn-routing.js` `tabFor`: a row's `classification` (`card` or `investment`, set by the Trading 212
-  report) decides; without one, Trading 212 rows go to `investment_transactions`, except `WITHDRAW` and
+- The rule is `src/core/txn-routing.js` `tabFor`: a row's `classification` (set by the Trading 212 report: `card` and
+  `transfer` go to `transactions`, `investment` to `investment_transactions`) decides; without one, Trading 212 rows go to `investment_transactions`, except `WITHDRAW` and
   `DEPOSIT`, which go to `unclassified_transactions`; every other row goes to `transactions`. The investment
   providers and their unclear types are in `Config.ROUTING`.
 - Every sync reads all three tabs as one set and writes each row to its tab, so a row is found wherever it is:
@@ -331,9 +334,9 @@ money moved in and out of investment accounts:
 - A row that changes tab is written to its new tab first and removed from the old one after; if a save stops in
   between, the row is on both tabs until the next sync joins the two copies. A tab with no rows is not created.
 - To label unclassified rows, export the Trading 212 report for that period and drop it in your CSV folder, then
-  *Import CSV files* (or wait for the daily sync). The summary says what moved, e.g. "Moved between tabs: 2 to
-  transactions, 1 to investment_transactions."; *Show status* shows the rows per tab and the last run's moves.
+  *Import CSV files* (or wait for the daily sync). The summary says what moved, e.g. "Moved between tabs: 3 to
+  transactions."; *Show status* shows the rows per tab and the last run's moves.
 - Upgrading: the first sync after the push moves the Trading 212 rows already on `transactions` to the other two
-  tabs, with their EUR amounts and details. Card payments a report already named come back to `transactions` in
-  the same run, because the report in the folder is read again. A second sync moves nothing. No new OAuth scope;
+  tabs, with their EUR amounts and details. Card payments and bank transfers a report already named come back to
+  `transactions` in the same run, because the report in the folder is read again. A second sync moves nothing. No new OAuth scope;
   the web app is unchanged, so no `clasp deploy`.
