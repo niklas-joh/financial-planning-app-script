@@ -33,7 +33,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
 | 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#65): daily total from Trading 212's own total, one-time full history backfill |
 | 6 | CSV import provider: Drive folder per holder, BIL export, Trading 212 card details (B3) | Merged (#68), live since 2026-10-25 (first import: 159 BIL rows; report details on 8 Trading 212 rows; a second run changed nothing). BIL message fields and per-bank format files: #72, pushed 2026-10-26 |
-| B1 | Investment transactions: `investment_transactions` and `unclassified_transactions` tabs, rows routed by provider and report label | PR "move trading 212 rows to investment transactions (b1)"; live once deployed (see "B1" below) |
+| B1 | Investment transactions: `investment_transactions` and `unclassified_transactions` tabs, rows routed by provider and report label | Merged (#76); live once deployed (see "B1" below) |
 | 6b | Avanza CSV export as one more CSV format, rows to `investment_transactions` | Next. Structure checked from the owner's export (2026-10-26, see "Avanza") |
 | 9 | Avanza unofficial API (values, positions, cash) | Roadmap item only, not planned: see "Avanza" for the findings and what it would take |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
@@ -546,7 +546,7 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 
 ## Open decisions (raise, do not act)
 
-- **B1. Where Trading 212 (and later Avanza) rows live: decided (owner, 2026-10-26), built.** See "B1" below: option
+- **B1. Where Trading 212 (and later Avanza) rows live: decided (owner, 2026-10-26), built (#76).** See "B1" below: option
   (c), with a third tab for the rows the API cannot tell apart until a report names them.
 - **B2. Internal transfers** (open decision; B1 settles the investment side). Since B1 a bank-to-Trading 212 transfer
   is once in `transactions` (the bank's outflow, e.g. a BIL standing order to "Trading 212 Markets Limited") and once in
