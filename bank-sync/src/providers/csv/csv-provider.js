@@ -85,7 +85,7 @@
           }
           const out = ns.CsvNormalize.file(found, deps.connection);
           const fresh = unseen(out.transactions, byKey, function (t) { return t.accountId + '|' + t.transactionId; });
-          accounts[out.account.accountId] = out.account;
+          out.accounts.forEach(function (a) { accounts[a.accountId] = a; });
           count(record.sources, found.format.id, fresh.map(function (t) { return t.bookingDate; }));
         } catch (e) {
           if (record.skipped.length < CSV.MAX_SKIPPED_LISTED) {

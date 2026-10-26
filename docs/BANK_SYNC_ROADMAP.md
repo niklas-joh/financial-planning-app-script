@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-26 (B1 and the Europe/Brussels time zone live; Trading 212 bank transfers to `transactions`, as they stand once merged and deployed; Avanza options compared).
+Last updated: 2026-10-26 (6b: Avanza CSV import, as it stands once merged and deployed; B1 and the Europe/Brussels time zone live; Trading 212 bank transfers to `transactions` (#79)).
 
 ## Setup in one paragraph
 
@@ -17,7 +17,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
   because its `Transactions` sheet is empty. Retirement is a pending decision (below).
 - **bank-sync** (`bank-sync/`, own `.clasp.json`, namespace `BankSync`): sheet "Bank Sync".
   Enable Banking (banks), the Trading 212 public API (one API key per account) and CSV exports in a
-  Drive folder per holder (BIL; the Trading 212 report for card details) are the data sources.
+  Drive folder per holder (BIL, Avanza; the Trading 212 report for card details) are the data sources.
   Transactions are kept on three tabs (B1): `transactions` (cash flow and card spending),
   `investment_transactions` and `unclassified_transactions`. Europe/Brussels time zone (the same clock as Luxembourg), EUR reporting currency.
 
@@ -33,8 +33,8 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
 | 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#65): daily total from Trading 212's own total, one-time full history backfill |
 | 6 | CSV import provider: Drive folder per holder, BIL export, Trading 212 card details (B3) | Merged (#68), live since 2026-10-25 (first import: 159 BIL rows; report details on 8 Trading 212 rows; a second run changed nothing). BIL message fields and per-bank format files: #72, pushed 2026-10-26 |
-| B1 | Investment transactions: `investment_transactions` and `unclassified_transactions` tabs, rows routed by provider and report label | Merged (#76), live since 2026-10-26 (see Live state). Trading 212 bank transfers to `transactions`: this PR, live once deployed |
-| 6b | Avanza CSV export as one more CSV format, rows to `investment_transactions` | Next. Structure checked from the owner's export (2026-10-26, see "Avanza") |
+| B1 | Investment transactions: `investment_transactions` and `unclassified_transactions` tabs, rows routed by provider and report label | Merged (#76), live since 2026-10-26 (see Live state). Trading 212 bank transfers to `transactions`: #79 |
+| 6b | Avanza CSV export as one more CSV format, rows to `investment_transactions` | Merged (#80); live once deployed (see "Phase 6b" below) |
 | 9 | Avanza unofficial API (values, positions, cash) | Roadmap item only, not planned: see "Avanza" for the findings and what it would take |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
@@ -56,9 +56,11 @@ quirks) goes into the next phase's PR.
   0 added/updated, details 0 updated. *Show status*: "Rows: transactions 177, investment_transactions 2070,
   unclassified_transactions 816"; daily sync "between 6:00 and 7:00 (Europe/Brussels)". The 816 unclassified rows are
   Trading 212 withdrawals and deposits older than the one report in the folder (2026-10-19 to 10-24): a report for the
-  whole history names them. With this PR the 2 bank transfers move to `transactions` on the next sync.
+  whole history names them. With #79 the 2 bank transfers move to `transactions` on the next sync.
 - Lesson: `clasp push` from the repo root pushes the legacy project, not bank-sync (the first B1 push did that; it was
   harmless because `main` only changed the legacy manifest's time zone). Run it from `bank-sync/`.
+- 6b (Avanza) once deployed: the owner uploads an Avanza export to the CSV folder; the first import adds its rows to
+  `investment_transactions`, a second adds and updates nothing (see "Phase 6b" for the steps).
 
 - First daily sync (2026-10-26, 06:20 Europe/Luxembourg): *Show status* says `Last sync: 2026-10-26 06:20 (daily): OK`;
   Danske, Revolut and CSV 0 added/updated/removed, Trading 212 2 added (that day's interest), 2 converted to EUR.
@@ -153,9 +155,10 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   `x-ratelimit-reset`, plugged into `lib/http` as `retryDelayMs`), `t212-credentials` (key pairs in Script
   Properties), `t212-client` (one method per endpoint, Basic auth), `t212-provider`.
 - `providers/csv/`: `csv-parse` (pure: rows, header below a preamble, numbers and dates in a declared layout),
-  `formats/` (one file per export, written from a real sample: `bil`, `trading212-report`; all write to the same
-  tabs), `csv-formats` (the shared shapes and the list; `kind` 'transactions' or 'details'), `csv-normalize` (pure:
-  format detection, account, stable ids, details, number masking), `csv-folders` (folder per holder and the
+  `formats/` (one file per export, written from a real sample: `bil`, `trading212-report`, `avanza`; all write to the
+  same tabs), `csv-formats` (the shared shapes and the list; `kind` 'transactions' or 'details'; the account from the
+  lines above the header, or per row), `csv-normalize` (pure: format detection, accounts, stable ids, details, number
+  masking), `csv-folders` (folder per holder and the
   last-read record in Script Properties), `csv-provider`. `lib/gas-adapters` `driveFolder` is the only DriveApp use.
 - `providers/enable-banking/`: `eb-client` (one method per endpoint), `eb-auth`,
   `eb-token`, `eb-session-store`, `eb-normalize`, `eb-provider`.
@@ -484,18 +487,64 @@ As built (see `bank-sync/README.md`, "Transaction tabs"):
   the report through the API (`POST /equity/history/exports`, 1 per 30 s, then download it), e.g. monthly, so card rows
   are named without a manual export. Not built.
 
+## Phase 6b: Avanza CSV import (live once deployed)
+
+As built (see `bank-sync/README.md`, "CSV import"), with the owner's decisions of 2026-10-26:
+
+- `formats/avanza.js` plus its entry in `csv-formats`, detected by header. Required columns are the ones every
+  version has (`Datum`, `Konto`, `Typ av transaktion`, `Värdepapper/beskrivning`, `Antal`, `Kurs`, `Belopp`,
+  `Transaktionsvaluta`, `ISIN`); `Courtage` (`Courtage (SEK)` in an older export), `Valutakurs`, `Instrumentvaluta`
+  and `Resultat` are optional. UTF-8 only.
+- Several accounts per file: a format without a file-level `account` (BIL keeps its account line above the header)
+  names each row's account (Avanza: `Konto`), and `CsvNormalize.file` returns `accounts` (one per account seen).
+  `accountId` = source + hash of the number, or of the name when there is none (`avanza-<fnv1a(Konto)>`);
+  `ibanMasked` empty; the account's currency is the one most of its rows have (rows keep their own). The identical-row
+  counter is per account (for BIL, one account per file, so its ids are unchanged).
+- Rename: accepted and documented (owner). A renamed `Konto` gets a new `accountId`; the next import adds its rows again
+  and the old ones stay; the README gives the fix (rename back, or delete the old rows and exports). A name mapping
+  (new name to old) can be added later without migration if it ever happens.
+- Routing: `Config.ROUTING.INVESTMENT_CSV_SOURCES` (`['avanza']`); `TxnRouting.tabFor` sends a `csv` row whose
+  `accountId` prefix is listed to `investment_transactions`, after the report label and before the provider rule. BIL
+  stays on `transactions`; no data migration. Not chosen: the format setting `classification = investment`, since that
+  column is the report's label and B2 may write `internal` there. Deposits and withdrawals go there too; whether they
+  should count like Trading 212's bank transfers (#79) instead is open (see B2).
+- Mapping, the same for every type (so unknown types are imported, with the type as written): amount = `Belopp` as
+  signed, currency = `Transaktionsvaluta`, description = the type, category = the type as a code (`SALJ`,
+  `ATERINV_UTDELNING`, ...; `CsvParse.code` now drops accents, which changes nothing for the ASCII BIL and Trading 212
+  labels), counterparty = `Värdepapper/beskrivning`, reference = `ISIN`, no value date. `Antal`, `Kurs`, `Courtage`,
+  `Valutakurs`, `Instrumentvaluta`, `Resultat` only as `api.*` on `raw_transactions` (kept 365 days; older ones are in
+  the export). A blank `Belopp` (not seen) is amount 0. An unreadable date, number, account or currency skips the file.
+- Trades (`Köp`/`Sälj`) are imported (owner): unlike Trading 212 (whose orders show in `daily_values`), they are
+  Avanza's only record, and with them an account's rows sum to its cash movement (the basis for Avanza cash in
+  `daily_values` later). `category` tells them apart.
+- Ids: `h<date>-<fnv1a of Datum, Konto, type, Värdepapper/beskrivning, Antal, Kurs, Belopp, Transaktionsvaluta, ISIN>-<n>`.
+  Fee, exchange rate, instrument currency and result are left out, in case Avanza renames or recomputes them. The
+  reinvested dividend pair (same date and ISIN) differs in type, quantity, price and sign, so it never collides; a
+  "Sedan start" export and a later month give the same ids for the days they share (0 added, 0 updated).
+- `CsvParse.number` now requires each part to be digits, so a `.` in a decimal-comma file is an error instead of a
+  decimal point (BIL's accepted inputs are unchanged).
+- EUR conversion, Show status (`avanza: N files, M transactions, <from> to <to>`) and the import summary (added and
+  updated per CSV connection) are unchanged code.
+- No new OAuth scope; the web app is unchanged (no `clasp deploy`). Deploy: `clasp push --force` from `bank-sync/`
+  after diffing the manifest (it should not ask), reload the sheet, upload an Avanza export ("Sedan start") to the CSV
+  folder, *Import CSV files* (rows added to `investment_transactions`, nothing moved), again (0 added, 0 updated), and
+  check *Show status*.
+- Not yet seen live: a `Köp`, `Insättning`, `Uttag`, `Ränta`, `Utländsk källskatt` or `Övrigt` row (the sample had
+  sales, dividends, a reinvested dividend, yield tax and risk premium only), a foreign-currency trade, and a row
+  without `Belopp`.
+
 ## Avanza
 
 Compared on 2026-10-26 (code and docs only; no login, no Avanza call). Avanza is not covered by Enable Banking.
 
-- **CSV export (chosen; 6b, next):** website only (not the app), *Min ekonomi > Transaktioner*, any period including
+- **CSV export (chosen; built in 6b, see above):** website only (not the app), *Min ekonomi > Transaktioner*, any period including
   "Sedan start", *Exportera transaktioner*. Checked on the owner's export (structure only): UTF-8 with BOM, `;`, LF, header
   `Datum;Konto;Typ av transaktion;Värdepapper/beskrivning;Antal;Kurs;Belopp;Transaktionsvaluta;Courtage;Valutakurs;Instrumentvaluta;ISIN;Resultat`
   (an older published sample has `Courtage (SEK)`, so only the stable columns should be required); dates `YYYY-MM-DD`;
   decimal comma, no thousands separator; `Belopp` signed from the cash side (sale +, fees and taxes -, reinvested dividend
   -), `Antal` negative on a sale. `Konto` is the account **name** (no account number since Feb 2025), so accounts are told
-  apart by name, and renaming one in Avanza would change its `accountId`. No id column: ids as for BIL (date + hash +
-  counter). Types seen: Sälj, Utdelning, Återinv. utdelning, Avkastningsskatt, Uttag av riskkostnad (also expected: Köp,
+  apart by name, and renaming one in Avanza changes its `accountId` (accepted, see 6b). No id column: ids as for BIL
+  (date + hash + counter). Types seen: Sälj, Utdelning, Återinv. utdelning, Avkastningsskatt, Uttag av riskkostnad (also expected: Köp,
   Insättning, Uttag, Ränta, Utländsk källskatt, Övrigt). No positions or value export was found, and exports cannot be
   scheduled or emailed, so the CSV gives transactions, not `daily_values`.
 - **Unofficial API (Phase 9, roadmap item, not planned):** the maintained client is `Qluxzz/avanza` (Python, commits to
@@ -563,9 +612,9 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 
 ## Open decisions (raise, do not act)
 
-- **B1. Where Trading 212 (and later Avanza) rows live: decided (owner, 2026-10-26), built (#76).** See "B1" below: option
-  (c), with a third tab for the rows the API cannot tell apart until a report names them; bank transfers to and from
-  Trading 212 count as `transactions` (owner, 2026-10-26: its cash is used like a current account).
+- **B1. Where Trading 212 and Avanza rows live: decided (owner, 2026-10-26), built (#76; Avanza in 6b).** See "B1" below:
+  option (c), with a third tab for the rows the API cannot tell apart until a report names them; bank transfers to and
+  from Trading 212 count as `transactions` (owner, 2026-10-26: its cash is used like a current account).
 - **B2. Internal transfers** (open decision; next after 6b). The owner treats Trading 212's cash like a current account
   (2026-10-26), so a bank-to-Trading 212 transfer has both sides in `transactions`: the bank's outflow (e.g. a BIL standing
   order to "Trading 212 Markets Limited") and the Trading 212 deposit (once a report names it `transfer`; until then in
@@ -573,8 +622,10 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
   Until B2, both sides inflate income and spending totals (they net to zero). Still open:
   - pair matching (same holder, opposite amounts, a few days apart; the Trading 212 side is already labelled `transfer`)
     and a mark on both, e.g. `classification = internal`, so analysis can skip them;
-  - Avanza: whether its deposits and withdrawals count the same way (decide in 6b; Avanza has no card, so they may
-    rather be saving);
+  - Avanza: 6b puts every Avanza row on `investment_transactions`, deposits (`Insättning`) and withdrawals (`Uttag`)
+    included, so a bank-to-Avanza transfer is in `transactions` only once (the bank's outflow, as saving). Whether they
+    should count like Trading 212 transfers instead (both sides in `transactions`) is the owner's call; that would be a
+    list of Avanza transfer types sent to `transactions` (no migration: the next sync moves them);
   - currency: a SEK outflow from Danske and a EUR inflow elsewhere match only on their EUR amounts, within a tolerance.
 - **B3. Card spending** (done in Phase 6). The Trading 212 API returns card payments only as plain `WITHDRAW` rows
   and cashback as `DEPOSIT` rows, without merchant or type. The Trading 212 report (exported from the app, or `POST
@@ -610,7 +661,9 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
   - **Keep `drive.readonly`** (current).
 - **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer. BIL has no balance in
   its export, so it cannot appear in `daily_values` (total wealth) without another source: check whether BILnet
-  offers a balance or statement export, or record an opening balance and sum the movements.
+  offers a balance or statement export, or record an opening balance and sum the movements. Avanza: cash could be the
+  sum of an account's rows from a "Sedan start" export (trades are imported for this); positions and values would
+  still need another source (Phase 9).
 - **Old portfolio sheet:** it calls Trading 212 with the legacy key and shares the per-account rate limit; retire
   it or move what is still used.
 

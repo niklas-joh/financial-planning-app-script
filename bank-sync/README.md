@@ -2,7 +2,7 @@
 
 Modular Apps Script project that pulls bank data via
 [Enable Banking](https://enablebanking.com), and cash, holdings and history from
-[Trading 212](https://docs.trading212.com/api), and CSV exports from a Drive folder (BIL, and
+[Trading 212](https://docs.trading212.com/api), and CSV exports from a Drive folder (BIL, Avanza, and
 the Trading 212 report for card details), into a dedicated Google Sheet ("Bank Sync").
 Independent of the legacy `src/` project in this repo.
 
@@ -275,24 +275,53 @@ Supported exports:
   from a bank account) or `investment` (everything else); it decides the row's tab (see "Transaction tabs"). Unlike
   the other details, the report's classification replaces a stored one, so a changed rule applies to rows already
   stored. Comma-separated, UTF-8, times in UTC.
+- **Avanza** (every account in one file): on the Avanza **website** (the app has no export), *Min ekonomi >
+  Transaktioner*, pick the period ("Sedan start" for the whole history, or any shorter one), then *Exportera
+  transaktioner*. Upload the file as it is. UTF-8, `;`-separated, header
+  `Datum;Konto;Typ av transaktion;Värdepapper/beskrivning;Antal;Kurs;Belopp;Transaktionsvaluta;Courtage;Valutakurs;Instrumentvaluta;ISIN;Resultat`
+  (an older export calls the fee column `Courtage (SEK)`; only the columns every version has are required),
+  dates `YYYY-MM-DD`, decimal comma and no thousands separator, empty cells blank. Its rows go to
+  `investment_transactions` (see "Transaction tabs"). Every type is read the same way, so a type not seen before
+  is imported too:
+  - `amount`: `Belopp` as Avanza signs it, from the cash side (a sale, dividend or deposit is positive; a purchase,
+    fee, tax, withdrawal or reinvested dividend negative); `currency`: `Transaktionsvaluta`;
+  - `description`: the type as written (`Sälj`, `Köp`, `Utdelning`, `Återinv. utdelning`, `Avkastningsskatt`, ...);
+  - `category`: the type as a code (`SALJ`, `KOP`, `UTDELNING`, `ATERINV_UTDELNING`, `AVKASTNINGSSKATT`,
+    `UTTAG_AV_RISKKOSTNAD`, `INSATTNING`, `UTTAG`, `RANTA`, `UTLANDSK_KALLSKATT`, `OVRIGT`, ...);
+  - `counterparty`: `Värdepapper/beskrivning` (the fund or share, or Avanza's text such as `Riskpremie`);
+  - `reference`: the `ISIN`, when there is one;
+  - quantity, price, fee, exchange rate, instrument currency and result (`Antal`, `Kurs`, `Courtage`, `Valutakurs`,
+    `Instrumentvaluta`, `Resultat`) only as `api.*` on `raw_transactions`, as written. That tab keeps a year, so for
+    older rows they are in the export only.
+
+  Trades (`Köp`, `Sälj`) are imported: for Avanza they are the only record (there is no daily value), and with them the
+  sum of an account's rows is its cash movement. Filter on `category` to leave them out of a total. A blank `Belopp`
+  (a movement without cash, e.g. a split; not seen so far) is imported with amount 0.
 
 What it writes:
 
-- `transactions`: one booked row per movement, `provider` `csv`, `bank` the source (`BIL`),
-  `connection` the folder (`csv-niklas`), `accountName` the product from the account line, `ibanMasked`
-  its last four characters, and the columns above per source. Account and card numbers inside the texts are
+- `transactions` (BIL) and `investment_transactions` (Avanza): one booked row per movement, `provider` `csv`,
+  `bank` the source (`BIL`, `Avanza`), `connection` the folder (`csv-niklas`), `accountName` the product from the
+  account line (BIL) or the `Konto` name (Avanza), `ibanMasked` the account number's last four characters (BIL;
+  empty for Avanza, whose export has no number), and the columns above per source. An Avanza account's currency on
+  `raw_accounts` is the one most of its rows have; each row keeps its own `Transaktionsvaluta`. Account and card numbers inside the texts are
   masked to their last four digits. EUR at the booking-date rate, like every other row.
 - `raw_accounts` and `raw_transactions`: the account and every CSV column as `api.*` (masked the same way).
 - `transactions` ends with five columns that only some sources fill: `category` (BIL, the Trading 212 report),
   `counterpartyAccount`, `counterpartyBank` and `reference` (BIL), and `classification` (the Trading 212 report). A later
   sync that re-reads a row without a counterparty, category or classification keeps the ones already stored. The summary says how many rows got details from a
   report: "Details from reports: N transactions updated (M read)."
-- Each source's parsing lives in its own file (`src/providers/csv/formats/bil.js`, `trading212-report.js`), but
-  all of them write to the same tabs, so totals across banks stay one sum.
+- Each source's parsing lives in its own file (`src/providers/csv/formats/bil.js`, `trading212-report.js`,
+  `avanza.js`), but all of them write to the same tabs, so totals across banks stay one sum.
 - The daily sync shows no window (a time-driven run has no screen). *Sync all*, *Import CSV files* and *Show
   status* show their summary in a window that does not keep the run waiting: the run ends as soon as the work
   is done, and the window stays until you close it.
-- The `accountId` is the source plus a hash of the account number (`bil-1a2b3c4d`).
+- The `accountId` is the source plus a hash of the account number (`bil-1a2b3c4d`). Avanza's export has no
+  account number, so its `accountId` is `avanza-` plus a hash of the account's name (`Konto`). **Renaming an account
+  in Avanza changes its `accountId`**: the next import adds that account's rows again under the new id, and the old
+  rows stay. Either rename it back, or delete the old account's rows from `investment_transactions` (and the old
+  exports from the folder, which still carry the old name). A mapping from the new name to the old one could be
+  added if this ever happens; it would keep the old ids with no data migration.
 
 Re-importing is safe. Without a bank id, a row's id is its date, a hash of its identifying columns and a
 counter for identical rows on the same day, so the same file, or a file overlapping an earlier one, gives
@@ -320,13 +349,15 @@ movements inside investment accounts:
 | Tab | What is on it |
 |---|---|
 | `transactions` | Bank and BIL rows (current-account cash flow), and Trading 212 card payments, cashback and bank transfers (deposits, withdrawals) once a report names them |
-| `investment_transactions` | Trading 212 interest, lending interest, dividends, fees and transfers between Trading 212 accounts |
+| `investment_transactions` | Trading 212 interest, lending interest, dividends, fees and transfers between Trading 212 accounts; every Avanza row (trades, dividends, taxes, fees, deposits and withdrawals) |
 | `unclassified_transactions` | Trading 212 `WITHDRAW` and `DEPOSIT` rows no report has named yet: the API cannot tell a card payment or cashback from a bank transfer |
 
 - The rule is `src/core/txn-routing.js` `tabFor`: a row's `classification` (set by the Trading 212 report: `card` and
-  `transfer` go to `transactions`, `investment` to `investment_transactions`) decides; without one, Trading 212 rows go to `investment_transactions`, except `WITHDRAW` and
-  `DEPOSIT`, which go to `unclassified_transactions`; every other row goes to `transactions`. The investment
-  providers and their unclear types are in `Config.ROUTING`.
+  `transfer` go to `transactions`, `investment` to `investment_transactions`) decides; without one, Trading 212 rows and
+  rows of an investment CSV source (Avanza) go to `investment_transactions`, except Trading 212's `WITHDRAW` and
+  `DEPOSIT`, which go to `unclassified_transactions`; every other row goes to `transactions`. The investment providers,
+  their unclear types and the investment CSV sources (`INVESTMENT_CSV_SOURCES`, matched on the account id's prefix, e.g.
+  `avanza-`) are in `Config.ROUTING`.
 - Every sync reads all three tabs as one set and writes each row to its tab, so a row is found wherever it is:
   the API's 7-day re-read updates a moved row in place and never adds it twice (the key stays provider +
   account + transaction id), the report's details reach rows on any tab, and the EUR conversion runs once over

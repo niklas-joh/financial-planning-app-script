@@ -113,9 +113,13 @@
     const whole = parts[0];
     const grouped = style.thousands && whole.indexOf(style.thousands) !== -1;
     const groupOk = !grouped || new RegExp('^[+-]?\\d{1,3}(' + escape(style.thousands) + '\\d{3})+$').test(whole);
-    const plain = (grouped ? whole.split(style.thousands).join('') : whole) + (parts.length > 1 ? '.' + parts[1] : '');
-    if (parts.length > 2 || !groupOk || !/^[+-]?\d+(\.\d+)?$/.test(plain)) throw dataError('Not a number in the expected format');
-    return Number(plain);
+    const digits = grouped ? whole.split(style.thousands).join('') : whole;
+    const fraction = parts.length > 1 ? parts[1] : null;
+    // Each part must be digits only, so a '.' in a decimal-comma file is an error, not a decimal point.
+    if (parts.length > 2 || !groupOk || !/^[+-]?\d+$/.test(digits) || (fraction !== null && !/^\d+$/.test(fraction))) {
+      throw dataError('Not a number in the expected format');
+    }
+    return Number(digits + (fraction !== null ? '.' + fraction : ''));
   }
 
   /**
@@ -159,11 +163,12 @@
   }
 
   /**
-   * @param {*} text - Label, e.g. 'Spending cashback'.
-   * @returns {string} Upper-case code, e.g. 'SPENDING_CASHBACK'.
+   * @param {*} text - Label, e.g. 'Spending cashback' or 'Återinv. utdelning'.
+   * @returns {string} Upper-case code, accents dropped, e.g. 'SPENDING_CASHBACK', 'ATERINV_UTDELNING'.
    */
   function code(text) {
-    return squeeze(text).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return squeeze(text).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
   }
 
   ns.CsvParse = { rows: rows, table: table, number: number, date: date, squeeze: squeeze, code: code };

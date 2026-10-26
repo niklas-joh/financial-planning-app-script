@@ -29,7 +29,8 @@
    * @property {Object} ROUTING - Which of the three transaction tabs a row is stored on (see
    *   `core/txn-routing.js`): the providers whose rows are investment-account movements, and per provider
    *   the movement types (`description`) that stay unclassified until a report labels them (Trading 212
-   *   card payments and cashback come through the API as plain WITHDRAW and DEPOSIT rows).
+   *   card payments and cashback come through the API as plain WITHDRAW and DEPOSIT rows); and the CSV
+   *   sources (format ids, the prefix of their account ids) whose rows are investment-account movements.
    * @property {Object<string,number>} TRANSACTIONS - Sync tuning: first-run lookback and
    *   re-fetch overlap in days, fetch window size in days, page cap per fetch, and the
    *   run time budget in ms (kept under the 6-minute Apps Script limit).
@@ -95,7 +96,8 @@
     ROUTING: Object.freeze({
       INVESTMENT_PROVIDERS: Object.freeze({
         trading212: Object.freeze({ unclearTypes: Object.freeze(['WITHDRAW', 'DEPOSIT']) })
-      })
+      }),
+      INVESTMENT_CSV_SOURCES: Object.freeze(['avanza'])
     }),
     TRANSACTIONS: Object.freeze({
       INITIAL_LOOKBACK_DAYS: 90,

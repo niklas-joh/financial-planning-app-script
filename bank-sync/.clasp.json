@@ -38,6 +38,7 @@
     "src/providers/csv/csv-parse.js",
     "src/providers/csv/formats/bil.js",
     "src/providers/csv/formats/trading212-report.js",
+    "src/providers/csv/formats/avanza.js",
     "src/providers/csv/csv-formats.js",
     "src/providers/csv/csv-normalize.js",
     "src/providers/csv/csv-folders.js",

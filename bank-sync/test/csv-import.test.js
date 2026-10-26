@@ -62,6 +62,11 @@ test('csv parse: numbers follow the declared marks; a misplaced separator is an 
     [-824.5, 8828.03, -1500, 12, 1234.5, 1234567, -5, 1234567.1]);
   assert.strictEqual(P.number('  ', dot), null);
   assert.strictEqual(P.number('1.234,56', { decimal: ',', thousands: '.' }), 1234.56);
+  const comma = { decimal: ',', thousands: '' };
+  assert.deepStrictEqual(['-12,345678', '4500,5', '-0,25', '700', '-12,000001'].map((x) => P.number(x, comma)),
+    [-12.345678, 4500.5, -0.25, 700, -12.000001]);
+  ['-570.00', '1.5', '1 234,5,6', ',5', '5,'].forEach((x) => assert.throws(() => P.number(x, comma), /Not a number/, x));
+  ['.5', '5.', '1.5,0'].forEach((x) => assert.throws(() => P.number(x, dot), /Not a number/, x));
   ['1,5', '12,34.0', 'abc', '1.2.3', '--1'].forEach((x) => assert.throws(() => P.number(x, dot), /Not a number/, x));
 });
 
@@ -78,8 +83,13 @@ test('csv parse: dates follow the declared layout and must exist', () => {
 const normalize = (text) => BS.CsvNormalize.file(BS.CsvNormalize.detect(utf8(text)), CONN);
 
 test('csv bil: the account comes from the line above the header; the number is hashed and masked', () => {
-  const { account } = normalize(bil(ROWS.rent));
+  const { accounts } = normalize(bil(ROWS.rent));
+  assert.strictEqual(accounts.length, 1);
+  const account = accounts[0];
   assert.match(account.accountId, /^bil-[0-9a-f]{8}$/);
+  assert.strictEqual(account.accountId, 'bil-' + BS.Hash.fnv1a('LU120000000000001234'));
+  // A file with a header and no rows still names its account.
+  assert.strictEqual(normalize(bil()).accounts[0].accountId, account.accountId);
   assert.deepStrictEqual([account.provider, account.bank, account.connection, account.accountName, account.currency, account.ibanMasked],
     ['csv', 'BIL', 'csv-alex', 'Current Private', 'EUR', '****1234']);
   assert.throws(() => normalize(BIL_HEAD.slice(3).concat(ROWS.rent).join('\n')), /no account line/);
@@ -412,4 +422,151 @@ test('csv provider: the last-read record names only the first skipped files, so 
   assert.ok(record.skipped.every((s) => s.length <= BS.Config.CSV.MAX_SKIPPED_CHARS));
   assert.strictEqual(record.skippedMore, 190);
   assert.strictEqual(BS.CsvFolders.statusLines(r.props).pop(), '  and 190 more skipped files');
+});
+
+// --- Avanza (one file, several accounts; rows go to investment_transactions). Made-up accounts, funds and ISINs. ---
+
+const AVANZA_HEADER = 'Datum;Konto;Typ av transaktion;Värdepapper/beskrivning;Antal;Kurs;Belopp;Transaktionsvaluta;Courtage;Valutakurs;Instrumentvaluta;ISIN;Resultat';
+const AV = {
+  sale: '2026-08-20;Demo ISK;Sälj;Demo Global Fund A;-10,5;200,25;2102,63;SEK;;;SEK;XS0000000011;150,123456',
+  saleEarlier: '2026-06-02;Demo ISK;Sälj;Demo Small Caps;-1,25;80;100;SEK;;;SEK;XS0000000029;-4,5',
+  buy: '2026-08-18;Demo ISK;Köp;Demo Global Fund A;3;190;-570;SEK;;;SEK;XS0000000011;',
+  deposit: '2026-08-17;Demo ISK;Insättning;Insättning från bankkonto;;;1000;SEK;;;;;',
+  dividend: '2026-08-11;Demo Pension;Utdelning;Demo EM Fund;120,5;0,25;30,13;SEK;;;SEK;XS0000000037;',
+  reinvest: '2026-08-11;Demo Pension;Återinv. utdelning;Demo EM Fund;0,1;301,3;-30,13;SEK;;;SEK;XS0000000037;',
+  risk: '2026-08-08;Demo Pension;Uttag av riskkostnad;Riskpremie;;;-0,5;SEK;;;;;',
+  tax: '2026-07-27;Demo Pension;Avkastningsskatt;Avkastningsskatt;;;-100;SEK;;;;;',
+  withholding: '2026-07-15;Demo ISK;Utländsk källskatt;Demo US Shares;;;-1,2;SEK;;;USD;XS0000000045;',
+  unknown: '2026-07-10;Demo ISK;Byte av fond;Demo Global Fund A;5;;;SEK;;;SEK;XS0000000011;'
+};
+const avanza = (...rows) => '﻿' + [AVANZA_HEADER].concat(rows).join('\n') + '\n';
+
+test('csv avanza: one file holds both accounts; each account id is the source plus a hash of its name', () => {
+  const out = normalize(avanza(AV.sale, AV.dividend, AV.risk, AV.buy));
+  assert.deepStrictEqual(out.accounts.map((a) => [a.accountId, a.bank, a.accountName, a.currency, a.ibanMasked, a.provider, a.connection]), [
+    ['avanza-' + BS.Hash.fnv1a('Demo ISK'), 'Avanza', 'Demo ISK', 'SEK', '', 'csv', 'csv-alex'],
+    ['avanza-' + BS.Hash.fnv1a('Demo Pension'), 'Avanza', 'Demo Pension', 'SEK', '', 'csv', 'csv-alex']
+  ]);
+  assert.deepStrictEqual(out.transactions.map((t) => t.accountId), [0, 1, 1, 0].map((i) => out.accounts[i].accountId));
+  // The account takes the currency most of its rows have, even when its first row is in another one.
+  const usd = AV.withholding.replace(';SEK;;;USD;', ';USD;;;USD;');
+  const mixed = normalize(avanza(usd, AV.sale, AV.buy));
+  assert.deepStrictEqual(mixed.accounts.map((a) => a.currency), ['SEK']);
+  assert.deepStrictEqual(mixed.transactions.map((t) => t.currency), ['USD', 'SEK', 'SEK']);
+});
+
+test('csv avanza: amount from Belopp as signed, type as description and code, security as counterparty, ISIN as reference', () => {
+  const t = normalize(avanza(AV.sale, AV.buy, AV.deposit, AV.dividend, AV.reinvest, AV.risk, AV.tax, AV.withholding)).transactions;
+  assert.deepStrictEqual(t.map((x) => [x.bookingDate, x.valueDate, x.amount, x.currency, x.status]), [
+    ['2026-08-20', '', 2102.63, 'SEK', 'booked'],
+    ['2026-08-18', '', -570, 'SEK', 'booked'],
+    ['2026-08-17', '', 1000, 'SEK', 'booked'],
+    ['2026-08-11', '', 30.13, 'SEK', 'booked'],
+    ['2026-08-11', '', -30.13, 'SEK', 'booked'],
+    ['2026-08-08', '', -0.5, 'SEK', 'booked'],
+    ['2026-07-27', '', -100, 'SEK', 'booked'],
+    ['2026-07-15', '', -1.2, 'SEK', 'booked']
+  ]);
+  assert.deepStrictEqual(t.map((x) => [x.description, x.category, x.counterparty, x.reference]), [
+    ['Sälj', 'SALJ', 'Demo Global Fund A', 'XS0000000011'],
+    ['Köp', 'KOP', 'Demo Global Fund A', 'XS0000000011'],
+    ['Insättning', 'INSATTNING', 'Insättning från bankkonto', ''],
+    ['Utdelning', 'UTDELNING', 'Demo EM Fund', 'XS0000000037'],
+    ['Återinv. utdelning', 'ATERINV_UTDELNING', 'Demo EM Fund', 'XS0000000037'],
+    ['Uttag av riskkostnad', 'UTTAG_AV_RISKKOSTNAD', 'Riskpremie', ''],
+    ['Avkastningsskatt', 'AVKASTNINGSSKATT', 'Avkastningsskatt', ''],
+    ['Utländsk källskatt', 'UTLANDSK_KALLSKATT', 'Demo US Shares', 'XS0000000045']
+  ]);
+  // Quantity, price, fee, exchange rate and result stay on the raw tab only, as written.
+  assert.deepStrictEqual([t[0].apiFields.Antal, t[0].apiFields.Kurs, t[0].apiFields.Resultat, t[0].apiFields.Courtage, t[0].apiFields.Instrumentvaluta],
+    ['-10,5', '200,25', '150,123456', '', 'SEK']);
+  assert.ok(t.every((x) => x.counterpartyAccount === '' && x.counterpartyBank === ''));
+});
+
+test('csv parse: codes drop accents, so Swedish types become plain codes; English labels are unchanged', () => {
+  assert.deepStrictEqual(['Sälj', 'Köp', 'Återinv. utdelning', 'Utländsk källskatt', 'Ränta', 'Övrigt', 'Spending cashback', 'Card payment']
+    .map(P.code), ['SALJ', 'KOP', 'ATERINV_UTDELNING', 'UTLANDSK_KALLSKATT', 'RANTA', 'OVRIGT', 'SPENDING_CASHBACK', 'CARD_PAYMENT']);
+});
+
+test('csv avanza: ids are stable; the reinvested dividend pair never collides; identical rows count per account', () => {
+  const ids = (text) => normalize(text).transactions.map((x) => x.transactionId);
+  const pair = ids(avanza(AV.dividend, AV.reinvest));
+  assert.notStrictEqual(pair[0], pair[1]);
+  assert.ok(pair.every((id) => /^h20260811-[0-9a-f]{8}-1$/.test(id)));
+  // The same row twice in one account: -1 and -2; the same row in the other account is that account's -1.
+  const other = AV.risk.replace('Demo Pension', 'Demo ISK');
+  const t = normalize(avanza(AV.risk, AV.risk, other)).transactions;
+  assert.deepStrictEqual(t.map((x) => x.transactionId.slice(-2)), ['-1', '-2', '-1']);
+  assert.notStrictEqual(t[0].accountId, t[2].accountId);
+  // Columns Avanza may recompute or rename are not part of the id.
+  const recomputed = AV.sale.replace('150,123456', '151').replace(';;;SEK;XS', ';1,5;;SEK;XS');
+  assert.deepStrictEqual(ids(avanza(recomputed)), ids(avanza(AV.sale)));
+  // A longer export ("Sedan start") and a later month give the same ids for the days they share.
+  const all = ids(avanza(AV.sale, AV.buy, AV.dividend, AV.reinvest, AV.tax, AV.saleEarlier));
+  assert.deepStrictEqual(ids(avanza(AV.sale, AV.buy, AV.dividend, AV.reinvest)), all.slice(0, 4));
+});
+
+test('csv avanza: an older header with "Courtage (SEK)" is read; an unknown type is imported as written', () => {
+  const old = avanza(AV.sale).replace(';Courtage;', ';Courtage (SEK);');
+  const found = BS.CsvNormalize.detect(utf8(old));
+  assert.strictEqual(found.format.id, 'avanza');
+  assert.strictEqual(BS.CsvNormalize.file(found, CONN).transactions[0].amount, 2102.63);
+  // A type not seen before keeps its own sign and text; a blank amount is a movement without cash.
+  const t = normalize(avanza(AV.unknown)).transactions[0];
+  assert.deepStrictEqual([t.description, t.category, t.amount, t.counterparty], ['Byte av fond', 'BYTE_AV_FOND', 0, 'Demo Global Fund A']);
+});
+
+test('csv avanza: a row that cannot be read skips the file and names the record only', () => {
+  assert.throws(() => normalize(avanza(AV.sale, AV.buy.replace('-570', '-570.00'))), /Record 2: Not a number/);
+  assert.throws(() => normalize(avanza(AV.sale.replace('2026-08-20', '20/08/2026'))), /Record 1: Not a date/);
+  assert.throws(() => normalize(avanza(AV.sale.replace(';Demo ISK;', ';;'))), /Record 1: An Avanza row has no account/);
+  assert.throws(() => normalize(avanza(AV.sale.replace(';SEK;;;SEK;', ';;;;SEK;'))), /Record 1: An Avanza row has no currency/);
+  assert.throws(() => normalize(avanza(AV.sale.replace(';SEK;;;SEK;', ';kr;;;SEK;'))), /Record 1: An Avanza row has no currency code/);
+});
+
+test('csv avanza: Sync all puts Avanza rows on investment_transactions and BIL rows on transactions; overlapping exports add nothing', () => {
+  const T = BS.Config.TABS;
+  const book = fakeSheetBook();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const tab = (name) => BS.TransactionsStore.create(book, iso, name).load();
+  const routedStore = () => {
+    const stores = {};
+    BS.TxnRouting.tabs().forEach((name) => { stores[name] = BS.TransactionsStore.create(book, iso, name); });
+    return BS.TxnRouting.createStore(stores);
+  };
+  const files = [file('bil.csv', bil(ROWS.rent)), file('avanza-sedan-start.csv', avanza(AV.sale, AV.dividend, AV.reinvest, AV.risk, AV.tax))];
+  const r = folderRun(files);
+  r.deps.store = routedStore();
+  const first = r.run();
+  assert.deepStrictEqual(first.results.map((x) => [x.transactions.added, x.transactions.updated]), [[6, 0]]);
+  assert.deepStrictEqual(tab(T.TRANSACTIONS).map((t) => t.bank), ['BIL']);
+  assert.deepStrictEqual(tab(T.INVESTMENT_TRANSACTIONS).map((t) => [t.bank, t.accountName, t.category]), [
+    ['Avanza', 'Demo ISK', 'SALJ'],
+    ['Avanza', 'Demo Pension', 'UTDELNING'],
+    ['Avanza', 'Demo Pension', 'ATERINV_UTDELNING'],
+    ['Avanza', 'Demo Pension', 'UTTAG_AV_RISKKOSTNAD'],
+    ['Avanza', 'Demo Pension', 'AVKASTNINGSSKATT']
+  ]);
+  assert.strictEqual(tab(T.UNCLASSIFIED_TRANSACTIONS).length, 0);
+  assert.deepStrictEqual(r.raw.raw_accounts.map((a) => a.accountName).sort(), ['Current Private', 'Demo ISK', 'Demo Pension']);
+  assert.strictEqual(BS.TxnRouting.movedText(first.moved), '');
+
+  // A later month's export overlapping the first: only its new row is added; nothing is updated or moved.
+  files.push(file('avanza-august.csv', avanza(AV.sale, AV.buy, AV.dividend, AV.reinvest, AV.risk)));
+  r.deps.store = routedStore();
+  const second = r.run();
+  assert.deepStrictEqual(second.results.map((x) => [x.transactions.added, x.transactions.updated]), [[1, 0]]);
+  assert.strictEqual(BS.TxnRouting.movedText(second.moved), '');
+  r.deps.store = routedStore();
+  const third = r.run();
+  assert.deepStrictEqual(third.results.map((x) => [x.transactions.added, x.transactions.updated]), [[0, 0]]);
+  assert.strictEqual(tab(T.INVESTMENT_TRANSACTIONS).length, 6);
+
+  // Show status: counts and dates per source only.
+  const lines = BS.CsvFolders.statusLines(r.props);
+  assert.deepStrictEqual(lines.slice(1), [
+    '  avanza: 2 files, 6 transactions, 2026-07-27 to 2026-08-20',
+    '  bil: 1 file, 1 transactions, 2026-08-28 to 2026-08-28'
+  ]);
+  assert.ok(!lines.join().includes('Demo') && !lines.join().includes('2102'));
 });

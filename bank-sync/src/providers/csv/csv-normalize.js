@@ -1,5 +1,5 @@
 /**
- * @fileoverview Pure: one CSV file to the normalized account and transactions, or (for a details
+ * @fileoverview Pure: one CSV file to the normalized accounts and transactions, or (for a details
  * format) to details for rows another provider stores. Finds the file's
  * format by its header, masks account and card numbers in every text that is stored, and gives
  * each row a stable id: the file's own id when it has one, else the date, a content hash and an
@@ -93,49 +93,80 @@
   }
 
   /**
-   * Turns a detected file into the account and its transactions.
-   * @param {{format: import('./csv-formats.js').CsvFormat, parsed: Object}} found - From `detect`.
-   * @param {import('../../core/config.js').ConnectionConfig} connection - CSV connection (folder).
-   * @returns {{account: import('../bank-provider.js').Account,
-   *   transactions: Array<import('../bank-provider.js').Transaction>}} Normalized rows, with `apiFields`.
-   * @throws {Error} DataError naming the row (never its content) that cannot be read.
+   * @param {Array<string>} values - Values (at least one).
+   * @returns {string} The value that occurs most often; on a tie, the one seen first.
    */
-  function file(found, connection) {
-    const format = found.format;
-    const info = format.account(found.parsed.preamble);
-    const accountId = format.id + '-' + ns.Hash.fnv1a(info.number);
-    const account = {
+  function mostCommon(values) {
+    const counts = {};
+    values.forEach(function (v) { counts[v] = (counts[v] || 0) + 1; });
+    return values.reduce(function (best, v) { return counts[v] > counts[best] ? v : best; }, values[0]);
+  }
+
+  /**
+   * The normalized account for one account of a file.
+   * @param {import('./csv-formats.js').CsvFormat} format - The file's format.
+   * @param {import('./csv-formats.js').CsvAccountInfo} info - The account as the file names it.
+   * @param {import('../../core/config.js').ConnectionConfig} connection - CSV connection (folder).
+   * @returns {import('../bank-provider.js').Account} Account; its id is the source plus a hash of the
+   *   number, or of the name when the export has no number.
+   */
+  function accountOf(format, info, connection) {
+    return {
       provider: ns.Config.CSV.PROVIDER_ID,
-      accountId: accountId,
+      accountId: format.id + '-' + ns.Hash.fnv1a(info.number || info.name),
       bank: format.bankName,
       connection: connection.key,
       holderName: '',
       accountName: info.name,
       currency: info.currency,
-      ibanMasked: ns.Redact.maskIban(info.number),
+      ibanMasked: info.number ? ns.Redact.maskIban(info.number) : '',
       accountType: '',
       product: info.name,
       detailsAt: ''
     };
+  }
+
+  /**
+   * Turns a detected file into its accounts and their transactions. The account comes from the lines
+   * above the header (one per file, e.g. BIL) or, for a format without them, from each row (several per
+   * file, e.g. Avanza).
+   * @param {{format: import('./csv-formats.js').CsvFormat, parsed: Object}} found - From `detect`.
+   * @param {import('../../core/config.js').ConnectionConfig} connection - CSV connection (folder).
+   * @returns {{accounts: Array<import('../bank-provider.js').Account>,
+   *   transactions: Array<import('../bank-provider.js').Transaction>}} Normalized rows, with `apiFields`.
+   * @throws {Error} DataError naming the row (never its content) that cannot be read.
+   */
+  function file(found, connection) {
+    const format = found.format;
+    const fileInfo = format.account ? format.account(found.parsed.preamble) : null;
+    const accounts = {};
+    const add = function (info) {
+      const account = accountOf(format, info, connection);
+      return accounts[account.accountId] || (accounts[account.accountId] = account);
+    };
+    if (fileInfo) add(fileInfo);
     const seen = {};
     const records = found.parsed.records;
     const transactions = rowsOf(found).map(function (row, i) {
+      const account = add(fileInfo || row.account);
       let id = row.id;
       if (!id) {
         const print = JSON.stringify(row.fingerprint);
-        seen[print] = (seen[print] || 0) + 1;
+        // Identical rows are counted per account (one account per file: the same as per file).
+        const occurrence = account.accountId + '|' + print;
+        seen[occurrence] = (seen[occurrence] || 0) + 1;
         // The date in the id keeps a 32-bit hash collision to rows of the same day.
-        id = 'h' + row.date.replace(/-/g, '') + '-' + ns.Hash.fnv1a(print) + '-' + seen[print];
+        id = 'h' + row.date.replace(/-/g, '') + '-' + ns.Hash.fnv1a(print) + '-' + seen[occurrence];
       }
       return {
         provider: account.provider,
-        accountId: accountId,
+        accountId: account.accountId,
         transactionId: String(id),
         bookingDate: row.date,
         valueDate: row.valueDate,
         status: 'booked',
         amount: row.amount,
-        currency: info.currency,
+        currency: row.currency || account.currency,
         amountEur: null,
         fxRate: null,
         fxRateDate: '',
@@ -148,7 +179,19 @@
         apiFields: apiFields(records[i], row.extra)
       };
     });
-    return { account: account, transactions: transactions };
+    if (!fileInfo) {
+      // An account named per row takes the currency most of its rows have, so one foreign-currency row
+      // (e.g. a withholding tax) does not label the whole account; rows keep their own currency.
+      Object.keys(accounts).forEach(function (accountId) {
+        accounts[accountId].currency = mostCommon(transactions
+          .filter(function (t) { return t.accountId === accountId; })
+          .map(function (t) { return t.currency; }));
+      });
+    }
+    return {
+      accounts: Object.keys(accounts).map(function (id) { return accounts[id]; }),
+      transactions: transactions
+    };
   }
 
   ns.CsvNormalize = { detect: detect, file: file, details: details, maskNumbers: maskNumbers };
