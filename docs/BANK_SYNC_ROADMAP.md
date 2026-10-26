@@ -34,7 +34,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#65): daily total from Trading 212's own total, one-time full history backfill |
 | 6 | CSV import provider: Drive folder per holder, BIL export, Trading 212 card details (B3) | Merged (#68), live since 2026-10-25 (first import: 159 BIL rows; report details on 8 Trading 212 rows; a second run changed nothing). BIL message fields and per-bank format files: #72, pushed 2026-10-26 |
 | B1 | Investment transactions: `investment_transactions` and `unclassified_transactions` tabs, rows routed by provider and report label | Merged (#76), live since 2026-10-26 (owner checked the first two runs, see Live state) |
-| 6b | Avanza CSV export as one more CSV format, rows to `investment_transactions` | Merged (this PR); live once deployed (see "Phase 6b" below) |
+| 6b | Avanza CSV export as one more CSV format, rows to `investment_transactions` | Merged (#80); live once deployed (see "Phase 6b" below) |
 | 9 | Avanza unofficial API (values, positions, cash) | Roadmap item only, not planned: see "Avanza" for the findings and what it would take |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
