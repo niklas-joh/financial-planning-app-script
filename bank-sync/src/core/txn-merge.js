@@ -6,8 +6,8 @@
   const FX_FIELDS = ['amountEur', 'fxRate', 'fxRateDate'];
   /**
    * Details another source may add to a row (see `enrich`); a re-fetch without them keeps them.
-   * `classification` ('card' or 'investment', from the Trading 212 report) decides the row's tab
-   * (`core/txn-routing.js`).
+   * `classification` ('card', 'transfer' or 'investment', from the Trading 212 report) decides the row's
+   * tab (`core/txn-routing.js`).
    */
   const DETAIL_FIELDS = ['counterparty', 'category', 'classification'];
 
@@ -97,14 +97,15 @@
    * @property {string} transactionId - Id of the row it applies to.
    * @property {string} counterparty - Other party, or ''.
    * @property {string} category - Category, or ''.
-   * @property {string} [classification] - 'card' (card spending: goes to `transactions`) or 'investment', or ''.
+   * @property {string} [classification] - 'card' or 'transfer' (go to `transactions`), 'investment', or ''.
    * @property {string} [date] - Date of the source record (informational; not applied).
    */
 
   /**
    * Adds details from another source (e.g. merchant and category from a CSV report) to stored rows
    * with the same provider and transaction id. Only empty fields are filled: a value the provider
-   * itself gave (e.g. a dividend's instrument as counterparty) is never replaced. Rows without a
+   * itself gave (e.g. a dividend's instrument as counterparty) is never replaced. The exception is
+   * `classification`, which only reports give: the report's current one replaces a stored one. Rows without a
    * matching detail, and details without a matching row, are left alone; applying the same details
    * again changes nothing.
    * @param {Array<import('../providers/bank-provider.js').Transaction>} rows - Stored rows.
@@ -121,6 +122,8 @@
       if (!d) return t;
       const next = Object.assign({}, t);
       DETAIL_FIELDS.forEach(function (field) { if (isEmpty(next[field]) && !isEmpty(d[field])) next[field] = d[field]; });
+      // The report is the only source of a classification, so its current one wins (a rule change applies).
+      if (!isEmpty(d.classification)) next.classification = d.classification;
       if (!changed(t, next)) return t;
       enriched++;
       return next;

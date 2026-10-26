@@ -305,7 +305,7 @@ test('csv t212 report: every row gives a category (merchant category, else the a
   assert.deepStrictEqual(BS.CsvNormalize.details(found), [
     { provider: 'trading212', transactionId: 'id-cashback-1', counterparty: '', category: 'SPENDING_CASHBACK', classification: 'card', date: '2026-08-19' },
     { provider: 'trading212', transactionId: 'id-card-1', counterparty: 'DEMO CAFE', category: 'RESTAURANTS', classification: 'card', date: '2026-08-21' },
-    { provider: 'trading212', transactionId: 'id-deposit-1', counterparty: 'Bank Transfer', category: 'DEPOSIT', classification: 'investment', date: '2026-08-22' },
+    { provider: 'trading212', transactionId: 'id-deposit-1', counterparty: 'Bank Transfer', category: 'DEPOSIT', classification: 'transfer', date: '2026-08-22' },
     { provider: 'trading212', transactionId: 'id-card-2', counterparty: 'DEMO SCHOOL, LUX', category: 'SERVICE_PROVIDERS', classification: 'card', date: '2026-08-22' }
   ]);
   const other = REPORT_HEAD + '\nCard debit,2026-08-21 09:27:53+00:00,,id-card-3,-1.00,"EUR",,,,\nInterest on cash,2026-08-21 01:00:00+00:00,,id-int-1,0.01,"EUR",,,,\n';
@@ -395,10 +395,11 @@ test('csv t212 report (B1): unlabelled API rows wait in unclassified_transaction
   const imported = r.run();
   assert.deepStrictEqual(imported.details, { read: 4, enriched: 3 });
   assert.deepStrictEqual(tab(T.UNCLASSIFIED_TRANSACTIONS), []);
-  assert.deepStrictEqual(tab(T.INVESTMENT_TRANSACTIONS), ['id-deposit-1', 'int-1']);
-  assert.strictEqual(tab(T.TRANSACTIONS).length, 3);
-  assert.ok(['id-card-1', 'id-cashback-1'].every((id) => tab(T.TRANSACTIONS).includes(id)));
-  assert.match(BS.SyncAll.summarize(imported), /Moved between tabs: 2 to transactions, 1 to investment_transactions\./);
+  assert.deepStrictEqual(tab(T.INVESTMENT_TRANSACTIONS), ['int-1']);
+  // Card spending and the bank transfer (both sides of it, for B2) are on transactions.
+  assert.strictEqual(tab(T.TRANSACTIONS).length, 4);
+  assert.ok(['id-card-1', 'id-cashback-1', 'id-deposit-1'].every((id) => tab(T.TRANSACTIONS).includes(id)));
+  assert.match(BS.SyncAll.summarize(imported), /Moved between tabs: 3 to transactions\./);
 
   // The next daily sync re-reads the API rows: nothing added, updated or moved.
   r.deps.connections = [t212].concat(csvConnections);

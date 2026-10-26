@@ -42,7 +42,7 @@
    * @property {string} date - Date of the record (ISO), for the last-read record only.
    * @property {string} counterparty - Other party, or ''.
    * @property {string} category - Category, or ''.
-   * @property {string} [classification] - 'card' or 'investment' (which tab the row belongs on), or ''.
+   * @property {string} [classification] - 'card', 'transfer' or 'investment' (which tab the row belongs on), or ''.
    */
 
   /**
