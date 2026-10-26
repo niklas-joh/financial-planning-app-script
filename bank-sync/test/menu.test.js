@@ -14,7 +14,8 @@ function fakeApps() {
     getUi: () => ({
       showModelessDialog: (html, title) => events.push({ kind: 'dialog', html, title }),
       alert: (text) => events.push({ kind: 'alert', text })
-    })
+    }),
+    getActiveSpreadsheet: () => ({ getSheetByName: (name) => (name === 'transactions' ? { getLastRow: () => 4 } : null) })
   };
   global.HtmlService = {
     createHtmlOutput: (content) => {
@@ -65,6 +66,7 @@ test('menu status: the summary opens in a modeless window, escaped, height cappe
   assert.strictEqual(title, 'Bank Sync: Status');
   assert.ok(html.content.includes('A &lt;b&gt; &amp; &quot;c&quot;'));
   assert.ok(!html.content.includes('<b>'));
+  assert.ok(html.content.includes('Rows: transactions 3, investment_transactions 0, unclassified_transactions 0'));
   assert.deepStrictEqual([html.width, html.height], [560, 560]);
 });
 

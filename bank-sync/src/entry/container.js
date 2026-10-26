@@ -77,6 +77,19 @@
   }
 
   /**
+   * Builds the store over the three transaction tabs (`transactions`, `investment_transactions`,
+   * `unclassified_transactions`); each row is written to its tab by `TxnRouting.tabFor`.
+   * @param {Object} spreadsheet - The Bank Sync spreadsheet.
+   * @param {function(Date): string} formatDate - Date to ISO date in the configured time zone.
+   * @returns {Object} Routed store.
+   */
+  function transactionsStore(spreadsheet, formatDate) {
+    const stores = {};
+    ns.TxnRouting.tabs().forEach(function (tab) { stores[tab] = ns.TransactionsStore.create(spreadsheet, formatDate, tab); });
+    return ns.TxnRouting.createStore(stores);
+  }
+
+  /**
    * Builds everything one Sync all run needs. Used by the menu and by the daily trigger, so
    * both run exactly the same sync.
    * @param {Object} wired - Services from `services()`.
@@ -92,7 +105,7 @@
       connections: ns.ProviderRegistry.connections(wired),
       isConnected: function (c) { return ns.ProviderRegistry.isConnected(c, wired); },
       providerFor: function (c) { return providerFor(c, wired, env); },
-      store: ns.TransactionsStore.create(spreadsheet, formatDate),
+      store: transactionsStore(spreadsheet, formatDate),
       rawWriter: ns.RawWriter.create(spreadsheet),
       nowMs: wired.nowMs,
       todayIso: todayIso,

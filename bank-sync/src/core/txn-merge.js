@@ -4,8 +4,12 @@
  */
 (function (ns) {
   const FX_FIELDS = ['amountEur', 'fxRate', 'fxRateDate'];
-  /** Details another source may add to a row (see `enrich`); a re-fetch without them keeps them. */
-  const DETAIL_FIELDS = ['counterparty', 'category'];
+  /**
+   * Details another source may add to a row (see `enrich`); a re-fetch without them keeps them.
+   * `classification` ('card' or 'investment', from the Trading 212 report) decides the row's tab
+   * (`core/txn-routing.js`).
+   */
+  const DETAIL_FIELDS = ['counterparty', 'category', 'classification'];
 
   /**
    * @typedef {Object} FetchedRange
@@ -60,7 +64,7 @@
    * row is never downgraded to pending, and derived FX columns survive as long
    * as the amount, currency and date the rate depends on are unchanged; otherwise
    * they are left empty so the row is converted again. A counterparty or category
-   * the incoming row lacks is kept (it may come from another source, see `enrich`).
+   * the incoming row lacks is kept, and so is a classification (they may come from another source, see `enrich`).
    * @param {import('../providers/bank-provider.js').Transaction} previous - Stored row.
    * @param {import('../providers/bank-provider.js').Transaction} incoming - Fetched row.
    * @returns {import('../providers/bank-provider.js').Transaction} Row to store.
@@ -93,6 +97,7 @@
    * @property {string} transactionId - Id of the row it applies to.
    * @property {string} counterparty - Other party, or ''.
    * @property {string} category - Category, or ''.
+   * @property {string} [classification] - 'card' (card spending: goes to `transactions`) or 'investment', or ''.
    * @property {string} [date] - Date of the source record (informational; not applied).
    */
 

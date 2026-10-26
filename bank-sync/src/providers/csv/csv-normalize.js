@@ -86,6 +86,7 @@
         transactionId: d.id,
         counterparty: maskNumbers(d.counterparty),
         category: d.category,
+        classification: d.classification || '',
         date: d.date
       };
     });

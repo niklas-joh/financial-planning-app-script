@@ -181,6 +181,7 @@
     guarded(function () {
       const s = ns.Container.services();
       showSummary('Bank Sync: Status', ns.ProviderRegistry.statusLines(s)
+        .concat([ns.TxnRouting.statusLine(SpreadsheetApp.getActiveSpreadsheet())])
         .concat(ns.AutoSync.statusLines(ns.Gas.triggers().list(), ns.LastRun.create(s.props).load()))
         .join('\n'));
     });

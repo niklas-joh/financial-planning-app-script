@@ -293,14 +293,14 @@ test('csv t212 report: every row gives a category (merchant category, else the a
   const found = BS.CsvNormalize.detect(utf8(REPORT));
   assert.deepStrictEqual([found.format.id, found.format.kind, found.format.enriches], ['trading212-report', 'details', 'trading212']);
   assert.deepStrictEqual(BS.CsvNormalize.details(found), [
-    { provider: 'trading212', transactionId: 'id-cashback-1', counterparty: '', category: 'SPENDING_CASHBACK', date: '2026-08-19' },
-    { provider: 'trading212', transactionId: 'id-card-1', counterparty: 'DEMO CAFE', category: 'RESTAURANTS', date: '2026-08-21' },
-    { provider: 'trading212', transactionId: 'id-deposit-1', counterparty: 'Bank Transfer', category: 'DEPOSIT', date: '2026-08-22' },
-    { provider: 'trading212', transactionId: 'id-card-2', counterparty: 'DEMO SCHOOL, LUX', category: 'SERVICE_PROVIDERS', date: '2026-08-22' }
+    { provider: 'trading212', transactionId: 'id-cashback-1', counterparty: '', category: 'SPENDING_CASHBACK', classification: 'card', date: '2026-08-19' },
+    { provider: 'trading212', transactionId: 'id-card-1', counterparty: 'DEMO CAFE', category: 'RESTAURANTS', classification: 'card', date: '2026-08-21' },
+    { provider: 'trading212', transactionId: 'id-deposit-1', counterparty: 'Bank Transfer', category: 'DEPOSIT', classification: 'investment', date: '2026-08-22' },
+    { provider: 'trading212', transactionId: 'id-card-2', counterparty: 'DEMO SCHOOL, LUX', category: 'SERVICE_PROVIDERS', classification: 'card', date: '2026-08-22' }
   ]);
   const other = REPORT_HEAD + '\nCard debit,2026-08-21 09:27:53+00:00,,id-card-3,-1.00,"EUR",,,,\nInterest on cash,2026-08-21 01:00:00+00:00,,id-int-1,0.01,"EUR",,,,\n';
-  assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(other))).map((d) => [d.counterparty, d.category]),
-    [['', 'CARD_DEBIT'], ['', 'INTEREST_ON_CASH']]);
+  assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(other))).map((d) => [d.counterparty, d.category, d.classification]),
+    [['', 'CARD_DEBIT', 'card'], ['', 'INTEREST_ON_CASH', 'investment']]);
   const short = 'Action,Time (UTC),Notes,ID,Total,Currency (Total)\nSpending cashback,2026-08-23 01:08:44+00:00,,id-cashback-2,0.80,"EUR"\n';
   assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(short))).map((d) => d.transactionId), ['id-cashback-2']);
   const noId = REPORT_HEAD + '\nCard debit,2026-08-21 09:27:53+00:00,,,-1.00,"EUR",,,"X","Y"\n';
@@ -342,6 +342,61 @@ test('csv t212 report: Sync all adds merchant and category to the API rows, adds
 
   const record = JSON.parse(r.props.map.CSV_IMPORTS_ALEX);
   assert.deepStrictEqual(record.sources['trading212-report'], { files: 1, rows: 4, from: '2026-08-19', to: '2026-08-22' });
+});
+
+test('csv t212 report (B1): unlabelled API rows wait in unclassified_transactions; Import CSV files moves them by the report', () => {
+  const api = (id, type, amount) => ({ provider: 'trading212', accountId: '1234567', transactionId: id, bookingDate: '2026-08-21', valueDate: '2026-08-21',
+    status: 'booked', amount, currency: 'EUR', amountEur: null, fxRate: null, fxRateDate: '', counterparty: '', description: type });
+  const T = BS.Config.TABS;
+  const book = fakeSheetBook();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const tab = (name) => BS.TransactionsStore.create(book, iso, name).load().map((t) => t.transactionId).sort();
+  const routedStore = () => {
+    const stores = {};
+    BS.TxnRouting.tabs().forEach((name) => { stores[name] = BS.TransactionsStore.create(book, iso, name); });
+    return BS.TxnRouting.createStore(stores);
+  };
+  const t212 = BS.T212Credentials.connections(fakeProps({ T212_API_KEY_ALEX: 'x' }))[0];
+  const files = [file('bil.csv', bil(ROWS.rent))];
+  const r = folderRun(files);
+  const csvProviderFor = r.deps.providerFor;
+  const csvConnections = r.deps.connections;
+  r.deps.connections = [t212].concat(csvConnections);
+  r.deps.isConnected = (c) => c === t212 || BS.ProviderRegistry.isConnected(c, r.wired);
+  r.deps.providerFor = (c) => (c !== t212 ? csvProviderFor(c) : {
+    listAccounts: () => [{ provider: 'trading212', accountId: '1234567', bank: 'Trading 212', connection: t212.key, currency: 'EUR' }],
+    getBalances: () => [],
+    maxWindowDays: Infinity,
+    getTransactions: () => [api('id-card-1', 'WITHDRAW', -53.46), api('id-cashback-1', 'DEPOSIT', 0.31), api('id-deposit-1', 'DEPOSIT', 100),
+      api('int-1', 'INTEREST_ON_FREE_CASH', 0.02)]
+  });
+
+  // Daily sync before any report: the API cannot tell a card payment from a transfer.
+  r.deps.store = routedStore();
+  r.run();
+  assert.deepStrictEqual(tab(T.UNCLASSIFIED_TRANSACTIONS), ['id-card-1', 'id-cashback-1', 'id-deposit-1']);
+  assert.deepStrictEqual(tab(T.INVESTMENT_TRANSACTIONS), ['int-1']);
+  assert.strictEqual(tab(T.TRANSACTIONS).length, 1);
+
+  // The report lands; Import CSV files runs only the CSV connections and still finds the rows.
+  files.push(file('report.csv', REPORT));
+  r.deps.connections = csvConnections;
+  r.deps.store = routedStore();
+  const imported = r.run();
+  assert.deepStrictEqual(imported.details, { read: 4, enriched: 3 });
+  assert.deepStrictEqual(tab(T.UNCLASSIFIED_TRANSACTIONS), []);
+  assert.deepStrictEqual(tab(T.INVESTMENT_TRANSACTIONS), ['id-deposit-1', 'int-1']);
+  assert.strictEqual(tab(T.TRANSACTIONS).length, 3);
+  assert.ok(['id-card-1', 'id-cashback-1'].every((id) => tab(T.TRANSACTIONS).includes(id)));
+  assert.match(BS.SyncAll.summarize(imported), /Moved between tabs: 2 to transactions, 1 to investment_transactions\./);
+
+  // The next daily sync re-reads the API rows: nothing added, updated or moved.
+  r.deps.connections = [t212].concat(csvConnections);
+  r.deps.store = routedStore();
+  const again = r.run();
+  assert.deepStrictEqual(again.results.map((x) => [x.transactions.added, x.transactions.updated]), [[0, 0], [0, 0]]);
+  assert.strictEqual(BS.TxnRouting.movedText(again.moved), '');
+  assert.strictEqual(tab(T.TRANSACTIONS).length + tab(T.INVESTMENT_TRANSACTIONS).length + tab(T.UNCLASSIFIED_TRANSACTIONS).length, 5);
 });
 
 test('csv provider: the last-read record names only the first skipped files, so it fits one Script Property', () => {
