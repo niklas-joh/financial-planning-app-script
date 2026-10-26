@@ -18,13 +18,13 @@
    * The tab a row belongs on. A row the report labelled follows its label; otherwise rows of an
    * investment provider go to `investment_transactions`, except the movement types that stay unclear
    * without a report; every other row goes to `transactions`.
-   * @param {import('../providers/bank-provider.js').Transaction} t - Row (`kind` set by a report, or empty).
+   * @param {import('../providers/bank-provider.js').Transaction} t - Row (`classification` set by a report, or empty).
    * @returns {string} Tab name.
    */
   function tabFor(t) {
     const names = ns.Config.TABS;
-    if (t.kind === 'card') return names.TRANSACTIONS;
-    if (t.kind === 'investment') return names.INVESTMENT_TRANSACTIONS;
+    if (t.classification === 'card') return names.TRANSACTIONS;
+    if (t.classification === 'investment') return names.INVESTMENT_TRANSACTIONS;
     const providers = ns.Config.ROUTING.INVESTMENT_PROVIDERS;
     if (!Object.prototype.hasOwnProperty.call(providers, t.provider)) return names.TRANSACTIONS;
     return providers[t.provider].unclearTypes.indexOf(t.description) !== -1
@@ -162,6 +162,8 @@
         }
       });
       // First the tabs that gain rows, still keeping the rows that leave them; then every tab exactly.
+      // The second pass cannot lose a row: one that leaves a tab was already written to its new tab by
+      // the first pass, so if a write fails in between, the row is on two tabs (joined on load), not none.
       names.forEach(function (tab) {
         if (!gaining[tab]) return;
         const staying = {};

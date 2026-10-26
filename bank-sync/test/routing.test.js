@@ -10,7 +10,7 @@ const tx = (o) => ({
   provider: 'enablebanking', bank: '', connection: '', holderName: '', accountName: '', ibanMasked: '', accountId: 'a1',
   transactionId: 't1', bookingDate: '2026-09-10', valueDate: '2026-09-10', status: 'booked', amount: -5, currency: 'EUR',
   amountEur: null, fxRate: null, fxRateDate: '', counterparty: '', description: '', category: '', counterpartyAccount: '',
-  counterpartyBank: '', reference: '', kind: '', ...o
+  counterpartyBank: '', reference: '', classification: '', ...o
 });
 const t212 = (o) => tx({ provider: 'trading212', accountId: '1234567', ...o });
 
@@ -41,14 +41,14 @@ test('routing: banks and card spending to transactions, Trading 212 to investmen
   ['INTEREST_ON_FREE_CASH', 'LENDING_INTEREST', 'FEE', 'TRANSFER', 'Dividend ORDINARY', 'NEW_TYPE'].forEach((type) =>
     assert.strictEqual(tabFor(t212({ description: type })), TABS.INVESTMENT_TRANSACTIONS, type));
   // A report label wins over the type.
-  assert.strictEqual(tabFor(t212({ description: 'WITHDRAW', kind: 'card' })), TABS.TRANSACTIONS);
-  assert.strictEqual(tabFor(t212({ description: 'DEPOSIT', kind: 'investment' })), TABS.INVESTMENT_TRANSACTIONS);
+  assert.strictEqual(tabFor(t212({ description: 'WITHDRAW', classification: 'card' })), TABS.TRANSACTIONS);
+  assert.strictEqual(tabFor(t212({ description: 'DEPOSIT', classification: 'investment' })), TABS.INVESTMENT_TRANSACTIONS);
   // A provider name that is also an Object member is not an investment provider.
   assert.strictEqual(tabFor(tx({ provider: 'constructor' })), TABS.TRANSACTIONS);
   assert.ok(Object.prototype.hasOwnProperty.call(BS.Config.ROUTING.INVESTMENT_PROVIDERS, BS.Config.TRADING212.PROVIDER_ID));
 });
 
-test('report kind: card for a merchant, a card action or cashback; investment for everything else', () => {
+test('report classification: card for a merchant, a card action or cashback; investment for everything else', () => {
   const isCard = BS.CsvT212Report.isCard;
   assert.ok(isCard('DEMO CAFE', 'CARD_DEBIT'));
   assert.ok(isCard('', 'CARD_DEBIT'));
@@ -67,7 +67,7 @@ test('migration: the first save moves the Trading 212 rows out of transactions, 
     tx({ transactionId: 'bank-1' }),
     t212({ transactionId: 'int-1', description: 'INTEREST_ON_FREE_CASH', amount: 0.04, amountEur: 0.04, fxRate: 1, fxRateDate: '2026-09-10' }),
     t212({ transactionId: 'wd-1', description: 'WITHDRAW', amount: -20, currency: 'GBP', amountEur: -23.1, fxRate: 0.865, fxRateDate: '2026-09-10' }),
-    t212({ transactionId: 'card-1', description: 'WITHDRAW', counterparty: 'DEMO CAFE', category: 'RESTAURANTS', kind: 'card' })
+    t212({ transactionId: 'card-1', description: 'WITHDRAW', counterparty: 'DEMO CAFE', category: 'RESTAURANTS', classification: 'card' })
   ]);
   const first = routed(book);
   const rows = first.store.load();
@@ -104,7 +104,7 @@ test('a report labels an unclassified row: it moves once; a later API re-read up
   r.store.save([api]);
   assert.deepStrictEqual(ids(r.tab(TABS.UNCLASSIFIED_TRANSACTIONS)), ['ref-1']);
 
-  const labelled = BS.TxnMerge.enrich(r.store.load(), [{ provider: 'trading212', transactionId: 'ref-1', counterparty: 'DEMO SHOP', category: 'RETAIL', kind: 'card' }]);
+  const labelled = BS.TxnMerge.enrich(r.store.load(), [{ provider: 'trading212', transactionId: 'ref-1', counterparty: 'DEMO SHOP', category: 'RETAIL', classification: 'card' }]);
   assert.strictEqual(labelled.enriched, 1);
   r.store.save(labelled.rows);
   assert.deepStrictEqual(ids(r.tab(TABS.TRANSACTIONS)), ['ref-1']);
@@ -116,7 +116,7 @@ test('a report labels an unclassified row: it moves once; a later API re-read up
   r.store.save(merged.rows);
   const all = r.store.load();
   assert.strictEqual(all.length, 1);
-  assert.deepStrictEqual([all[0].kind, all[0].counterparty], ['card', 'DEMO SHOP']);
+  assert.deepStrictEqual([all[0].classification, all[0].counterparty], ['card', 'DEMO SHOP']);
   assert.deepStrictEqual(ids(r.tab(TABS.TRANSACTIONS)), ['ref-1']);
   assert.strictEqual(r.store.moved()[TABS.TRANSACTIONS], 1);
 });
@@ -129,19 +129,19 @@ test('a save that stops halfway leaves a moving row in both tabs, never in none;
   // The new tab is written first: if that write fails, the row is still where it was.
   const early = routed(book);
   early.fail[TABS.TRANSACTIONS] = true;
-  assert.throws(() => early.store.save(early.store.load().map((t) => ({ ...t, kind: 'card' }))), /write failed/);
+  assert.throws(() => early.store.save(early.store.load().map((t) => ({ ...t, classification: 'card' }))), /write failed/);
   assert.deepStrictEqual(ids(early.tab(TABS.UNCLASSIFIED_TRANSACTIONS)), ['ref-1']);
 
   // If the old tab's write fails, the row is in both tabs; the next load returns it once, with the label.
   const late = routed(book);
   late.fail[TABS.UNCLASSIFIED_TRANSACTIONS] = true;
-  assert.throws(() => late.store.save(late.store.load().map((t) => ({ ...t, kind: 'card', category: 'SPENDING_CASHBACK' }))), /write failed/);
+  assert.throws(() => late.store.save(late.store.load().map((t) => ({ ...t, classification: 'card', category: 'SPENDING_CASHBACK' }))), /write failed/);
   assert.deepStrictEqual(ids(late.tab(TABS.TRANSACTIONS)), ['ref-1']);
   assert.deepStrictEqual(ids(late.tab(TABS.UNCLASSIFIED_TRANSACTIONS)), ['ref-1']);
   const next = routed(book);
   const rows = next.store.load();
   assert.strictEqual(rows.length, 1);
-  assert.deepStrictEqual([rows[0].kind, rows[0].category], ['card', 'SPENDING_CASHBACK']);
+  assert.deepStrictEqual([rows[0].classification, rows[0].category], ['card', 'SPENDING_CASHBACK']);
   next.store.save(rows);
   assert.deepStrictEqual(next.tab(TABS.UNCLASSIFIED_TRANSACTIONS), []);
   assert.deepStrictEqual(ids(next.tab(TABS.TRANSACTIONS)), ['ref-1']);

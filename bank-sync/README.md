@@ -269,7 +269,7 @@ Supported exports:
   a card payment is told apart from a withdrawal and cashback from a deposit; and a `counterparty`: the
   merchant name, else the notes (e.g. `Bank Transfer`). Only empty fields are filled: what the API gave (e.g. a
   dividend's instrument) is kept. Orders are not imported, so their report rows change nothing. A report row
-  whose API row is not there yet is applied on a later sync. Each row also gets a `kind`: `card` (a merchant, a
+  whose API row is not there yet is applied on a later sync. Each row also gets a `classification`: `card` (a merchant, a
   card action such as `CARD_DEBIT`, or `SPENDING_CASHBACK`) or `investment` (everything else); it decides the
   row's tab (see "Transaction tabs"). Comma-separated, UTF-8, times in UTC.
 
@@ -281,8 +281,8 @@ What it writes:
   masked to their last four digits. EUR at the booking-date rate, like every other row.
 - `raw_accounts` and `raw_transactions`: the account and every CSV column as `api.*` (masked the same way).
 - `transactions` ends with five columns that only some sources fill: `category` (BIL, the Trading 212 report),
-  `counterpartyAccount`, `counterpartyBank` and `reference` (BIL), and `kind` (the Trading 212 report). A later
-  sync that re-reads a row without a counterparty, category or kind keeps the ones already stored. The summary says how many rows got details from a
+  `counterpartyAccount`, `counterpartyBank` and `reference` (BIL), and `classification` (the Trading 212 report). A later
+  sync that re-reads a row without a counterparty, category or classification keeps the ones already stored. The summary says how many rows got details from a
   report: "Details from reports: N transactions updated (M read)."
 - Each source's parsing lives in its own file (`src/providers/csv/formats/bil.js`, `trading212-report.js`), but
   all of them write to the same tabs, so totals across banks stay one sum.
@@ -320,7 +320,7 @@ money moved in and out of investment accounts:
 | `investment_transactions` | Trading 212 interest, lending interest, dividends, fees and transfers, and deposits and withdrawals a report names as such |
 | `unclassified_transactions` | Trading 212 `WITHDRAW` and `DEPOSIT` rows no report has named yet: the API cannot tell a card payment or cashback from a bank transfer |
 
-- The rule is `src/core/txn-routing.js` `tabFor`: a row's `kind` (`card` or `investment`, set by the Trading 212
+- The rule is `src/core/txn-routing.js` `tabFor`: a row's `classification` (`card` or `investment`, set by the Trading 212
   report) decides; without one, Trading 212 rows go to `investment_transactions`, except `WITHDRAW` and
   `DEPOSIT`, which go to `unclassified_transactions`; every other row goes to `transactions`. The investment
   providers and their unclear types are in `Config.ROUTING`.

@@ -293,13 +293,13 @@ test('csv t212 report: every row gives a category (merchant category, else the a
   const found = BS.CsvNormalize.detect(utf8(REPORT));
   assert.deepStrictEqual([found.format.id, found.format.kind, found.format.enriches], ['trading212-report', 'details', 'trading212']);
   assert.deepStrictEqual(BS.CsvNormalize.details(found), [
-    { provider: 'trading212', transactionId: 'id-cashback-1', counterparty: '', category: 'SPENDING_CASHBACK', kind: 'card', date: '2026-08-19' },
-    { provider: 'trading212', transactionId: 'id-card-1', counterparty: 'DEMO CAFE', category: 'RESTAURANTS', kind: 'card', date: '2026-08-21' },
-    { provider: 'trading212', transactionId: 'id-deposit-1', counterparty: 'Bank Transfer', category: 'DEPOSIT', kind: 'investment', date: '2026-08-22' },
-    { provider: 'trading212', transactionId: 'id-card-2', counterparty: 'DEMO SCHOOL, LUX', category: 'SERVICE_PROVIDERS', kind: 'card', date: '2026-08-22' }
+    { provider: 'trading212', transactionId: 'id-cashback-1', counterparty: '', category: 'SPENDING_CASHBACK', classification: 'card', date: '2026-08-19' },
+    { provider: 'trading212', transactionId: 'id-card-1', counterparty: 'DEMO CAFE', category: 'RESTAURANTS', classification: 'card', date: '2026-08-21' },
+    { provider: 'trading212', transactionId: 'id-deposit-1', counterparty: 'Bank Transfer', category: 'DEPOSIT', classification: 'investment', date: '2026-08-22' },
+    { provider: 'trading212', transactionId: 'id-card-2', counterparty: 'DEMO SCHOOL, LUX', category: 'SERVICE_PROVIDERS', classification: 'card', date: '2026-08-22' }
   ]);
   const other = REPORT_HEAD + '\nCard debit,2026-08-21 09:27:53+00:00,,id-card-3,-1.00,"EUR",,,,\nInterest on cash,2026-08-21 01:00:00+00:00,,id-int-1,0.01,"EUR",,,,\n';
-  assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(other))).map((d) => [d.counterparty, d.category, d.kind]),
+  assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(other))).map((d) => [d.counterparty, d.category, d.classification]),
     [['', 'CARD_DEBIT', 'card'], ['', 'INTEREST_ON_CASH', 'investment']]);
   const short = 'Action,Time (UTC),Notes,ID,Total,Currency (Total)\nSpending cashback,2026-08-23 01:08:44+00:00,,id-cashback-2,0.80,"EUR"\n';
   assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(short))).map((d) => d.transactionId), ['id-cashback-2']);

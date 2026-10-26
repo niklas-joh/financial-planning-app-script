@@ -438,11 +438,11 @@ move to `transactions`. Avanza lands on the investment side too. The owner chose
 As built (see `bank-sync/README.md`, "Transaction tabs"):
 
 - Tabs, same columns: `transactions`, `investment_transactions`, `unclassified_transactions`. Rule (pure,
-  `TxnRouting.tabFor`): `kind = card` goes to `transactions`, `kind = investment` to `investment_transactions`; without a
-  kind, rows of a provider in `Config.ROUTING.INVESTMENT_PROVIDERS` (Trading 212) go to `investment_transactions`, except
+  `TxnRouting.tabFor`): `classification = card` goes to `transactions`, `classification = investment` to
+  `investment_transactions`; without one, rows of a provider in `Config.ROUTING.INVESTMENT_PROVIDERS` (Trading 212) go to `investment_transactions`, except
   its `unclearTypes` (`WITHDRAW`, `DEPOSIT`), which go to `unclassified_transactions`; everything else to `transactions`.
   Interest, lending interest, dividends, fees and transfers are known from the API alone.
-- `kind` is a new optional last column, filled by the Trading 212 report (`CsvT212Report.isCard`: a merchant, an action
+- `classification` is a new optional last column, filled by the Trading 212 report (`CsvT212Report.isCard`: a merchant, an action
   starting `CARD_`, or `SPENDING_CASHBACK` is `card`; every other action is `investment`). `TxnMerge` treats it like
   `counterparty` and `category`: the report fills it only when empty, and a re-read without it keeps it. B2 can reuse it.
 - One routed store (`TxnRouting.createStore`) replaces the single store in `Container.syncAllDeps`: `load` reads the
@@ -455,7 +455,7 @@ As built (see `bank-sync/README.md`, "Transaction tabs"):
   between leaves it on two tabs, and the next load joins the copies (the first copy, with empty fields filled from the
   second). A tab without rows is not created.
 - Migration: no separate step. The first save after the push applies the rule to the rows on `transactions`, keeping
-  their EUR columns and details; the 8 rows the report already labelled get their `kind` from the report in the same run
+  their EUR columns and details; the 8 rows the report already labelled get their `classification` from the report in the same run
   (the folder is read every run), so they end on `transactions`. Repeat-safe: a second run moves nothing.
 - Summary: "Moved between tabs: N to transactions, M to investment_transactions, K to unclassified_transactions." (only
   when something moved; also in the last-run record). *Show status*: "Rows: transactions N, investment_transactions M,
@@ -554,7 +554,7 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
   `transactions` no longer count it twice; the outflow stays as money moved to savings. Avanza deposits will work the
   same. Still open:
   - transfers between the owner's own bank accounts (Revolut, Danske, BIL) have both sides in `transactions`; they need
-    pair matching (same holder, opposite amounts, a few days apart) and a mark on both, e.g. `kind = internal` (the column
+    pair matching (same holder, opposite amounts, a few days apart) and a mark on both, e.g. `classification = internal` (the column
     B1 added), so analysis can skip them;
   - whether the bank's outflow to an investment account is marked too (it is saving, not spending);
   - currency: a SEK outflow from Danske and a EUR inflow elsewhere match only on their EUR amounts, within a tolerance.

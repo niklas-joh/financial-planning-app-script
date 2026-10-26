@@ -37,7 +37,7 @@
     { key: 'counterpartyAccount', text: true, optional: true },
     { key: 'counterpartyBank', text: true, optional: true },
     { key: 'reference', text: true, optional: true },
-    { key: 'kind', text: true, optional: true }
+    { key: 'classification', text: true, optional: true }
   ];
 
   /**
