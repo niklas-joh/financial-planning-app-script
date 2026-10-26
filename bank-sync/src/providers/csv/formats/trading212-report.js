@@ -6,7 +6,8 @@
  * action as a code (`CARD_DEBIT`, `SPENDING_CASHBACK`, `DEPOSIT`, ...), so a card payment is told
  * apart from a withdrawal and cashback from a deposit; `counterparty` = the merchant name, else the
  * notes (e.g. `Bank Transfer`); `classification` = 'card' for card spending (a merchant, or a card or cashback
- * action), else 'investment', which decides the tab the row is stored on. Columns that are empty for
+ * action), 'transfer' for a deposit or withdrawal (money moved to or from a bank account), else 'investment';
+ * it decides the tab the row is stored on. Columns that are empty for
  * the exported period may be missing (merchant columns without card payments), so only the ones every
  * report has are required.
  */
@@ -20,6 +21,20 @@
    */
   function isCard(merchant, action) {
     return Boolean(merchant) || action.indexOf('CARD_') === 0 || action === 'SPENDING_CASHBACK';
+  }
+
+  /** Action codes of money moved between a bank account and Trading 212 (owner decision, 2026-10-26). */
+  const TRANSFER_ACTIONS = ['DEPOSIT', 'WITHDRAWAL'];
+
+  /**
+   * Classifies a report record: card spending, a bank transfer, or another investment-account movement.
+   * @param {string} merchant - Merchant name or category ('' if none).
+   * @param {string} action - Action as a code.
+   * @returns {string} 'card', 'transfer' or 'investment'.
+   */
+  function classify(merchant, action) {
+    if (isCard(merchant, action)) return 'card';
+    return TRANSFER_ACTIONS.indexOf(action) !== -1 ? 'transfer' : 'investment';
   }
 
   /** @type {import('../csv-formats.js').CsvFormat} */
@@ -45,10 +60,10 @@
         date: date,
         counterparty: merchant || S.squeeze(r.Notes),
         category: merchantCategory || action,
-        classification: isCard(merchant || merchantCategory, action) ? 'card' : 'investment'
+        classification: classify(merchant || merchantCategory, action)
       };
     }
   };
 
-  ns.CsvT212Report = { FORMAT: FORMAT, isCard: isCard };
+  ns.CsvT212Report = { FORMAT: FORMAT, isCard: isCard, classify: classify };
 })(globalThis.BankSync);

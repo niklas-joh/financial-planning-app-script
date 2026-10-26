@@ -60,6 +60,33 @@ test('report classification: card for a merchant, a card action or cashback; inv
   assert.ok(!isCard('', 'INTEREST_ON_CASH'));
 });
 
+test('report classification: transfer for a deposit or withdrawal; transfers go to transactions', () => {
+  const classify = BS.CsvT212Report.classify;
+  assert.strictEqual(classify('', 'DEPOSIT'), 'transfer');
+  assert.strictEqual(classify('', 'WITHDRAWAL'), 'transfer');
+  assert.strictEqual(classify('', 'CARD_DEBIT'), 'card');
+  assert.strictEqual(classify('', 'SPENDING_CASHBACK'), 'card');
+  assert.strictEqual(classify('DEMO CAFE', 'SOMETHING_NEW'), 'card');
+  assert.strictEqual(classify('', 'INTEREST_ON_CASH'), 'investment');
+  assert.strictEqual(classify('', 'MARKET_BUY'), 'investment');
+  assert.strictEqual(BS.TxnRouting.tabFor(t212({ description: 'DEPOSIT', classification: 'transfer' })), TABS.TRANSACTIONS);
+});
+
+test('a row stored with an older classification takes the report\'s current one and moves; other details still only fill gaps', () => {
+  const book = fakeSheetBook();
+  const r = routed(book);
+  r.store.save([t212({ transactionId: 'dep-1', description: 'DEPOSIT', counterparty: 'Bank Transfer', category: 'DEPOSIT', classification: 'investment' })]);
+  assert.deepStrictEqual(ids(r.tab(TABS.INVESTMENT_TRANSACTIONS)), ['dep-1']);
+  const done = BS.TxnMerge.enrich(r.store.load(), [{ provider: 'trading212', transactionId: 'dep-1', counterparty: 'Other', category: 'OTHER', classification: 'transfer' }]);
+  assert.strictEqual(done.enriched, 1);
+  assert.deepStrictEqual([done.rows[0].classification, done.rows[0].counterparty, done.rows[0].category], ['transfer', 'Bank Transfer', 'DEPOSIT']);
+  r.store.save(done.rows);
+  assert.deepStrictEqual(ids(r.tab(TABS.TRANSACTIONS)), ['dep-1']);
+  assert.deepStrictEqual(r.tab(TABS.INVESTMENT_TRANSACTIONS), []);
+  // The same report again changes nothing.
+  assert.strictEqual(BS.TxnMerge.enrich(r.store.load(), [{ provider: 'trading212', transactionId: 'dep-1', counterparty: 'Other', category: 'OTHER', classification: 'transfer' }]).enriched, 0);
+});
+
 test('migration: the first save moves the Trading 212 rows out of transactions, keeping EUR columns and details; a second moves nothing', () => {
   const book = fakeSheetBook();
   // The tab as it is before B1: every row on transactions.

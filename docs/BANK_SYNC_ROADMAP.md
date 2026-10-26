@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-26 (time zone Europe/Brussels; B1: investment and unclassified transaction tabs, as they stand once merged and deployed; first daily sync seen OK; Avanza options compared).
+Last updated: 2026-10-26 (B1 and the Europe/Brussels time zone live; Trading 212 bank transfers to `transactions`, as they stand once merged and deployed; Avanza options compared).
 
 ## Setup in one paragraph
 
@@ -33,7 +33,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 4 | Automation and consent-expiry warnings | Merged (#58), live: pushed, re-authorized, daily sync enabled. First daily run and first warning email not seen yet (see Live state) |
 | 5 | Trading212 provider: cash, investments, holdings, daily values, cash movements and dividends | Merged (#64), live since 2026-10-25 (first sync: 336 transactions, 19 holdings, 1 daily value). Fix (#65): daily total from Trading 212's own total, one-time full history backfill |
 | 6 | CSV import provider: Drive folder per holder, BIL export, Trading 212 card details (B3) | Merged (#68), live since 2026-10-25 (first import: 159 BIL rows; report details on 8 Trading 212 rows; a second run changed nothing). BIL message fields and per-bank format files: #72, pushed 2026-10-26 |
-| B1 | Investment transactions: `investment_transactions` and `unclassified_transactions` tabs, rows routed by provider and report label | Merged (#76); live once deployed (see "B1" below) |
+| B1 | Investment transactions: `investment_transactions` and `unclassified_transactions` tabs, rows routed by provider and report label | Merged (#76), live since 2026-10-26 (see Live state). Trading 212 bank transfers to `transactions`: this PR, live once deployed |
 | 6b | Avanza CSV export as one more CSV format, rows to `investment_transactions` | Next. Structure checked from the owner's export (2026-10-26, see "Avanza") |
 | 9 | Avanza unofficial API (values, positions, cash) | Roadmap item only, not planned: see "Avanza" for the findings and what it would take |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
@@ -48,6 +48,17 @@ row, live state, deploy steps), so no follow-up docs PR is needed. Anything only
 quirks) goes into the next phase's PR.
 
 ## Live state (2026-10-26)
+
+- B1 (#76) and the time zone (#78) deployed on 2026-10-26 (#72 just before). First run after the push (*Import CSV
+  files*): "Moved between tabs: 6 to transactions, 2070 to investment_transactions, 824 to unclassified_transactions",
+  "Details from reports: 8 transactions updated (8 read)" (the report filled `classification`; 6 card rows came back to
+  `transactions`, 2 bank transfers went on to `investment_transactions`). Second run (*Sync all*): nothing moved,
+  0 added/updated, details 0 updated. *Show status*: "Rows: transactions 177, investment_transactions 2070,
+  unclassified_transactions 816"; daily sync "between 6:00 and 7:00 (Europe/Brussels)". The 816 unclassified rows are
+  Trading 212 withdrawals and deposits older than the one report in the folder (2026-10-19 to 10-24): a report for the
+  whole history names them. With this PR the 2 bank transfers move to `transactions` on the next sync.
+- Lesson: `clasp push` from the repo root pushes the legacy project, not bank-sync (the first B1 push did that; it was
+  harmless because `main` only changed the legacy manifest's time zone). Run it from `bank-sync/`.
 
 - First daily sync (2026-10-26, 06:20 Europe/Luxembourg): *Show status* says `Last sync: 2026-10-26 06:20 (daily): OK`;
   Danske, Revolut and CSV 0 added/updated/removed, Trading 212 2 added (that day's interest), 2 converted to EUR.
@@ -429,9 +440,11 @@ As built (see `bank-sync/README.md`, "CSV import"):
   between exports (that would add a second row); a report with orders, dividends, interest or a card refund
   (they are coded from their action names, which were not in the sample).
 
-## B1: investment transactions in their own tabs (live once deployed)
+## B1: investment transactions in their own tabs (live since 2026-10-26)
 
-Owner decision (2026-10-26): `transactions` = current-account cash flow plus card spending. Every Trading 212 API row
+Owner decision (2026-10-26): `transactions` = current-account cash flow plus card spending. Amended the same day: bank
+transfers to and from Trading 212 count as `transactions` too (its cash is used like a current account; both sides of a
+transfer stay there for B2 to pair). Every Trading 212 API row
 (cash movements, interest, dividends, and the card WITHDRAW/DEPOSIT rows) is kept apart, because the API cannot tell
 card spending from a transfer; only once a Trading 212 report (CSV, about once a year) labels a row can card spending
 move to `transactions`. Avanza lands on the investment side too. The owner chose three tabs (2026-10-26) so that
@@ -440,13 +453,15 @@ move to `transactions`. Avanza lands on the investment side too. The owner chose
 As built (see `bank-sync/README.md`, "Transaction tabs"):
 
 - Tabs, same columns: `transactions`, `investment_transactions`, `unclassified_transactions`. Rule (pure,
-  `TxnRouting.tabFor`): `classification = card` goes to `transactions`, `classification = investment` to
+  `TxnRouting.tabFor`): `classification = card` or `transfer` goes to `transactions`, `classification = investment` to
   `investment_transactions`; without one, rows of a provider in `Config.ROUTING.INVESTMENT_PROVIDERS` (Trading 212) go to `investment_transactions`, except
   its `unclearTypes` (`WITHDRAW`, `DEPOSIT`), which go to `unclassified_transactions`; everything else to `transactions`.
   Interest, lending interest, dividends, fees and transfers are known from the API alone.
-- `classification` is a new optional last column, filled by the Trading 212 report (`CsvT212Report.isCard`: a merchant, an action
-  starting `CARD_`, or `SPENDING_CASHBACK` is `card`; every other action is `investment`). `TxnMerge` treats it like
-  `counterparty` and `category`: the report fills it only when empty, and a re-read without it keeps it. B2 can reuse it.
+- `classification` is a new optional last column, filled by the Trading 212 report (`CsvT212Report.classify`: a merchant,
+  an action starting `CARD_`, or `SPENDING_CASHBACK` is `card`; `DEPOSIT` and `WITHDRAWAL` are `transfer`; every other
+  action is `investment`). A re-read without it keeps it (like `counterparty` and `category`); unlike them, the report's
+  classification replaces a stored one, because the report is its only source, so a rule change reaches stored rows on
+  the next sync. B2 can reuse the column.
 - One routed store (`TxnRouting.createStore`) replaces the single store in `Container.syncAllDeps`: `load` reads the
   three tabs as one list, `save` writes each row to its tab. So `TxnSync`, `TxnMerge.merge`/`enrich` and the FX step are
   unchanged and see every row: a re-read updates a moved row in place and never adds it twice (key unchanged), the
@@ -549,16 +564,17 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 ## Open decisions (raise, do not act)
 
 - **B1. Where Trading 212 (and later Avanza) rows live: decided (owner, 2026-10-26), built (#76).** See "B1" below: option
-  (c), with a third tab for the rows the API cannot tell apart until a report names them.
-- **B2. Internal transfers** (open decision; B1 settles the investment side). Since B1 a bank-to-Trading 212 transfer
-  is once in `transactions` (the bank's outflow, e.g. a BIL standing order to "Trading 212 Markets Limited") and once in
-  `investment_transactions` (the deposit, once a report names it; until then in `unclassified_transactions`), so totals of
-  `transactions` no longer count it twice; the outflow stays as money moved to savings. Avanza deposits will work the
-  same. Still open:
-  - transfers between the owner's own bank accounts (Revolut, Danske, BIL) have both sides in `transactions`; they need
-    pair matching (same holder, opposite amounts, a few days apart) and a mark on both, e.g. `classification = internal` (the column
-    B1 added), so analysis can skip them;
-  - whether the bank's outflow to an investment account is marked too (it is saving, not spending);
+  (c), with a third tab for the rows the API cannot tell apart until a report names them; bank transfers to and from
+  Trading 212 count as `transactions` (owner, 2026-10-26: its cash is used like a current account).
+- **B2. Internal transfers** (open decision; next after 6b). The owner treats Trading 212's cash like a current account
+  (2026-10-26), so a bank-to-Trading 212 transfer has both sides in `transactions`: the bank's outflow (e.g. a BIL standing
+  order to "Trading 212 Markets Limited") and the Trading 212 deposit (once a report names it `transfer`; until then in
+  `unclassified_transactions`). The same holds for transfers between the owner's own bank accounts (Revolut, Danske, BIL).
+  Until B2, both sides inflate income and spending totals (they net to zero). Still open:
+  - pair matching (same holder, opposite amounts, a few days apart; the Trading 212 side is already labelled `transfer`)
+    and a mark on both, e.g. `classification = internal`, so analysis can skip them;
+  - Avanza: whether its deposits and withdrawals count the same way (decide in 6b; Avanza has no card, so they may
+    rather be saving);
   - currency: a SEK outflow from Danske and a EUR inflow elsewhere match only on their EUR amounts, within a tolerance.
 - **B3. Card spending** (done in Phase 6). The Trading 212 API returns card payments only as plain `WITHDRAW` rows
   and cashback as `DEPOSIT` rows, without merchant or type. The Trading 212 report (exported from the app, or `POST
