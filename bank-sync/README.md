@@ -89,6 +89,9 @@ masked value afterwards (tab, connection, account, date, id and column; no amoun
   back in the folder and run it again to recover CSV rows.
 - "run again": the run stopped at the time budget or the connection failed; run it again.
 
+Rows the run read back from their source are never listed: a mask still on them came from the source itself
+(e.g. a card number a bank sends as `****1234`).
+
 Trading 212 is not re-read (it stores no masked numbers).
 
 ## Connections, labels and raw tabs (Phase 2.5)

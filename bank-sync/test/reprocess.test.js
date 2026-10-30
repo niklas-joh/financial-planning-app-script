@@ -302,6 +302,22 @@ test('re-process: rows synced with masking on are rewritten whole, in place; a s
   assert.deepStrictEqual(second.remaining, first.remaining);
 });
 
+test('re-process: a number the source itself sends masked is not listed once the row was read back', () => {
+  const w = world();
+  w.bank.rows.push(ebTxn({ booking_date: '2026-08-25', entry_reference: 'E2', remittance_information: ['CARD ****4321'] }));
+  const text = bil('15/08/2026;15/08/2026;Card payment;DEMO SHOP LUX 13/08/2026 10:58 ****9876;-5.00');
+  w.files.push({ name: 'bank-masked.csv', size: text.length, text: () => text });
+  BS.SyncAll.run(w.sync());
+  const masked = w.read('transactions').filter((r) => BS.Redact.isMasked(r.description));
+  assert.strictEqual(masked.length, 2, 'both rows hold a mask the source sent');
+  const out = w.reprocess();
+  assert.deepStrictEqual(out.remaining, []);
+  // Rows the run did not read back are still listed, whatever put the mask there.
+  w.files.pop();
+  assert.deepStrictEqual(w.reprocess().remaining.map((r) => [r.tab, r.date, r.recoverable]),
+    [['transactions', '2026-08-15', false], ['raw_transactions', '2026-08-15', false]]);
+});
+
 test('re-process: nothing left masked is said plainly; refused while masking is on', () => {
   const w = world();
   BS.SyncAll.run(w.sync());

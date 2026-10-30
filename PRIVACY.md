@@ -4,7 +4,7 @@ This is a private, non-commercial personal tool. It is not offered to anyone els
 
 **Who uses it:** one household (the repository owner and his spouse), each for their own bank accounts, with their own consent at their own banks.
 
-**What it does:** with the account holder's consent, it reads account balances and transactions through the Enable Banking API (a registered account information service provider) and writes them into a Google Sheet owned by the household.
+**What it does:** with the account holder's consent, it reads account balances and transactions through the Enable Banking API (a registered account information service provider) and writes them into a Google Sheet owned by the household. Account numbers (IBANs and the other party's account, card and reference numbers) are stored in full on that sheet by default; a setting in the code (`MASK_ACCOUNT_NUMBERS`) cuts them to their last four characters instead. They never appear in logs or error messages.
 
 **Where the data goes:** bank, then Enable Banking, then a Google Apps Script project, then the household's own Google Sheet. No other party receives the data. It is not sold, shared, used for advertising or used to train anything.
 
