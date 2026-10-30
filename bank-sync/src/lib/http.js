@@ -58,13 +58,18 @@
   }
 
   /**
-   * Builds the secret-free error for a failed response.
+   * Builds the secret-free error for a failed response. The detail is the body's `message`; without one, the
+   * body itself, shortened (some APIs, e.g. Trading 212's 400, name the problem in other fields), so the
+   * error says what was wrong.
    * @param {number} status - HTTP status.
    * @param {*} body - Parsed body (may carry `message` and `error`, the API's error code).
+   * @param {string} text - Raw body.
    * @returns {Error} HttpError.
    */
-  function toError(status, body) {
-    const detail = body && body.message ? String(body.message).slice(0, 300) : 'request failed';
+  function toError(status, body, text) {
+    const raw = body && body.message ? String(body.message)
+      : body && typeof body === 'object' ? JSON.stringify(body) : String(text || '').trim();
+    const detail = raw ? raw.slice(0, 300) : 'request failed';
     return ns.Errors.http(status, ns.Redact.text(detail), body && typeof body.error === 'string' ? body.error : '');
   }
 
@@ -101,13 +106,14 @@
         if (req.followRedirects === false && status >= 300 && status < 400) {
           return { redirect: header(response.getAllHeaders ? response.getAllHeaders() : {}, 'Location') };
         }
-        const body = parseBody(response.getContentText());
+        const text = response.getContentText();
+        const body = parseBody(text);
         if (status >= 200 && status < 300) return body;
-        if (!isRetryable(status) || attempt >= maxRetries) throw toError(status, body);
+        if (!isRetryable(status) || attempt >= maxRetries) throw toError(status, body, text);
         const wait = deps.retryDelayMs
           ? deps.retryDelayMs(status, response.getAllHeaders ? response.getAllHeaders() : {}, attempt)
           : backoffMs(attempt);
-        if (wait === null || wait === undefined) throw toError(status, body);
+        if (wait === null || wait === undefined) throw toError(status, body, text);
         deps.sleep(wait);
       }
     }

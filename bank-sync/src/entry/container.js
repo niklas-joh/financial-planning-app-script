@@ -147,6 +147,15 @@
     const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
     const startedAt = wired.nowMs();
     const msLeft = function () { return startedAt + ns.Config.TRADING212.EXPORT_BUDGET_MS - wired.nowMs(); };
+    let rows = null;
+    /** Oldest stored booking date of a connection's rows (all three tabs, read once per run), or ''. */
+    const firstDate = function (c) {
+      if (!rows) rows = transactionsStore(SpreadsheetApp.getActiveSpreadsheet(), formatDate).load();
+      return rows.reduce(function (first, t) {
+        const date = t.connection === c.key ? String(t.bookingDate || '') : '';
+        return date && (!first || date < first) ? date : first;
+      }, '');
+    };
     return {
       connections: ns.T212Credentials.connections(wired.props).filter(function (c) { return ns.T212Credentials.isComplete(wired.props, c); }),
       clientFor: function (c) {
@@ -158,7 +167,8 @@
       triggers: ns.Gas.triggers(),
       withLock: function (action) { return ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, action); },
       nowMs: wired.nowMs,
-      todayIso: function () { return formatDate(new Date()); }
+      todayIso: function () { return formatDate(new Date()); },
+      firstDate: firstDate
     };
   }
 

@@ -19,6 +19,8 @@ const PROPS_INIT = { T212_API_KEY_ALEX: 'k1', T212_API_SECRET_ALEX: 's1' };
 const FOLDER_PROP = BS.Config.PROPERTY_KEYS.T212_EXPORT_FOLDER_PREFIX + 'ALEX';
 const STATE_PROP = BS.Config.PROPERTY_KEYS.T212_EXPORT_PREFIX + 'ALEX';
 const CONN = BS.T212Credentials.connections(fakeProps(PROPS_INIT))[0];
+// The oldest stored Trading 212 row in most tests: less than a year back, so one report covers it.
+const FIRST = '2026-01-15';
 
 const REPORT = 'Action,Time (UTC),Notes,ID,Total,Currency (Total),Merchant name,Merchant category\n' +
   'Card debit,2026-10-21 09:27:53+00:00,,id-card-1,-5.00,"EUR","DEMO CAFE","RESTAURANTS"\n';
@@ -60,6 +62,7 @@ function deps(client, props) {
     props: props || fakeProps(Object.assign({ [FOLDER_PROP]: 'folder-1' }, PROPS_INIT)),
     folder: (id) => ({ create: (name, text) => files.push({ id, name, text }) }),
     withLock: (action) => action(),
+    firstDate: () => FIRST,
     nowMs: () => NOW,
     todayIso: () => '2026-11-01'
   };
@@ -102,9 +105,12 @@ test('http: a text request returns the body as written; errors are still parsed'
   assert.throws(() => http.request({ method: 'GET', url: 'missing', text: true }), /gone/);
 });
 
-test('t212 export: the first report covers the full history, later ones reach back a week before the last one ended', () => {
+test('t212 export: the first report starts at the oldest stored row, at most a year per report; later ones reach back a week', () => {
   const R = BS.T212Export.rangeFor;
-  assert.deepStrictEqual(R({ coveredTo: '' }, '2026-11-01'), { from: T212.EXPORT_FIRST_FROM, to: '2026-11-01' });
+  assert.deepStrictEqual(R({ coveredTo: '' }, '2026-11-01', FIRST), { from: FIRST, to: '2026-11-01' });
+  assert.deepStrictEqual(R({ coveredTo: '' }, '2026-11-01', ''), { from: T212.EXPORT_FIRST_FROM, to: '2016-12-30' });
+  assert.deepStrictEqual(R({ coveredTo: '' }, '2026-11-01', '2024-03-10'), { from: '2024-03-10', to: '2025-03-09' });
+  assert.deepStrictEqual(R({ coveredTo: '2025-03-09' }, '2026-11-01', '2024-03-10'), { from: '2025-03-02', to: '2026-03-01' });
   assert.deepStrictEqual(R({ coveredTo: '2026-10-01' }, '2026-11-01'), { from: '2026-09-24', to: '2026-11-01' });
   assert.deepStrictEqual(R({ coveredTo: '2026-11-05' }, '2026-11-01'), { from: '2026-10-29', to: '2026-11-01' });
 });
@@ -113,13 +119,13 @@ test('t212 export: a request asks for the period and the data the report format 
   const client = fakeClient(['Queued']);
   const d = deps(client);
   const results = BS.T212Export.requestAndSchedule(d);
-  assert.deepStrictEqual(results, [{ connection: 'trading212-alex', status: 'requested', from: T212.EXPORT_FIRST_FROM, to: '2026-11-01' }]);
+  assert.deepStrictEqual(results, [{ connection: 'trading212-alex', status: 'requested', from: FIRST, to: '2026-11-01' }]);
   assert.deepStrictEqual(client.calls.requests, [{
     dataIncluded: { includeDividends: true, includeInterest: true, includeOrders: false, includeTransactions: true },
-    timeFrom: T212.EXPORT_FIRST_FROM + 'T00:00:00Z', timeTo: '2026-11-01T04:10:00.000Z'
+    timeFrom: FIRST + 'T00:00:00Z', timeTo: '2026-11-01T04:10:00Z'
   }]);
   assert.deepStrictEqual(JSON.parse(d.props.map[STATE_PROP]).pending,
-    { reportId: 42, from: T212.EXPORT_FIRST_FROM, to: '2026-11-01', requestedAt: '2026-11-01T04:10:00.000Z', checks: 0 });
+    { reportId: 42, from: FIRST, to: '2026-11-01', requestedAt: '2026-11-01T04:10:00.000Z', checks: 0 });
   assert.deepStrictEqual(d.triggers.log, ['after ' + A.REPORT_FETCH_HANDLER + ' ' + A.REPORT_FETCH_AFTER_MS]);
   // Asking again replaces the pending report and leaves exactly one check scheduled.
   BS.T212Export.requestAndSchedule(d);
@@ -146,12 +152,12 @@ test('t212 export: a check waits while the report is built, then saves it to the
   const client = fakeClient(['Queued', 'Running', 'Finished']);
   const d = deps(client);
   BS.T212Export.requestAndSchedule(d);
-  assert.deepStrictEqual(BS.T212Export.fetchAndSchedule(d), { results: [{ connection: 'trading212-alex', status: 'waiting' }], again: true });
+  assert.deepStrictEqual(BS.T212Export.fetchAndSchedule(d), { results: [{ connection: 'trading212-alex', status: 'waiting' }], again: true, more: [], requested: [] });
   assert.strictEqual(BS.T212Export.fetchAndSchedule(d).again, true);
   assert.deepStrictEqual(d.files, []);
   const done = BS.T212Export.fetchAndSchedule(d);
-  assert.deepStrictEqual(done, { results: [{ connection: 'trading212-alex', status: 'saved' }], again: false });
-  const name = 'trading212-report-alex-' + T212.EXPORT_FIRST_FROM + '-to-2026-11-01.csv';
+  assert.deepStrictEqual(done, { results: [{ connection: 'trading212-alex', status: 'saved' }], again: false, more: [], requested: [] });
+  const name = 'trading212-report-alex-' + FIRST + '-to-2026-11-01.csv';
   assert.deepStrictEqual(d.files, [{ id: 'folder-1', name, text: REPORT }]);
   assert.deepStrictEqual(client.calls.downloads, ['https://storage.example/r.csv?sig=abc']);
   const state = JSON.parse(d.props.map[STATE_PROP]);
@@ -160,7 +166,7 @@ test('t212 export: a check waits while the report is built, then saves it to the
   // Every check cleared the one before; none is left once the report is saved.
   assert.deepStrictEqual(d.triggers.list(), []);
   // Nothing pending: a stray check does nothing; the next request starts a week before the saved end.
-  assert.deepStrictEqual(BS.T212Export.fetchPending(d), { results: [], again: false });
+  assert.deepStrictEqual(BS.T212Export.fetchPending(d), { results: [], again: false, more: [] });
   BS.T212Export.request(d);
   assert.strictEqual(client.calls.requests[1].timeFrom, '2026-10-25T00:00:00Z');
 });
@@ -170,7 +176,7 @@ test('t212 export: a failed or cancelled report ends the wait without moving the
     const d = deps(fakeClient([status]));
     BS.T212Export.requestAndSchedule(d);
     const out = BS.T212Export.fetchAndSchedule(d);
-    assert.deepStrictEqual(out, { results: [{ connection: 'trading212-alex', status: 'failed: Trading 212 report ' + status.toLowerCase() }], again: false });
+    assert.deepStrictEqual(out, { results: [{ connection: 'trading212-alex', status: 'failed: Trading 212 report ' + status.toLowerCase() }], again: false, more: [], requested: [] });
     const state = JSON.parse(d.props.map[STATE_PROP]);
     assert.deepStrictEqual([state.pending, state.coveredTo], [null, '']);
   });
@@ -185,7 +191,7 @@ test('t212 export: checks stop after the limit (also when they fail); the report
   assert.strictEqual(out.again, false);
   assert.match(out.results[0].status, new RegExp('^gave up after ' + A.REPORT_MAX_CHECKS + ' checks'));
   assert.deepStrictEqual(d.triggers.list(), []);
-  assert.deepStrictEqual(BS.T212Export.fetchPending(d), { results: [], again: false });
+  assert.deepStrictEqual(BS.T212Export.fetchPending(d), { results: [], again: false, more: [] });
   assert.strictEqual(lists, A.REPORT_MAX_CHECKS);
   assert.match(BS.T212Export.statusLine(d.props, CONN), /no more checks until the next request/);
 });
@@ -198,7 +204,7 @@ test('t212 export: status shows the folder, the saved period, a pending report a
   assert.match(BS.T212Export.statusLine(d.props, CONN), /: set; none saved yet; requested 2026-11-01 04:10 UTC, 0 checks$/);
   BS.T212Export.fetchAndSchedule(d);
   const line = BS.T212Export.statusLine(d.props, CONN);
-  assert.strictEqual(line, 'Trading 212 (alex) report export - ' + FOLDER_PROP + ': set; last saved 2026-11-01 (' + T212.EXPORT_FIRST_FROM + ' to 2026-11-01)');
+  assert.strictEqual(line, 'Trading 212 (alex) report export - ' + FOLDER_PROP + ': set; last saved 2026-11-01 (' + FIRST + ' to 2026-11-01)');
   ['k1', 's1', 'folder-1', 'storage.example'].forEach((secret) => assert.ok(!line.includes(secret)));
 });
 
@@ -251,7 +257,7 @@ test('t212 export: requests and checks run under the script lock; a busy lock re
   d.withLock = busy;
   assert.throws(() => BS.T212Export.requestAndSchedule(d), /Another sync/);
   assert.strictEqual(client.calls.requests.length, 1);
-  assert.deepStrictEqual(BS.T212Export.fetchAndSchedule(d), { results: [], again: true, busy: true });
+  assert.deepStrictEqual(BS.T212Export.fetchAndSchedule(d), { results: [], again: true, more: [], requested: [], busy: true });
   assert.strictEqual(client.calls.lists, 0);
   assert.strictEqual(JSON.parse(d.props.map[STATE_PROP]).pending.checks, 0);
   assert.deepStrictEqual(d.triggers.list().map((t) => t.handler), [A.REPORT_FETCH_HANDLER]);
@@ -296,4 +302,39 @@ test('t212 client: a download follows redirects itself and sends the key only to
   requests.length = 0;
   assert.throws(() => client.download('https://live.trading212.com/loop'), /redirects too often/);
   assert.strictEqual(requests.length, T212.MAX_REDIRECTS + 1);
+});
+
+// --- Trading 212 refuses reports longer than a year (HTTP 400): the history comes one year at a time ---
+
+test('t212 export: a long history is fetched one year per report, each requested as soon as the one before is saved', () => {
+  const client = fakeClient(['Finished']);
+  const d = deps(client);
+  d.firstDate = () => '2024-03-10';
+  BS.T212Export.requestAndSchedule(d);
+  assert.deepStrictEqual(client.calls.requests.map((r) => [r.timeFrom, r.timeTo]), [['2024-03-10T00:00:00Z', '2025-03-09T23:59:59Z']]);
+  const first = BS.T212Export.fetchAndSchedule(d);
+  assert.deepStrictEqual([first.more, first.requested.map((r) => [r.status, r.from, r.to])],
+    [['trading212-alex'], [['requested', '2025-03-02', '2026-03-01']]]);
+  assert.deepStrictEqual(d.triggers.list().map((t) => t.handler), [A.REPORT_FETCH_HANDLER]);
+  BS.T212Export.fetchAndSchedule(d);
+  const last = BS.T212Export.fetchAndSchedule(d);
+  assert.deepStrictEqual(last.more, []);
+  assert.deepStrictEqual(client.calls.requests.map((r) => r.timeFrom.slice(0, 10)), ['2024-03-10', '2025-03-02', '2026-02-22']);
+  assert.strictEqual(client.calls.requests[2].timeTo, '2026-11-01T04:10:00Z');
+  assert.deepStrictEqual(d.files.map((f) => f.name), [
+    'trading212-report-alex-2024-03-10-to-2025-03-09.csv',
+    'trading212-report-alex-2025-03-02-to-2026-03-01.csv',
+    'trading212-report-alex-2026-02-22-to-2026-11-01.csv'
+  ]);
+  assert.strictEqual(JSON.parse(d.props.map[STATE_PROP]).coveredTo, '2026-11-01');
+  assert.deepStrictEqual(d.triggers.list(), []);
+});
+
+test('http: an error body without a message is shown, shortened, so a 400 says what was wrong', () => {
+  const http = (text) => BS.Http.create({ fetch: () => ({ getResponseCode: () => 400, getContentText: () => text }), sleep: () => {} });
+  assert.throws(() => http('{"code":"BadFilteringArguments","detail":"Time range too long"}').request({ method: 'POST', url: 'u' }),
+    /HTTP 400: \{"code":"BadFilteringArguments","detail":"Time range too long"\}/);
+  assert.throws(() => http('Bad filtering arguments').request({ method: 'POST', url: 'u' }), /HTTP 400: Bad filtering arguments/);
+  assert.throws(() => http('').request({ method: 'POST', url: 'u' }), /HTTP 400: request failed/);
+  assert.ok(String((() => { try { http('x'.repeat(1000)).request({ method: 'GET', url: 'u' }); } catch (e) { return e.message; } })()).length < 400);
 });

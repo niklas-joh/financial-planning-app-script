@@ -252,10 +252,12 @@ uploaded yourself (see "CSV import").
 4. *Bank Sync > Request Trading 212 report* does the same now (it replaces a report still pending); after about 5
    minutes run *Import CSV files* to apply it.
 
-- Period: the first report covers the full history (from 2016-01-01), which names every `WITHDRAW` and `DEPOSIT`
-  still in `unclassified_transactions`; each later one starts 7 days before the last saved report ended, so a missed
-  month is caught up and the overlap changes nothing (same ids). The report includes cash transactions, interest and
-  dividends, not orders (they are not imported).
+- Period: Trading 212 builds a report for at most one year (a longer period is refused with HTTP 400), so the history
+  comes one year at a time. The first report starts at the oldest Trading 212 row on your tabs; as soon as a report is
+  saved and ends before today, the next year is requested in the same run, so the whole history arrives within about
+  ten minutes per year, and names every `WITHDRAW` and `DEPOSIT` still in `unclassified_transactions`. Each report
+  starts 7 days before the last one ended, so a missed month is caught up and the overlap changes nothing (same ids).
+  The report includes cash transactions, interest and dividends, not orders (they are not imported).
 - The state per key is in `T212_EXPORT_<HOLDER>` (report id, period, checks, the last saved file and the last error;
   dates only, never the download link). Delete it to start again from the full history. *Show status* shows per key
   whether the exports folder is set, the last saved report, a pending one and the last error, and whether the monthly
