@@ -1,0 +1,15 @@
+# Development: build from the repo, mount the runtime folder (~/categoriser).
+# The scheduled job uses deploy/docker-compose.runtime.yml (copied to ~/categoriser).
+services:
+  categoriser:
+    build: .
+    image: categoriser:local
+    env_file: ${HOME}/categoriser/.env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials/service-account.json
+    volumes:
+      - ${HOME}/categoriser/credentials:/app/credentials:ro
+      - ${HOME}/categoriser/data:/app/data
+      - ${HOME}/categoriser/models:/app/models
+    command: ["python", "-m", "categoriser.run"]
+    restart: "no"

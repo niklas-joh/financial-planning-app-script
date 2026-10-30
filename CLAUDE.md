@@ -40,6 +40,24 @@ folder. The rules above about load order and `src/`-prefixed `filePushOrder`
 entries apply to it too. CI runs its tests in the `Tests (bank-sync)` job.
 Current state, phases and deploy rules: `docs/BANK_SYNC_ROADMAP.md` (read it first).
 
+### `bank-sync/categoriser/` (Python, separate from Apps Script)
+
+Python job that reads the Bank Sync sheet's `transactions` tab and writes only to a
+`categorised` tab (never to `transactions`; rows with `reviewed` = TRUE are never
+overwritten). Not pushed with clasp. Details: `bank-sync/categoriser/README.md`.
+
+- **Secrets and data live outside the repo** in `~/categoriser/` (`.env`, service-account
+  key, `data/`, `models/`, `logs/`). Never add them to the repo; the pre-commit hook
+  blocks CSVs, `.joblib`, `.env*` and credential files.
+- **Runs daily at 06:15** via launchd (`lu.niklas.categoriser`) from `~/categoriser/`,
+  using the Docker image `categoriser:local`.
+- **Deploying = re-running `bank-sync/categoriser/scripts/install-schedule.sh`.** The image
+  is a snapshot: after changing `bank-sync/categoriser/src/**`, `pyproject.toml`,
+  `Dockerfile`, `scripts/run-scheduled.sh`, `deploy/*` or the plist template, nothing
+  changes in the scheduled job until that script is re-run (from the branch you want
+  live). Apps Script changes never need it.
+- Tests: `pytest` in `bank-sync/categoriser/` (no network).
+
 ## Conventions
 
 - Principles: see `docs/DEVELOPMENT_PRINCIPLES.md` (KISS, YAGNI, SRP, DRY).

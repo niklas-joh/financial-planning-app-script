@@ -1,0 +1,11 @@
+# Secrets and data are mounted at runtime, never baked into the image.
+.env
+credentials/
+data/
+models/
+logs/
+.venv/
+**/__pycache__/
+.pytest_cache/
+*.csv
+*.joblib

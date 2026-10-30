@@ -41,3 +41,16 @@ secrets.*
 # Google OAuth client secrets and clasp login tokens
 client_secret*.json
 .clasprc.json
+
+# Categoriser (Python). Repo is PUBLIC: no secrets, transaction data or models.
+bank-sync/categoriser/.env
+bank-sync/categoriser/credentials/
+bank-sync/categoriser/data/
+bank-sync/categoriser/models/
+bank-sync/categoriser/logs/
+*.csv
+*.joblib
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
