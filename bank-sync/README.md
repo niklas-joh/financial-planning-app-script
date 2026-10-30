@@ -253,9 +253,12 @@ uploaded yourself (see "CSV import").
    minutes run *Import CSV files* to apply it.
 
 - Period: Trading 212 builds a report for at most one year (a longer period is refused with HTTP 400), so the history
-  comes one year at a time. The first report starts at the oldest Trading 212 row on your tabs; as soon as a report is
-  saved and ends before today, the next year is requested in the same run, so the whole history arrives within about
-  ten minutes per year, and names every `WITHDRAW` and `DEPOSIT` still in `unclassified_transactions`. Each report
+  comes one year at a time. The first report starts at the oldest Trading 212 row on your tabs (all of it once *Show
+  status* says the Trading 212 history is complete); as soon as a report is saved and ends before today, the next year
+  is requested in the same run, so the whole history arrives within about ten minutes per year, and names every
+  `WITHDRAW` and `DEPOSIT` still in `unclassified_transactions`. If that request fails (e.g. a rate limit), each check
+  retries it, at most 6 times; then *Show status* says the older history stopped and *Request Trading 212 report*
+  continues it. Each report
   starts 7 days before the last one ended, so a missed month is caught up and the overlap changes nothing (same ids).
   The report includes cash transactions, interest and dividends, not orders (they are not imported).
 - The state per key is in `T212_EXPORT_<HOLDER>` (report id, period, checks, the last saved file and the last error;

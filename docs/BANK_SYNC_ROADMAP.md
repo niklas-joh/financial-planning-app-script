@@ -613,8 +613,11 @@ hand, with a manual option, and save it to the owner's own Drive folder ("Tradin
 - Period: at most `TRADING212.EXPORT_MAX_DAYS` (365) per report. Seen live on 2026-10-30: a request from 2016-01-01 to
   the request day got HTTP 400 (the error said only "request failed", because the body has no `message`; `lib/http`
   now shows the body instead), matching the app export's one-year cap. So the first report starts at the connection's
-  oldest stored row (`EXPORT_FIRST_FROM` only when there is none) and covers a year; when a saved report ends before
-  today, the same check requests the next year at once, until the history reaches today. Every report starts 7 days
+  oldest stored row (`T212Export.oldestDate`; `EXPORT_FIRST_FROM` only when there is none; it reaches back as far as the
+  history backfill has, which is complete live) and covers a year; when a saved report ends before today, the same
+  check requests the next year at once, until the history reaches today. A failed follow-up request is retried with
+  each check (`catchUp` in the state counts the failures, at most `REPORT_MAX_CHECKS`), then *Show status* says the
+  catch-up stopped and a manual request continues it (review #89). Every report starts 7 days
   before the last saved end, so a missed month catches up. `timeTo` is the end of the period's last day, or the
   request time to the second when it ends today.
 - Triggers: *Enable daily sync* also creates a monthly trigger (`triggerT212ReportRequest`, day 1, 05:00-06:00);

@@ -151,10 +151,7 @@
     /** Oldest stored booking date of a connection's rows (all three tabs, read once per run), or ''. */
     const firstDate = function (c) {
       if (!rows) rows = transactionsStore(SpreadsheetApp.getActiveSpreadsheet(), formatDate).load();
-      return rows.reduce(function (first, t) {
-        const date = t.connection === c.key ? String(t.bookingDate || '') : '';
-        return date && (!first || date < first) ? date : first;
-      }, '');
+      return ns.T212Export.oldestDate(rows, c.key);
     };
     return {
       connections: ns.T212Credentials.connections(wired.props).filter(function (c) { return ns.T212Credentials.isComplete(wired.props, c); }),

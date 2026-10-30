@@ -338,3 +338,48 @@ test('http: an error body without a message is shown, shortened, so a 400 says w
   assert.throws(() => http('').request({ method: 'POST', url: 'u' }), /HTTP 400: request failed/);
   assert.ok(String((() => { try { http('x'.repeat(1000)).request({ method: 'GET', url: 'u' }); } catch (e) { return e.message; } })()).length < 400);
 });
+
+test('t212 export: a failed request for the next year is retried with each check, then stops and says so (#89)', () => {
+  let failFrom = 2;
+  let calls = 0;
+  const client = fakeClient(['Finished']);
+  const real = client.requestReport;
+  client.requestReport = (body) => { calls++; if (calls >= failFrom) throw BS.Errors.http(429, 'Limited: 1 / 30s', ''); return real(body); };
+  const d = deps(client);
+  d.firstDate = () => '2024-03-10';
+  BS.T212Export.requestAndSchedule(d);
+  // The first year is saved; the request for the next one fails: a check stays scheduled to retry it.
+  const saved = BS.T212Export.fetchAndSchedule(d);
+  assert.deepStrictEqual([saved.more, saved.requested.map((r) => r.status.slice(0, 16))], [['trading212-alex'], ['error: HttpError']]);
+  assert.strictEqual(JSON.parse(d.props.map[STATE_PROP]).catchUp, 1);
+  assert.deepStrictEqual(d.triggers.list().map((t) => t.handler), [A.REPORT_FETCH_HANDLER]);
+  assert.match(BS.T212Export.statusLine(d.props, CONN), /older history: next period retried with the next check \(1 failed\)/);
+  // The retry succeeds and the catch-up goes on from where it stopped.
+  failFrom = Infinity;
+  const retried = BS.T212Export.fetchAndSchedule(d);
+  assert.deepStrictEqual(retried.requested.map((r) => [r.status, r.from]), [['requested', '2025-03-02']]);
+  assert.strictEqual(JSON.parse(d.props.map[STATE_PROP]).catchUp, null);
+
+  // A catch-up whose requests keep failing stops after the check limit, without a trigger left.
+  const stuck = deps(fakeClient(['Finished'], { requestReport: () => { throw BS.Errors.http(500, 'down', ''); } }));
+  stuck.props.map[STATE_PROP] = JSON.stringify({ pending: null, coveredTo: '2025-03-09', saved: null, error: '', catchUp: 0 });
+  for (let i = 0; i < A.REPORT_MAX_CHECKS; i++) BS.T212Export.fetchAndSchedule(stuck);
+  assert.strictEqual(JSON.parse(stuck.props.map[STATE_PROP]).catchUp, A.REPORT_MAX_CHECKS);
+  assert.deepStrictEqual(stuck.triggers.list(), []);
+  assert.deepStrictEqual(BS.T212Export.fetchAndSchedule(stuck).requested, []);
+  assert.match(BS.T212Export.statusLine(stuck.props, CONN),
+    new RegExp('older history: stopped after ' + A.REPORT_MAX_CHECKS + ' failed requests; Request Trading 212 report continues it'));
+});
+
+test('t212 export: the first report starts at the oldest dated row of that connection, on any tab (#90)', () => {
+  const rows = [
+    { connection: 'trading212-alex', bookingDate: '2025-02-01' },
+    { connection: 'trading212-alex', bookingDate: '' },
+    { connection: 'trading212-alex', bookingDate: '2024-07-15' },
+    { connection: 'csv-alex', bookingDate: '2020-01-01' },
+    { connection: 'trading212-alex-isa', bookingDate: '2023-01-01' }
+  ];
+  assert.strictEqual(BS.T212Export.oldestDate(rows, 'trading212-alex'), '2024-07-15');
+  assert.strictEqual(BS.T212Export.oldestDate(rows, 'trading212-other'), '');
+  assert.strictEqual(BS.T212Export.oldestDate([], 'trading212-alex'), '');
+});

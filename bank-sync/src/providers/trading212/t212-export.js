@@ -30,6 +30,8 @@
    * @property {string} coveredTo - Last day covered by a saved report, or '' before the first.
    * @property {?{file: string, from: string, to: string, at: string}} saved - The last saved report.
    * @property {string} error - The last problem (redacted), or ''.
+   * @property {?number} catchUp - While older history is still being fetched (a saved report ended before today):
+   *   the follow-up requests that failed in a row, retried with each check up to `REPORT_MAX_CHECKS`; null otherwise.
    */
 
   /**
@@ -56,7 +58,7 @@
 
   /** @returns {ExportState} State before any report. */
   function emptyState() {
-    return { pending: null, coveredTo: '', saved: null, error: '' };
+    return { pending: null, coveredTo: '', saved: null, error: '', catchUp: null };
   }
 
   /**
@@ -121,6 +123,28 @@
   }
 
   /**
+   * @param {ExportState} state - State.
+   * @returns {boolean} Whether older history is still to be requested and the follow-up has retries left.
+   */
+  function catchingUp(state) {
+    return typeof state.catchUp === 'number' && state.catchUp < A.REPORT_MAX_CHECKS;
+  }
+
+  /**
+   * Where the first report starts: the oldest booking date among a connection's stored rows. It reaches back as
+   * far as the Trading 212 history backfill has (*Show status*: "history: complete").
+   * @param {Array<{connection: string, bookingDate: string}>} rows - Stored rows (all three tabs).
+   * @param {string} connectionKey - Connection, e.g. 'trading212-niklas'.
+   * @returns {string} ISO date, or '' when the connection has no dated row.
+   */
+  function oldestDate(rows, connectionKey) {
+    return rows.reduce(function (first, t) {
+      const date = t.connection === connectionKey ? String(t.bookingDate || '') : '';
+      return date && (!first || date < first) ? date : first;
+    }, '');
+  }
+
+  /**
    * @param {import('../../core/config.js').ConnectionConfig} connection - Trading 212 connection.
    * @param {PendingReport} report - The report.
    * @returns {string} File name, e.g. `trading212-report-niklas-2016-01-01-to-2026-11-01.csv`.
@@ -163,10 +187,12 @@
         if (out.reportId === undefined || out.reportId === null) throw ns.Errors.create('DataError', 'Trading 212 returned no report id');
         state.pending = { reportId: out.reportId, from: range.from, to: range.to, requestedAt: new Date(deps.nowMs()).toISOString(), checks: 0 };
         state.error = '';
+        state.catchUp = null;
         states.save(state);
         return { connection: c.key, status: 'requested', from: range.from, to: range.to };
       } catch (e) {
         state.error = describe(e);
+        if (typeof state.catchUp === 'number') state.catchUp++;
         states.save(state);
         return { connection: c.key, status: 'error: ' + state.error };
       }
@@ -209,7 +235,8 @@
    * @param {ExportDeps} deps - Services.
    * @returns {{results: Array<{connection: string, status: string}>, again: boolean, more: Array<string>}} One
    *   result per connection with a pending report, whether a later check is needed, and the connections whose
-   *   saved report ended before today (the history continues with the next period).
+   *   saved report ended before today, or whose request for the next period failed and has retries left (the
+   *   history continues with the next period).
    */
   function fetchPending(deps) {
     let again = false;
@@ -218,7 +245,10 @@
     deps.connections.forEach(function (c) {
       const states = store(deps.props, c);
       const state = states.load();
-      if (!state.pending || state.pending.checks >= A.REPORT_MAX_CHECKS) return;
+      if (!state.pending || state.pending.checks >= A.REPORT_MAX_CHECKS) {
+        if (catchingUp(state)) more.push(c.key);
+        return;
+      }
       let status;
       try {
         status = check(deps, c, state);
@@ -231,8 +261,9 @@
         if (state.pending.checks < A.REPORT_MAX_CHECKS) again = true;
         else status = 'gave up after ' + state.pending.checks + ' checks (' + status + ')';
       }
+      if (status === 'saved') state.catchUp = state.coveredTo < deps.todayIso() ? 0 : null;
       states.save(state);
-      if (status === 'saved' && state.coveredTo < deps.todayIso()) more.push(c.key);
+      if (catchingUp(state) && !state.pending) more.push(c.key);
       results.push({ connection: c.key, status: status });
     });
     return { results: results, again: again, more: more };
@@ -250,12 +281,13 @@
 
   /**
    * @param {ExportDeps} deps - Services.
-   * @returns {boolean} Whether a connection has a pending report with checks left.
+   * @returns {boolean} Whether a connection has a pending report with checks left, or older history to request
+   *   with retries left.
    */
   function hasOpenReport(deps) {
     return deps.connections.some(function (c) {
-      const pending = store(deps.props, c).load().pending;
-      return Boolean(pending) && pending.checks < A.REPORT_MAX_CHECKS;
+      const state = store(deps.props, c).load();
+      return state.pending ? state.pending.checks < A.REPORT_MAX_CHECKS : catchingUp(state);
     });
   }
 
@@ -330,12 +362,17 @@
       parts.push('requested ' + state.pending.requestedAt.slice(0, 16).replace('T', ' ') + ' UTC, ' + state.pending.checks + ' checks' +
         (state.pending.checks >= A.REPORT_MAX_CHECKS ? ', no more checks until the next request' : ''));
     }
+    if (!state.pending && typeof state.catchUp === 'number') {
+      parts.push(catchingUp(state)
+        ? 'older history: next period retried with the next check (' + state.catchUp + ' failed)'
+        : 'older history: stopped after ' + state.catchUp + ' failed requests; Request Trading 212 report continues it');
+    }
     if (state.error) parts.push('last error: ' + state.error);
     return ns.Connections.label(connection) + ' report export - ' + parts.join('; ');
   }
 
   ns.T212Export = {
-    DATA_INCLUDED: DATA_INCLUDED, store: store, rangeFor: rangeFor, fileName: fileName, request: request, fetchPending: fetchPending,
+    DATA_INCLUDED: DATA_INCLUDED, store: store, rangeFor: rangeFor, oldestDate: oldestDate, fileName: fileName, request: request, fetchPending: fetchPending,
     requestAndSchedule: requestAndSchedule, fetchAndSchedule: fetchAndSchedule, summarize: summarize, statusLine: statusLine
   };
 })(globalThis.BankSync);
