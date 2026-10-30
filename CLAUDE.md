@@ -113,6 +113,10 @@ use it after *removing* errors; never baseline a new error.
   `enhancement` or `nits`), and links them from its PR comment. The session that
   opened the PR fixes them on the same branch; otherwise the owner comments
   `@claude` on the issue. Close the issue when the fix lands.
+- **Report review fixes on the PR.** After pushing fixes for review findings (issues
+  or review comments), post one comment on the PR that lists each finding with its
+  issue number and the commit that fixed it, and each finding you skipped with the
+  reason. Do this even when nothing was skipped.
 - **Don't re-run the review yourself** (no `workflow_dispatch`, no draft/ready
   toggling) unless the owner asks. To get a fresh review after big changes, the
   owner converts the PR to draft and marks it ready again.
