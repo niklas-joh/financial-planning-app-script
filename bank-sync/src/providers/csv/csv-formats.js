@@ -12,7 +12,8 @@
 (function (ns) {
   /**
    * @typedef {Object} CsvAccountInfo
-   * @property {string} number - Account number (hashed into the account id, masked on the tabs), or '' when the
+   * @property {string} number - Account number (hashed into the account id as found, so the id does not depend on masking; on the
+   *   tabs through `Redact.maskAccount`), or '' when the
    *   export has none.
    * @property {string} name - Account name; hashed into the account id when there is no number.
    * @property {string} currency - Account currency.
@@ -25,10 +26,10 @@
    * @property {number} amount - Signed: money out is negative.
    * @property {string} [currency] - The row's currency, when the file states it per row (else the account's).
    * @property {CsvAccountInfo} [account] - The row's account, for a format without a file-level `account`.
-   * @property {string} counterparty - Other party, or '' (account numbers are masked later).
-   * @property {string} description - Text for the transactions tab (account numbers are masked later).
+   * @property {string} counterparty - Other party, or '' (account numbers are masked later when masking is on).
+   * @property {string} description - Text for the transactions tab (account numbers are masked later when masking is on).
    * @property {string} [category] - Kind of movement or spending category, or ''.
-   * @property {string} [counterpartyAccount] - The other party's account (masked later), or ''.
+   * @property {string} [counterpartyAccount] - The other party's account (masked later when masking is on), or ''.
    * @property {string} [counterpartyBank] - The other party's bank, or ''.
    * @property {string} [reference] - Payment reference (e.g. end-to-end id), or ''.
    * @property {Object<string, string>} [extra] - Further parsed parts, kept on the raw tab only.

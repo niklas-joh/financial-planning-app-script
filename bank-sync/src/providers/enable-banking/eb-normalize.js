@@ -10,8 +10,9 @@
    * bank (`accountName`). `bank` and `connection` are stamped later by the provider.
    * @param {Object} raw - AccountResource (needs `uid` and `currency`).
    * @param {string} [detailsAt] - ISO date-time the details were read, '' if unknown.
-   * @returns {import('../bank-provider.js').Account} Normalized account; IBAN masked, every API
-   *   field kept (flattened) in `apiFields`.
+   * @returns {import('../bank-provider.js').Account} Normalized account; IBAN through
+   *   `Redact.maskAccount` (masked only when `MASK_ACCOUNT_NUMBERS` is on), every API field kept
+   *   (flattened) in `apiFields`.
    * @throws {Error} If `uid` is missing.
    */
   function normalizeAccount(raw, detailsAt) {
@@ -24,7 +25,7 @@
       holderName: raw.name || '',
       accountName: raw.details || '',
       currency: raw.currency || '',
-      ibanMasked: ns.Redact.maskIban(raw.account_id && raw.account_id.iban),
+      ibanMasked: ns.Redact.maskAccount(raw.account_id && raw.account_id.iban),
       accountType: raw.cash_account_type || '',
       product: raw.product || '',
       detailsAt: detailsAt || '',
@@ -141,7 +142,7 @@
    * as unique and immutable per account), else `transaction_id`, else a content hash
    * with an occurrence counter so genuinely identical rows stay distinct.
    * Cancelled, rejected, scheduled and unknown-status rows are skipped. Every API field is
-   * kept (flattened, account numbers masked) in `apiFields`; callers strip it before storing.
+   * kept (flattened, account numbers through `Redact.maskAccount`) in `apiFields`; callers strip it before storing.
    * @param {Array<Object>} rawList - Enable Banking transactions (all pages of one fetch).
    * @param {string} accountId - Account the transactions belong to.
    * @returns {{transactions: Array<import('../bank-provider.js').Transaction>, skipped: number}}

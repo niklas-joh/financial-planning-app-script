@@ -104,7 +104,8 @@
   /**
    * Adds details from another source (e.g. merchant and category from a CSV report) to stored rows
    * with the same provider and transaction id. Only empty fields are filled: a value the provider
-   * itself gave (e.g. a dividend's instrument as counterparty) is never replaced. The exception is
+   * itself gave (e.g. a dividend's instrument as counterparty) is never replaced, except a value still holding a
+   * masked number (`Redact.isMasked`, stored while `MASK_ACCOUNT_NUMBERS` was on), which the detail rewrites. The exception is
    * `classification`, which only reports give: the report's current one replaces a stored one. Rows without a
    * matching detail, and details without a matching row, are left alone; applying the same details
    * again changes nothing.
@@ -121,7 +122,9 @@
       const d = byKey[t.provider + '|' + t.transactionId];
       if (!d) return t;
       const next = Object.assign({}, t);
-      DETAIL_FIELDS.forEach(function (field) { if (isEmpty(next[field]) && !isEmpty(d[field])) next[field] = d[field]; });
+      DETAIL_FIELDS.forEach(function (field) {
+        if ((isEmpty(next[field]) || ns.Redact.isMasked(next[field])) && !isEmpty(d[field])) next[field] = d[field];
+      });
       // The report is the only source of a classification, so its current one wins (a rule change applies).
       if (!isEmpty(d.classification)) next.classification = d.classification;
       if (!changed(t, next)) return t;

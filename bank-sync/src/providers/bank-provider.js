@@ -12,11 +12,14 @@
    * @property {string} holderName - Account holder's name as the API reports it (Enable Banking `name`).
    * @property {string} accountName - Name set by the user or bank (Enable Banking `details`), or ''.
    * @property {string} currency - ISO 4217 code.
-   * @property {string} ibanMasked - IBAN reduced to last four characters, or ''.
+   * @property {string} ibanMasked - The account's IBAN or number through `Redact.maskAccount`: reduced to its last
+   *   four characters when `Config.MASK_ACCOUNT_NUMBERS` is on, else the full value; or ''. The name is kept so
+   *   sheets and formulas using the column still work; it holds the full value when masking is off (the default).
    * @property {string} accountType - Provider account type (e.g. ISO cash account type).
    * @property {string} product - Provider product name, or ''.
    * @property {string} detailsAt - ISO date-time the full details were last read, or ''.
-   * @property {Object<string,*>} [apiFields] - Every API field, flattened and IBAN-masked (raw tab).
+   * @property {Object<string,*>} [apiFields] - Every API field, flattened; account numbers masked only when
+   *   `MASK_ACCOUNT_NUMBERS` is on (raw tab).
    */
 
   /**
@@ -42,7 +45,7 @@
    * @property {string} connection - Label, as above.
    * @property {string} holderName - Label, as above.
    * @property {string} accountName - Label, as above.
-   * @property {string} ibanMasked - Label, as above.
+   * @property {string} ibanMasked - Label, as above (the full IBAN when masking is off; the name is kept).
    * @property {string} accountId
    * @property {string} transactionId
    * @property {string} bookingDate
@@ -56,9 +59,10 @@
    * @property {string} counterparty
    * @property {string} description
    * @property {string} [category] - Kind of movement or spending category (e.g. a card's merchant category), or ''.
-   * @property {string} [counterpartyAccount] - The other party's account, masked to its last four characters, or ''.
+   * @property {string} [counterpartyAccount] - The other party's account (masked to its last four characters only when
+   *   `MASK_ACCOUNT_NUMBERS` is on), or ''.
    * @property {string} [counterpartyBank] - The other party's bank, or ''.
-   * @property {string} [reference] - Payment reference (e.g. end-to-end id), masked like account numbers, or ''.
+   * @property {string} [reference] - Payment reference (e.g. end-to-end id), masked like account numbers when masking is on, or ''.
    * @property {Object<string,*>} [apiFields] - Every API field, flattened (raw tab only; never stored on `transactions`).
    */
 
@@ -111,7 +115,9 @@
   /**
    * @typedef {Object} BankProvider
    * @property {function(Object): Object} authorize - Starts user authorization.
-   * @property {function(Object=): Array<Account>} listAccounts - Optional `{outOfTime: function(): boolean}`.
+   * @property {function(Object=): Array<Account>} listAccounts - Optional `{outOfTime: function(): boolean,
+   *   refreshDetails: boolean}`; `refreshDetails` asks a provider that keeps account details to read them again
+   *   now, however fresh they are (used by *Re-process stored rows*).
    * @property {function(string): Array<Balance>} getBalances
    * @property {function(string, Object): Array<Transaction>} getTransactions - `(accountId, {dateFrom, dateTo})`.
    * @property {number} [maxWindowDays] - Longest date range one `getTransactions` call takes (default

@@ -20,6 +20,7 @@
     { key: 'connection', text: true, optional: true },
     { key: 'holderName', text: true, optional: true },
     { key: 'accountName', text: true, optional: true },
+    // Name kept for existing sheets and formulas; holds the full IBAN when MASK_ACCOUNT_NUMBERS is off.
     { key: 'ibanMasked', text: true, optional: true },
     { key: 'accountId', text: true },
     { key: 'transactionId', text: true },

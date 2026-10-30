@@ -159,6 +159,22 @@
   }
 
   /**
+   * Re-reads every Enable Banking connection's stored history and every CSV folder, so rows stored while
+   * `MASK_ACCOUNT_NUMBERS` was on are rewritten with full account numbers; lists the rows that stay masked.
+   * Leaves the Sync all last-run record alone.
+   */
+  function reprocess() {
+    guarded(function () {
+      const summary = withLock(function () {
+        const wired = ns.Container.services();
+        const sync = ns.Container.syncAllDeps(wired);
+        return ns.Reprocess.summarize(ns.Reprocess.run({ sync: sync, rawReader: sync.rawWriter }));
+      });
+      showSummary('Bank Sync: Re-process stored rows', summary);
+    });
+  }
+
+  /**
    * Asks Trading 212 for a report now (as the monthly trigger does); it is saved to the exports folder a
    * few minutes later by a one-off trigger.
    */
@@ -201,7 +217,7 @@
   }
 
   ns.Menu = {
-    connect: connect, syncAll: syncAll, importCsv: importCsv, requestT212Report: requestT212Report, status: status,
+    connect: connect, syncAll: syncAll, importCsv: importCsv, reprocess: reprocess, requestT212Report: requestT212Report, status: status,
     enableDailySync: enableDailySync, disableDailySync: disableDailySync
   };
 })(globalThis.BankSync);
@@ -214,6 +230,8 @@ function onOpen() {
     .addItem('Import CSV files', 'menuImportCsv')
     .addItem('Request Trading 212 report', 'menuRequestT212Report')
     .addItem('Show status', 'menuStatus')
+    .addSeparator()
+    .addItem('Re-process stored rows', 'menuReprocess')
     .addSeparator()
     .addItem('Enable daily sync', 'menuEnableDailySync')
     .addItem('Disable daily sync', 'menuDisableDailySync')
@@ -228,6 +246,9 @@ function menuSyncAll() { BankSync.Menu.syncAll(); }
 
 /** Menu entry: import the CSV files in the Drive folders now. */
 function menuImportCsv() { BankSync.Menu.importCsv(); }
+
+/** Menu entry: rewrite rows stored while account numbers were masked (re-fetch and re-import). */
+function menuReprocess() { BankSync.Menu.reprocess(); }
 
 /** Menu entry: ask Trading 212 for a report now; it is saved to the exports folder a few minutes later. */
 function menuRequestT212Report() { BankSync.Menu.requestT212Report(); }

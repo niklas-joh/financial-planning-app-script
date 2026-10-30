@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const BS = require('./load.js');
+const { withMasking } = require('./masking');
 const { fakeSheetBook } = require('./fake-sheet');
 
 const P = BS.CsvParse;
@@ -82,7 +83,7 @@ test('csv parse: dates follow the declared layout and must exist', () => {
 
 const normalize = (text) => BS.CsvNormalize.file(BS.CsvNormalize.detect(utf8(text)), CONN);
 
-test('csv bil: the account comes from the line above the header; the number is hashed and masked', () => {
+test('csv bil: the account comes from the line above the header; the number is hashed and masked', () => withMasking(BS, true, () => {
   const { accounts } = normalize(bil(ROWS.rent));
   assert.strictEqual(accounts.length, 1);
   const account = accounts[0];
@@ -93,9 +94,9 @@ test('csv bil: the account comes from the line above the header; the number is h
   assert.deepStrictEqual([account.provider, account.bank, account.connection, account.accountName, account.currency, account.ibanMasked],
     ['csv', 'BIL', 'csv-alex', 'Current Private', 'EUR', '****1234']);
   assert.throws(() => normalize(BIL_HEAD.slice(3).concat(ROWS.rent).join('\n')), /no account line/);
-});
+}));
 
-test('csv bil: signed amounts with thousands commas, dates, counterparty, numbers masked everywhere stored', () => {
+test('csv bil: signed amounts with thousands commas, dates, counterparty, numbers masked everywhere stored', () => withMasking(BS, true, () => {
   const t = normalize(bil(ROWS.rent, ROWS.pay, ROWS.card, ROWS.instant)).transactions;
   assert.deepStrictEqual(t.map((x) => [x.bookingDate, x.valueDate, x.amount, x.currency, x.status]), [
     ['2026-08-28', '2026-08-31', -824.5, 'EUR', 'booked'],
@@ -115,7 +116,7 @@ test('csv bil: signed amounts with thousands commas, dates, counterparty, number
   assert.ok(!stored.includes('4000000000001234') && !stored.includes('LU990000000000005678') && !stored.includes('LU120000000000001234'));
   assert.strictEqual(t[2].apiFields.Message, 'DEMO SHOP LUX 12/08/2026 10:58 ****1234');
   assert.strictEqual(t[1].apiFields.Amount, '8,828.03');
-});
+}));
 
 test('csv bil: ids are stable across files; identical rows stay distinct; a bad row names its record only', () => {
   const a = normalize(bil(ROWS.rent, ROWS.pay)).transactions.map((x) => x.transactionId);
@@ -137,7 +138,7 @@ test('csv detect: unknown headers are not guessed; an invalid UTF-8 decode falls
   assert.deepStrictEqual(asked, ['UTF-8', 'windows-1252']);
 });
 
-test('csv bil: the message is split on BIL labels only; a colon inside the remittance stays in it', () => {
+test('csv bil: the message is split on BIL labels only; a colon inside the remittance stays in it', () => withMasking(BS, true, () => {
   const msg = 'Credit Remittance Info: REFUND - 18 BENEFICIAIRE: 1111111111111 DATE CISS: 19.08.2026 By order of: DEMO FUND ' +
     'Paying bank: DEMOLULL - DEMO BANK End-to-end Identification: 22222222222222222 Payment initiation reference: NSCT0001';
   const p = BS.CsvBil.parts(msg);
@@ -156,7 +157,7 @@ test('csv bil: the message is split on BIL labels only; a colon inside the remit
   // Without any label: the whole message is the description and the BIL type the category.
   assert.deepStrictEqual(BS.CsvBil.describe('Payment order', 'Fee for July').description, 'Fee for July');
   assert.deepStrictEqual(BS.CsvBil.describe('Payment order', 'Fee for July').category, 'PAYMENT_ORDER');
-});
+}));
 
 test('csv bil: a label typed inside the remittance stays in it; the real labels after it still count', () => {
   const typed = BS.CsvBil.parts('Standing order Remittance Info: Meet At: the club Beneficiary: DEMO PERSON ' +
@@ -205,7 +206,7 @@ function folderRun(files, init) {
   return { props, wired, deps, rows: () => rows, raw, run: () => BS.SyncAll.run(deps) };
 }
 
-test('csv provider: Sync all imports the folder; the same files again add and update nothing', () => {
+test('csv provider: Sync all imports the folder; the same files again add and update nothing', () => withMasking(BS, true, () => {
   const files = [file('bil-august.csv', bil(ROWS.rent, ROWS.pay, ROWS.card)), file('notes.txt', 'not a csv')];
   const r = folderRun(files);
   const first = r.run();
@@ -219,7 +220,7 @@ test('csv provider: Sync all imports the folder; the same files again add and up
   const again = r.run();
   assert.deepStrictEqual([again.results[0].transactions.added, again.results[0].transactions.updated], [0, 0]);
   assert.strictEqual(r.rows().length, 3);
-});
+}));
 
 test('csv provider: an overlapping file adds only its new rows, also when both files stay in the folder', () => {
   const files = [file('a.csv', bil(ROWS.rent, ROWS.pay))];

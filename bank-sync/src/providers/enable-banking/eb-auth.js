@@ -63,7 +63,7 @@
    * Creates the auth flow.
    * @param {AuthDeps} deps - Injected services.
    * @returns {{begin: function(Object): {url: string, state: string}, complete: function(string, string): Object,
-   *   refreshStale: function(Object): Array<Object>}} Flow.
+   *   refreshStale: function(Object, function(): boolean=, boolean=): Array<Object>}} Flow.
    */
   function create(deps) {
     /**
@@ -157,15 +157,16 @@
        * @param {import('../../core/config.js').ConnectionConfig} connection - Connected login.
        * @param {function(): boolean} [outOfTime] - True once the shared time budget is spent; the
        *   remaining stale accounts are then left for the next sync.
+       * @param {boolean} [force] - Read every account's details now, however fresh (re-process).
        * @returns {Array<import('../bank-provider.js').Account>} The session's accounts, refreshed where due.
        * @throws {Error} AuthError if the connection has no session; HttpError 401/403 from the bank.
        */
-      refreshStale: function (connection, outOfTime) {
+      refreshStale: function (connection, outOfTime, force) {
         const session = deps.store.loadSession(connection.key);
         if (!session) throw ns.Errors.auth('Not authorized yet; connect first');
         let changed = false;
         const accounts = session.accounts.map(function (account) {
-          if (!isStale(account) || (outOfTime && outOfTime())) return account;
+          if ((!force && !isStale(account)) || (outOfTime && outOfTime())) return account;
           try {
             const fresh = keepAccounts([deps.client.getAccountDetails(account.accountId)], true)[0];
             changed = true;

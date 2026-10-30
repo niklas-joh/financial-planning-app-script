@@ -1,7 +1,8 @@
 /**
  * @fileoverview Pure: one CSV file to the normalized accounts and transactions, or (for a details
  * format) to details for rows another provider stores. Finds the file's
- * format by its header, masks account and card numbers in every text that is stored, and gives
+ * format by its header, masks account and card numbers in every text that is stored (when
+ * `MASK_ACCOUNT_NUMBERS` is on; see `Redact.maskAccount`), and gives
  * each row a stable id: the file's own id when it has one, else the date, a content hash and an
  * occurrence counter (so identical rows on the same day stay distinct). Exports cover whole days, so the same
  * or an overlapping file always yields the same ids and re-importing it changes nothing.
@@ -11,13 +12,13 @@
   const LONG_NUMBER = /\b\d{12,19}\b/g;
 
   /**
-   * Masks IBANs and long digit runs (card, account and personal id numbers) inside free text
-   * down to their last four characters.
+   * Passes IBANs and long digit runs (card, account and personal id numbers) inside free text
+   * through `Redact.maskAccount`: cut to their last four characters when masking is on, else unchanged.
    * @param {string} text - Text.
-   * @returns {string} Masked text.
+   * @returns {string} Text, masked when masking is on.
    */
   function maskNumbers(text) {
-    return String(text).replace(IBAN_IN_TEXT, ns.Redact.maskIban).replace(LONG_NUMBER, ns.Redact.maskIban);
+    return String(text).replace(IBAN_IN_TEXT, ns.Redact.maskAccount).replace(LONG_NUMBER, ns.Redact.maskAccount);
   }
 
   /**
@@ -47,7 +48,7 @@
   /**
    * @param {Object<string,string>} record - CSV record.
    * @param {Object<string,string>} [extra] - Parts the format parsed out of it, added as `parsed.<name>`.
-   * @returns {Object<string,*>} The record (and parts) as flat `apiFields`, trimmed and masked.
+   * @returns {Object<string,*>} The record (and parts) as flat `apiFields`, trimmed and masked (when masking is on).
    */
   function apiFields(record, extra) {
     const masked = {};
@@ -76,7 +77,7 @@
    * Turns a detected details file into details for another provider's rows.
    * @param {{format: import('./csv-formats.js').CsvFormat, parsed: Object}} found - From `detect` (kind 'details').
    * @returns {Array<import('../../core/txn-merge.js').Enrichment>} One per record that carries details, with its
-   *   `date` (for the last-read record); texts masked.
+   *   `date` (for the last-read record); texts masked when masking is on.
    * @throws {Error} DataError naming the record that cannot be read.
    */
   function details(found) {
@@ -119,7 +120,7 @@
       holderName: '',
       accountName: info.name,
       currency: info.currency,
-      ibanMasked: info.number ? ns.Redact.maskIban(info.number) : '',
+      ibanMasked: ns.Redact.maskAccount(info.number),
       accountType: '',
       product: info.name,
       detailsAt: ''

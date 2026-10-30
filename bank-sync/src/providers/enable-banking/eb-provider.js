@@ -56,7 +56,8 @@
         if (state.status && state.status !== 'AUTHORIZED') {
           throw ns.Errors.auth('Session status is ' + state.status + '; re-authorize');
         }
-        return deps.auth.refreshStale(deps.connection, options && options.outOfTime).map(stampAccount);
+        return deps.auth.refreshStale(deps.connection, options && options.outOfTime, Boolean(options && options.refreshDetails))
+          .map(stampAccount);
       },
 
       getBalances: function (accountId) {
