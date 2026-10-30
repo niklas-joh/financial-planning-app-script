@@ -7,7 +7,7 @@ imports, Node-testable pure logic). This file records what has been built, what 
 decided, and what comes next. Update it in the same PR that changes the state.
 
 Last updated: 2026-10-30 (account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
-rows*; Trading 212 report export, as it stands once merged and deployed; 6b Avanza CSV import live;
+rows*, live and re-processed; Trading 212 report export, as it stands once merged and deployed; 6b Avanza CSV import live;
 Avanza deposits and withdrawals stay on `investment_transactions`; B2 moved into a later classification engine;
 remaining work in order).
 
@@ -41,7 +41,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 9 | Avanza unofficial API (values, positions, cash) | Roadmap item only, not planned: see "Avanza" for the findings and what it would take |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
-| M1 | Account numbers in full: `MASK_ACCOUNT_NUMBERS` (default off), one masking helper, *Re-process stored rows* | Merged; live once deployed and re-processed (see "Account numbers") |
+| M1 | Account numbers in full: `MASK_ACCOUNT_NUMBERS` (default off), one masking helper, *Re-process stored rows* | Merged (#91), live since 2026-10-30: re-processed twice, nothing left masked (see "Live state") |
 | B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged; live once deployed (see "Trading 212 report export") |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
@@ -88,12 +88,19 @@ Owner decision: store IBANs and other account, card and reference numbers in ful
   tabs and the raw tabs: "cannot be recovered" (source no longer has them) or "run again" (time budget, failure).
   Tested end to end on a fake sheet: two runs leave every tab's row count and every id unchanged; the second
   updates nothing.
-- Deploy: push `bank-sync/` from `main`, reload the sheet, run *Re-process stored rows*, then once more to see
-  0 added / 0 updated. Record the counts and the "cannot be recovered" list (counts only) here in the next PR.
-  Not known yet: how far back Revolut and Danske serve history through Enable Banking; rows older than that keep
-  their masked API fields (their account label is still rewritten).
+- Deployed and re-processed on 2026-10-30 (see "Live state"). If masking is ever turned on and off again: push,
+  reload, run *Re-process stored rows* twice; the second run must show 0 added / 0 updated. Rows older than the
+  history a bank serves keep their masked API fields (their account label is still rewritten) and are listed.
 
 ## Live state (2026-10-30)
+
+- M1 (#91) deployed on 2026-10-30. First *Re-process stored rows*: `danske-bank-niklas` and `revolut-niklas` 0 added,
+  0 updated (their only masked value was the `ibanMasked` label, which is rewritten without counting as an update);
+  `csv-niklas` 0 added, 112 updated; `csv-t212-niklas` 0 added, 0 updated; "Raw tabs: 8 accounts, 9 balances, 1570
+  transactions"; "Details from reports: 0 transactions updated (8 read)"; "EUR conversion: 2 transactions converted";
+  "Still masked: none". Second run: every connection 0 added, 0 updated, the same raw tab counts, 0 converted,
+  "Still masked: none". So no ids changed, nothing was duplicated and nothing stayed masked: both banks still served
+  all stored history, and every CSV file was still in its folder.
 
 - 6b (#80) deployed on 2026-10-30. First *Sync all*: `csv-niklas` 27 added, 0 updated; "EUR conversion: 27 transactions
   converted, 2 waiting for today's rate"; *Show status* "avanza: 1 file, 27 transactions, 2025-10-27 to 2026-10-22",
