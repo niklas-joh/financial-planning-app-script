@@ -12,15 +12,18 @@
  * report has are required.
  */
 (function (ns) {
+  /** Card actions whose code does not start with `CARD_`: cashback, and the fee for a new card (seen live 2026-10-30). */
+  const OTHER_CARD_ACTIONS = ['SPENDING_CASHBACK', 'NEW_CARD_COST'];
+
   /**
    * Whether a report record is card spending: it names a merchant, or its action is a card action
-   * (`CARD_DEBIT`, a card refund, ...) or cashback.
+   * (`CARD_DEBIT`, `CARD_CREDIT` (a refund), `CARD_ATM_WITHDRAWAL`, ...), cashback or the card's fee.
    * @param {string} merchant - Merchant name or category ('' if none).
    * @param {string} action - Action as a code.
    * @returns {boolean} True for card spending.
    */
   function isCard(merchant, action) {
-    return Boolean(merchant) || action.indexOf('CARD_') === 0 || action === 'SPENDING_CASHBACK';
+    return Boolean(merchant) || action.indexOf('CARD_') === 0 || OTHER_CARD_ACTIONS.indexOf(action) !== -1;
   }
 
   /** Action codes of money moved between a bank account and Trading 212 (owner decision, 2026-10-26). */
@@ -46,15 +49,24 @@
     separator: ',',
     encodings: ['UTF-8'],
     columns: ['Action', 'Time (UTC)', 'ID', 'Total'],
+    /**
+     * @param {Object<string, string>} r - Record by column name.
+     * @returns {?import('../csv-formats.js').CsvDetail} Details for the API row with that ID, or null for a
+     *   dividend row (no ID).
+     * @throws {Error} DataError for any other row without an ID.
+     */
     row: function (r) {
       const S = ns.CsvParse;
       const id = S.squeeze(r.ID);
+      const action = S.code(r.Action);
+      // Dividend rows have no ID (seen live 2026-10-30: `Dividend (Dividend)`, `Dividend (Dividend manufactured
+      // payment)`); dividends come from the API's own dividend feed and could not be matched anyway.
+      if (!id && action.indexOf('DIVIDEND') === 0) return null;
       if (!id) throw ns.Errors.create('DataError', 'A Trading 212 report row has no ID');
       // The date only feeds the last-read record.
       const date = S.date(S.squeeze(r['Time (UTC)']).slice(0, 10), 'YYYY-MM-DD');
       const merchant = S.squeeze(r['Merchant name']);
       const merchantCategory = S.squeeze(r['Merchant category']);
-      const action = S.code(r.Action);
       return {
         id: id,
         date: date,

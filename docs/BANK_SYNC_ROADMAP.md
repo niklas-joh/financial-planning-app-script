@@ -674,8 +674,18 @@ hand, with a manual option, and save it to the owner's own Drive folder ("Tradin
   updates and moves nothing. If the report is skipped ("its header matches no known export"), the API's report has
   other columns than the app's: send the header line (no values) for a format update. No `clasp deploy` (the web app
   is unchanged).
-- Not yet seen live: the API report's columns, the download link's host, how long a report takes to build, and the
-  400's body (whether a year is the exact limit).
+- Live (2026-10-30, after #88): *Request Trading 212 report* asked for 2024-08-12 (the oldest stored row) to
+  2025-08-11; the chain saved three reports (2024-08-12 to 2025-08-11, 2025-08-04 to 2026-08-03, 2026-07-27 to
+  2026-10-30) without help, and Trading 212's app notified "ready to download" for each. The API's report has the
+  app export's columns plus `ISIN`, `Ticker`, `Name`, `No. of shares`, `Price / share`, `Exchange rate`, `Withholding
+  tax`, `ATM Withdrawal Fee` and their currencies, so the format matched; but *Import CSV files* skipped all three
+  files ("A Trading 212 report row has no ID"): **dividend rows (`Dividend (Dividend)`, `Dividend (Dividend
+  manufactured payment)`) have no `ID`**. The format now skips those rows (dividends come from the API's dividend
+  feed and would match nothing); any other row without an ID still skips the file. Actions seen: Deposit, Withdrawal,
+  Interest on cash, Lending interest, Dividend (two kinds, no ID), Dividend adjustment, Card debit, Card credit, Card
+  ATM Withdrawal, Spending cashback, New card cost (now `card`: the card's fee). Structure only; no values recorded.
+- Not yet seen live: the download link's host, how long a report takes to build, and the 400's body (whether a year
+  is the exact limit).
 
 ## Phase 7: Danske Bank (Sweden): done
 
