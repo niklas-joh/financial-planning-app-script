@@ -34,6 +34,7 @@
     "src/providers/trading212/t212-credentials.js",
     "src/providers/trading212/t212-client.js",
     "src/providers/trading212/t212-history.js",
+    "src/providers/trading212/t212-export.js",
     "src/providers/trading212/t212-provider.js",
     "src/providers/csv/csv-parse.js",
     "src/providers/csv/formats/bil.js",

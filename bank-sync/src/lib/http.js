@@ -11,6 +11,7 @@
    * @property {string} url - Absolute URL.
    * @property {Object<string,string>} [headers] - Request headers.
    * @property {Object} [body] - JSON-serializable body.
+   * @property {boolean} [text] - Return a successful body as text instead of parsed JSON (e.g. a CSV file).
    */
 
   /**
@@ -68,7 +69,7 @@
   /**
    * Creates a client.
    * @param {HttpDeps} deps - Injected fetch/sleep.
-   * @returns {{request: function(HttpRequest): *}} Client whose `request` returns parsed JSON.
+   * @returns {{request: function(HttpRequest): *}} Client whose `request` returns parsed JSON (text with `text`).
    * @throws {Error} HttpError from `request` on non-2xx after retries.
    */
   function create(deps) {
@@ -83,6 +84,7 @@
       for (let attempt = 0; ; attempt++) {
         const response = deps.fetch(req.url, params);
         const status = response.getResponseCode();
+        if (status >= 200 && status < 300 && req.text) return response.getContentText();
         const body = parseBody(response.getContentText());
         if (status >= 200 && status < 300) return body;
         if (!isRetryable(status) || attempt >= maxRetries) throw toError(status, body);

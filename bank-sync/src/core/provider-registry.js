@@ -77,7 +77,8 @@
     statusLines: function (wired) {
       const ready = ns.T212Credentials.connections(wired.props).filter(function (c) { return ns.T212Credentials.isComplete(wired.props, c); });
       return ns.T212Credentials.statusLines(wired.props)
-        .concat(ready.map(function (c) { return ns.T212History.statusLine(wired.props, c); }));
+        .concat(ready.map(function (c) { return ns.T212History.statusLine(wired.props, c); }))
+        .concat(ready.map(function (c) { return ns.T212Export.statusLine(wired.props, c); }));
     }
   };
 

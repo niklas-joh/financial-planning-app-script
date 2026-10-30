@@ -38,6 +38,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 9 | Avanza unofficial API (values, positions, cash) | Roadmap item only, not planned: see "Avanza" for the findings and what it would take |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
+| B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged; live once deployed (see "Trading 212 report export") |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
 commit to `main`, conventional-commit PR title with a lowercase subject (e.g.
@@ -153,7 +154,8 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   balances tagged `cash`/`investments`.
 - `providers/trading212/`: `t212-normalize` (pure), `t212-rate-limit` (pure 429 wait from
   `x-ratelimit-reset`, plugged into `lib/http` as `retryDelayMs`), `t212-credentials` (key pairs in Script
-  Properties), `t212-client` (one method per endpoint, Basic auth), `t212-provider`.
+  Properties), `t212-client` (one method per endpoint, Basic auth), `t212-provider`, `t212-history` (one-time
+  backfill), `t212-export` (monthly CSV report: request, check, save to the exports folder).
 - `providers/csv/`: `csv-parse` (pure: rows, header below a preamble, numbers and dates in a declared layout),
   `formats/` (one file per export, written from a real sample: `bil`, `trading212-report`, `avanza`; all write to the
   same tabs), `csv-formats` (the shared shapes and the list; `kind` 'transactions' or 'details'; the account from the
@@ -375,6 +377,12 @@ Trading 212 facts (verified against docs.trading212.com/api and its OpenAPI file
   (`cursor`, `ticker`, `limit`) 20/min. Limits count per account whatever the key or IP; bursts allowed; every
   response carries `x-ratelimit-limit/-period/-remaining/-reset/-used`. `equity/account/cash` and
   `equity/portfolio`, used by the old sheet, are no longer documented.
+- Reports (verified in the OpenAPI file, 2026-10-30): `POST /equity/history/exports` (1/30 s) takes `dataIncluded`
+  (`includeDividends`, `includeInterest`, `includeOrders`, `includeTransactions`), `timeFrom`, `timeTo` and returns
+  `reportId`; `GET /equity/history/exports` (1/min) lists every report with `status` (`Queued`, `Processing`,
+  `Running`, `Canceled`, `Failed`, `Finished`) and `downloadLink`. Not stated: the permission needed (the 403 names
+  none), a longest period, the CSV columns, whether the link needs the key and how long it lasts. No endpoint for
+  card payments exists.
 - History types: WITHDRAW, DEPOSIT, FEE, TRANSFER, INTEREST_ON_FREE_CASH, LENDING_INTEREST. No card type and no
   merchant field; the CSV report (`POST /equity/history/exports`, 1/30 s) is the only other history source.
 
@@ -428,7 +436,8 @@ As built (see `bank-sync/README.md`, "CSV import"):
   or the user picked in a Google Picker, not a folder filled by hand). There is no per-folder scope, so it grants
   read access to **all** of Drive; the code opens only the `CSV_FOLDER_<HOLDER>` folders (`Gas.driveFolder` is the
   only DriveApp use) and never writes. Accepted by the owner for the hands-off daily import (review #69); narrowing
-  it is open decision B4.
+  it is open decision B4. Replaced by `drive` on 2026-10-30 so the report export can save into the owner's folder
+  (see "Trading 212 report export").
   The web-app path is unchanged.
 - Deploy steps: `clasp push --force` from `bank-sync/` after diffing the manifest (time zone and the new scope),
   reload the sheet and re-authorize (the daily trigger fails until then), create the folder, set
@@ -483,9 +492,9 @@ As built (see `bank-sync/README.md`, "Transaction tabs"):
 - No new OAuth scope; the web app is unchanged (no `clasp deploy`). Deploy: `clasp push --force` from `bank-sync/` after
   diffing the manifest, reload the sheet, *Sync all*, check the summary and *Show status*, then *Sync all* again (nothing
   moves). Expected on the first run: every Trading 212 row leaves `transactions`, and the 8 labelled card rows return.
-- Trade-off: card payments stay unclassified until a report covering them is in the folder. A later option is to request
-  the report through the API (`POST /equity/history/exports`, 1 per 30 s, then download it), e.g. monthly, so card rows
-  are named without a manual export. Not built.
+- Trade-off: card payments stay unclassified until a report covering them is in the folder. Since the report export
+  (see "Trading 212 report export") the API builds that report every month, so card rows are named without a manual
+  export.
 
 ## Phase 6b: Avanza CSV import (live once deployed)
 
@@ -560,6 +569,46 @@ Compared on 2026-10-26 (code and docs only; no login, no Avanza call). Avanza is
   one-off login test from Apps Script.
 - **Aggregators:** GoCardless (Nordigen) closed to new sign-ups in 2025; Tink and Insurely list Avanza but sell to
   businesses only; PSD2 covers payment accounts, not ISK or depot positions.
+
+## Trading 212 report export (live once deployed)
+
+Owner request (2026-10-30): request the Trading 212 report through the API every month instead of exporting it by
+hand, with a manual option, and save it to the owner's own Drive folder ("Trading212 exports"). As built (see
+`bank-sync/README.md`, "Trading 212 report export"):
+
+- `t212-export`: `request` asks for a report per key with its secret whose exports folder `CSV_FOLDER_T212_<HOLDER>` is
+  set (dividends, interest and transactions; not orders), `fetch` checks the reports list and saves a finished report as
+  `trading212-report-<holder>-<from>-to-<to>.csv`. State per key in `T212_EXPORT_<HOLDER>` (report id, period, checks,
+  last saved file, last error; never the download link). The client gained `requestReport`, `reports` and `download`;
+  `lib/http` a `text` option for the CSV body. The key goes only to trading212.com hosts (`T212Client.isOwnHost`);
+  a storage link is fetched without it.
+- The folder property starts with `CSV_FOLDER_`, so the exports folder is also a CSV connection (`csv-t212-<holder>`):
+  Sync all, the daily sync and *Import CSV files* apply the saved reports with no change to the CSV import, and report
+  rows whose API rows arrive later are applied later, as for a report uploaded by hand.
+- Period: the first report from `TRADING212.EXPORT_FIRST_FROM` (2016-01-01) to the request day (names the
+  unclassified history); later ones from 7 days before the last saved end, so a missed month catches up.
+- Triggers: *Enable daily sync* also creates a monthly trigger (`triggerT212ReportRequest`, day 1, 05:00-06:00);
+  the request schedules a one-off `triggerT212ReportFetch` 5 minutes later; an unfinished report is checked every 5
+  minutes, at most 6 checks, then stays pending until the next request (a new request replaces it). *Disable daily
+  sync* removes both. Menu *Request Trading 212 report* requests now. No lock: the export touches no tab, only its
+  own Script Property and Drive, and its endpoints are rate-limited apart from the ones Sync all reads.
+- *Show status*: "Monthly Trading 212 report: on/off" and per key "report export - CSV_FOLDER_T212_<HOLDER>:
+  set/MISSING; last saved <date> (<from> to <to>); requested ...; last error: ...".
+- OAuth: `drive.readonly` replaced by `drive` (manifest and allow-list): `Folder.createFile` needs `drive`, and
+  `drive.file` cannot add a file to a folder the script did not create. The owner chose that over a script-created
+  folder (B4). The code still opens only the configured folders and only adds files.
+- Deploy: check that the Trading 212 key has the general **History** permission (the docs name none for exports);
+  `clasp push --force` from `bank-sync/` after diffing the manifest (the scope change is the expected difference);
+  reload the sheet and re-authorize (the daily trigger fails until then); set `CSV_FOLDER_T212_NIKLAS` to the exports
+  folder id; *Enable daily sync* again (adds the monthly trigger; *Show status* shows it on); *Request Trading 212
+  report*; after about 5 minutes *Show status* shows "last saved"; then *Import CSV files*. Expected: "Details from
+  reports: N transactions updated", rows moved from `unclassified_transactions` to `transactions` (card spending,
+  cashback, bank transfers) and `investment_transactions`, and `unclassified_transactions` close to 0; a second import
+  updates and moves nothing. If the report is skipped ("its header matches no known export"), the API's report has
+  other columns than the app's: send the header line (no values) for a format update. No `clasp deploy` (the web app
+  is unchanged).
+- Not yet seen live: the API report's columns, the download link's host, how long a full-history report takes, and
+  whether a 10-year period is accepted (a 400 "Bad filtering arguments" would mean splitting the first request).
 
 ## Phase 7: Danske Bank (Sweden): done
 
@@ -649,7 +698,8 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
     reference is not checked).
 - **B4. Narrow the Drive scope** (open decision, raised in review #69). The CSV import reads a Drive folder with
   `drive.readonly`, which can read all of Drive (no per-folder scope exists). Kept for now (owner, 2026-10-25) for
-  the hands-off daily import. Options to reconsider:
+  the hands-off daily import. Widened to `drive` (owner, 2026-10-30) so the Trading 212 report export can save into
+  the owner's own folder; `drive.file` would have meant a folder created by the script instead. Options to reconsider:
   - **Upload dialog, no Drive scope**: *Import CSV files...* opens a file chooser; the browser sends the file text;
     each upload runs a normal *Sync all* so report details find that day's API rows. Same manual effort as
     dropping a file in the folder; files are not kept, so a report row whose API row is missing must be uploaded
@@ -658,7 +708,8 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
   - **`drive.file` with a Google Picker**: only picked files are readable. Needs a Google Cloud project, the Picker
     API and an API key; whether picking a folder exposes its files is not documented (to verify), so likely one
     pick per file.
-  - **Keep `drive.readonly`** (current).
+  - **Keep a Drive scope** (current: `drive`; back to `drive.readonly` if the export saves into a folder the script
+    created, with `drive.file`).
 - **Daily values for banks:** tag the booked balance `cash` in the Enable Banking normalizer. BIL has no balance in
   its export, so it cannot appear in `daily_values` (total wealth) without another source: check whether BILnet
   offers a balance or statement export, or record an opening balance and sum the movements. Avanza: cash could be the
