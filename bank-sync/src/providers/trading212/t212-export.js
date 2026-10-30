@@ -46,6 +46,8 @@
    * @property {Object} props - Script Properties.
    * @property {function(string): {create: function(string, string): void}} folder - Drive folder by id (saves a CSV file).
    * @property {import('../../core/auto-sync.js').TriggerService} triggers - Trigger service.
+   * @property {function(function(): *): *} withLock - Runs an action under the script lock (the one Sync all takes);
+   *   throws LockError if it is busy.
    * @property {function(): number} nowMs - Clock.
    * @property {function(): string} todayIso - Today's date (script time zone).
    */
@@ -61,6 +63,15 @@
    */
   function folderProperty(connection) {
     return KEYS.T212_EXPORT_FOLDER_PREFIX + connection.propertySuffix;
+  }
+
+  /**
+   * @param {{getProperty: function(string): ?string}} props - Script Properties.
+   * @param {import('../../core/config.js').ConnectionConfig} connection - Trading 212 connection.
+   * @returns {string} Its exports folder id, or '' when not set.
+   */
+  function folderId(props, connection) {
+    return String(props.getProperty(folderProperty(connection)) || '').trim();
   }
 
   /**
@@ -121,7 +132,7 @@
    */
   function request(deps) {
     return deps.connections.map(function (c) {
-      if (!String(deps.props.getProperty(folderProperty(c)) || '').trim()) {
+      if (!folderId(deps.props, c)) {
         return { connection: c.key, status: 'no folder: set ' + folderProperty(c) + ' in Script Properties' };
       }
       const states = store(deps.props, c);
@@ -161,7 +172,7 @@
     if (status === 'Finished') {
       if (!found.downloadLink) throw ns.Errors.create('DataError', 'The finished report has no download link');
       const name = fileName(c, report);
-      deps.folder(String(deps.props.getProperty(folderProperty(c)) || '').trim()).create(name, client.download(found.downloadLink));
+      deps.folder(folderId(deps.props, c)).create(name, client.download(found.downloadLink));
       state.saved = { file: name, from: report.from, to: report.to, at: new Date(deps.nowMs()).toISOString() };
       state.coveredTo = report.to;
       state.pending = null;
@@ -183,7 +194,7 @@
    * @returns {{results: Array<{connection: string, status: string}>, again: boolean}} One result per connection
    *   with a pending report, and whether a later check is needed.
    */
-  function fetch(deps) {
+  function fetchPending(deps) {
     let again = false;
     const results = [];
     deps.connections.forEach(function (c) {
@@ -219,25 +230,46 @@
   }
 
   /**
-   * Requests the reports and schedules their first check (monthly trigger and menu).
+   * @param {ExportDeps} deps - Services.
+   * @returns {boolean} Whether a connection has a pending report with checks left.
+   */
+  function hasOpenReport(deps) {
+    return deps.connections.some(function (c) {
+      const pending = store(deps.props, c).load().pending;
+      return Boolean(pending) && pending.checks < A.REPORT_MAX_CHECKS;
+    });
+  }
+
+  /**
+   * Requests the reports under the script lock, then leaves one check scheduled while any report is pending
+   * with checks left: also when this request failed and an earlier report is still waiting (monthly trigger and menu).
    * @param {ExportDeps} deps - Services.
    * @returns {Array<{connection: string, status: string, from: (string|undefined), to: (string|undefined)}>} From `request`.
+   * @throws {Error} LockError if a sync or another export holds the lock (nothing is requested then).
    */
   function requestAndSchedule(deps) {
-    const results = request(deps);
+    const results = deps.withLock(function () { return request(deps); });
     clearFetchTriggers(deps.triggers);
-    if (results.some(function (r) { return r.status === 'requested'; })) deps.triggers.createAfter(A.REPORT_FETCH_HANDLER, A.REPORT_FETCH_AFTER_MS);
+    if (hasOpenReport(deps)) deps.triggers.createAfter(A.REPORT_FETCH_HANDLER, A.REPORT_FETCH_AFTER_MS);
     return results;
   }
 
   /**
-   * Checks the pending reports and schedules another check while one is unfinished (fetch trigger).
+   * Checks the pending reports under the script lock and schedules another check while one is unfinished (fetch
+   * trigger). A busy lock counts no check: the check is simply scheduled again.
    * @param {ExportDeps} deps - Services.
-   * @returns {{results: Array<{connection: string, status: string}>, again: boolean}} From `fetch`.
+   * @returns {{results: Array<{connection: string, status: string}>, again: boolean, busy: (boolean|undefined)}}
+   *   From `fetchPending`, or `busy` with no results when the lock was held.
    */
   function fetchAndSchedule(deps) {
     clearFetchTriggers(deps.triggers);
-    const out = fetch(deps);
+    let out;
+    try {
+      out = deps.withLock(function () { return fetchPending(deps); });
+    } catch (e) {
+      if (e.name !== 'LockError') throw e;
+      out = { results: [], again: true, busy: true };
+    }
     if (out.again) deps.triggers.createAfter(A.REPORT_FETCH_HANDLER, A.REPORT_FETCH_AFTER_MS);
     return out;
   }
@@ -257,14 +289,14 @@
   }
 
   /**
-   * Show status line for one connection.
+   * Status line for one connection.
    * @param {{getProperty: function(string): ?string}} props - Script Properties.
    * @param {import('../../core/config.js').ConnectionConfig} connection - Trading 212 connection.
    * @returns {string} Folder set/MISSING, the last saved report, a pending one and the last error (dates only).
    */
   function statusLine(props, connection) {
     const state = store(props, connection).load();
-    const parts = [folderProperty(connection) + ': ' + (props.getProperty(folderProperty(connection)) ? 'set' : 'MISSING')];
+    const parts = [folderProperty(connection) + ': ' + (folderId(props, connection) ? 'set' : 'MISSING')];
     parts.push(state.saved
       ? 'last saved ' + state.saved.at.slice(0, 10) + ' (' + state.saved.from + ' to ' + state.saved.to + ')'
       : 'none saved yet');
@@ -277,7 +309,7 @@
   }
 
   ns.T212Export = {
-    DATA_INCLUDED: DATA_INCLUDED, store: store, rangeFor: rangeFor, fileName: fileName, request: request, fetch: fetch,
+    DATA_INCLUDED: DATA_INCLUDED, store: store, rangeFor: rangeFor, fileName: fileName, request: request, fetchPending: fetchPending,
     requestAndSchedule: requestAndSchedule, fetchAndSchedule: fetchAndSchedule, summarize: summarize, statusLine: statusLine
   };
 })(globalThis.BankSync);

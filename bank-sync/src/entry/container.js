@@ -138,8 +138,8 @@
 
   /**
    * Builds the Trading 212 report export services: one API client per key with its secret, the exports
-   * folders and the triggers. No sheet is touched and no lock is taken: the export only uses its own
-   * Script Property, Drive and the export endpoints (rate-limited apart from the ones Sync all reads).
+   * folders, the triggers and the script lock (the same one Sync all takes, so a request, a check and a
+   * sync never interleave their Script Property writes).
    * @returns {import('../providers/trading212/t212-export.js').ExportDeps} Dependencies for `T212Export`.
    */
   function exportDeps() {
@@ -156,6 +156,7 @@
       props: wired.props,
       folder: ns.Gas.driveFolder,
       triggers: ns.Gas.triggers(),
+      withLock: function (action) { return ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, action); },
       nowMs: wired.nowMs,
       todayIso: function () { return formatDate(new Date()); }
     };

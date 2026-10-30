@@ -261,9 +261,10 @@ uploaded yourself (see "CSV import").
   whether the exports folder is set, the last saved report, a pending one and the last error, and whether the monthly
   report is on.
 - The download link is fetched without your key unless it points to a trading212.com address, so the key never goes
-  to the storage service that hosts the file.
-- Rate limits (per account): a request 1 per 30 s, the reports list 1 per minute; the export runs apart from the
-  sync and takes no lock (it touches no tab).
+  to the storage service that hosts the file. Redirects are followed one hop at a time with the same rule (at most 3).
+- Rate limits (per account): a request 1 per 30 s, the reports list 1 per minute. Requests and checks take the same
+  lock as *Sync all*: a request while a sync runs says so (try again in a minute); a check that finds it busy just
+  runs again 5 minutes later. A failed request never drops the check of a report still pending.
 - Reports already saved stay in the folder; files are never changed or deleted. If Trading 212's API report ever had
   other columns than the app's export, the CSV import would skip it and name it in *Show status*.
 

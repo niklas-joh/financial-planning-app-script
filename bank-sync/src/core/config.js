@@ -46,8 +46,9 @@
    * @property {Object} TRADING212 - Trading 212 public API: provider id, display name, origin and API path
    *   (live), page size (the API's maximum), pages per history feed the one-time backfill reads per run,
    *   the longest wait for a rate-limit reset before a call gives up; the report export: the start of the
-   *   first (full history) report, the days each later report reaches back before the last one's end, and
-   *   the time budget of an export run (ms).
+   *   first (full history) report, the days each later report reaches back before the last one's end, the
+   *   time after an export run starts during which a rate-limited call may still wait for its reset (ms; it
+   *   bounds those waits, not the run), and how many redirects a report download follows.
    * @property {Object} CSV - CSV import: provider id, display name of its connections (one Drive folder per
    *   holder), the largest file read, and how many skipped files (and characters each) the last-read record
    *   names, so it stays far below the 9 KB Script Property limit.
@@ -148,7 +149,8 @@
       MAX_RETRY_WAIT_MS: 65000,
       EXPORT_FIRST_FROM: '2016-01-01',
       EXPORT_OVERLAP_DAYS: 7,
-      EXPORT_BUDGET_MS: 240000
+      EXPORT_BUDGET_MS: 240000,
+      MAX_REDIRECTS: 3
     }),
     CSV: Object.freeze({
       PROVIDER_ID: 'csv',

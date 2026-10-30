@@ -59,6 +59,7 @@ function deps(client, props) {
     clientFor: () => client,
     props: props || fakeProps(Object.assign({ [FOLDER_PROP]: 'folder-1' }, PROPS_INIT)),
     folder: (id) => ({ create: (name, text) => files.push({ id, name, text }) }),
+    withLock: (action) => action(),
     nowMs: () => NOW,
     todayIso: () => '2026-11-01'
   };
@@ -159,7 +160,7 @@ test('t212 export: a check waits while the report is built, then saves it to the
   // Every check cleared the one before; none is left once the report is saved.
   assert.deepStrictEqual(d.triggers.list(), []);
   // Nothing pending: a stray check does nothing; the next request starts a week before the saved end.
-  assert.deepStrictEqual(BS.T212Export.fetch(d), { results: [], again: false });
+  assert.deepStrictEqual(BS.T212Export.fetchPending(d), { results: [], again: false });
   BS.T212Export.request(d);
   assert.strictEqual(client.calls.requests[1].timeFrom, '2026-10-25T00:00:00Z');
 });
@@ -184,7 +185,7 @@ test('t212 export: checks stop after the limit (also when they fail); the report
   assert.strictEqual(out.again, false);
   assert.match(out.results[0].status, new RegExp('^gave up after ' + A.REPORT_MAX_CHECKS + ' checks'));
   assert.deepStrictEqual(d.triggers.list(), []);
-  assert.deepStrictEqual(BS.T212Export.fetch(d), { results: [], again: false });
+  assert.deepStrictEqual(BS.T212Export.fetchPending(d), { results: [], again: false });
   assert.strictEqual(lists, A.REPORT_MAX_CHECKS);
   assert.match(BS.T212Export.statusLine(d.props, CONN), /no more checks until the next request/);
 });
@@ -221,4 +222,78 @@ test('t212 export: the exports folder is also a CSV folder, so the saved report 
   });
   assert.deepStrictEqual(provider.getEnrichments().map((e) => [e.provider, e.transactionId, e.counterparty, e.classification]),
     [['trading212', 'id-card-1', 'DEMO CAFE', 'card']]);
+});
+
+// --- Review fixes (#84 stranded check, #85 lock, #86 redirects) ---
+
+test('t212 export: a failed repeat request keeps a check scheduled for the report still pending', () => {
+  let calls = 0;
+  const d = deps(fakeClient(['Queued'], {
+    requestReport: () => { calls++; if (calls > 1) throw BS.Errors.http(429, 'Limited: 1 / 30s', ''); return { reportId: 42 }; }
+  }));
+  BS.T212Export.requestAndSchedule(d);
+  const again = BS.T212Export.requestAndSchedule(d);
+  assert.match(again[0].status, /^error: HttpError/);
+  assert.strictEqual(JSON.parse(d.props.map[STATE_PROP]).pending.reportId, 42);
+  assert.deepStrictEqual(d.triggers.list().map((t) => t.handler), [A.REPORT_FETCH_HANDLER]);
+});
+
+test('t212 export: requests and checks run under the script lock; a busy lock requests nothing and only reschedules the check', () => {
+  const order = [];
+  const client = fakeClient(['Queued']);
+  const d = deps(client);
+  d.withLock = (action) => { order.push('lock'); const out = action(); order.push('unlock'); return out; };
+  BS.T212Export.requestAndSchedule(d);
+  assert.deepStrictEqual(order, ['lock', 'unlock']);
+  assert.strictEqual(client.calls.requests.length, 1);
+
+  const busy = () => { throw BS.Errors.create('LockError', 'Another sync or login is running; try again in a minute'); };
+  d.withLock = busy;
+  assert.throws(() => BS.T212Export.requestAndSchedule(d), /Another sync/);
+  assert.strictEqual(client.calls.requests.length, 1);
+  assert.deepStrictEqual(BS.T212Export.fetchAndSchedule(d), { results: [], again: true, busy: true });
+  assert.strictEqual(client.calls.lists, 0);
+  assert.strictEqual(JSON.parse(d.props.map[STATE_PROP]).pending.checks, 0);
+  assert.deepStrictEqual(d.triggers.list().map((t) => t.handler), [A.REPORT_FETCH_HANDLER]);
+});
+
+test('http: with followRedirects false a redirect is returned with its target, not followed', () => {
+  const seen = [];
+  const http = BS.Http.create({
+    fetch: (url, params) => { seen.push(params.followRedirects); return { getResponseCode: () => 302, getContentText: () => '', getAllHeaders: () => ({ location: 'https://storage.example/r.csv' }) }; },
+    sleep: () => {}
+  });
+  assert.deepStrictEqual(http.request({ method: 'GET', url: 'https://live.trading212.com/r', text: true, followRedirects: false }),
+    { redirect: 'https://storage.example/r.csv' });
+  assert.deepStrictEqual(seen, [false]);
+});
+
+test('t212 client: a download follows redirects itself and sends the key only to Trading 212 hops', () => {
+  const hops = {
+    'https://live.trading212.com/reports/1': { redirect: '/files/1' },
+    'https://live.trading212.com/files/1': { redirect: 'https://storage.example/r.csv?sig=1' },
+    'https://storage.example/r.csv?sig=1': 'csv text',
+    'https://storage.example/back': { redirect: 'https://live.trading212.com/x.csv' },
+    'https://live.trading212.com/x.csv': 'own text',
+    'https://live.trading212.com/insecure': { redirect: 'http://storage.example/r.csv' },
+    'https://live.trading212.com/nowhere': { redirect: '' },
+    'https://live.trading212.com/loop': { redirect: '/loop' }
+  };
+  const requests = [];
+  const http = { request: (req) => { requests.push(req); return hops[req.url]; } };
+  const client = BS.T212Client.create(http, BS.T212Credentials.credentials(fakeProps(PROPS_INIT), CONN), base64);
+  assert.strictEqual(client.download('https://live.trading212.com/reports/1'), 'csv text');
+  assert.deepStrictEqual(requests.map((r) => [r.url, 'Authorization' in r.headers, r.followRedirects]), [
+    ['https://live.trading212.com/reports/1', true, false],
+    ['https://live.trading212.com/files/1', true, false],
+    ['https://storage.example/r.csv?sig=1', false, false]
+  ]);
+  requests.length = 0;
+  assert.strictEqual(client.download('https://storage.example/back'), 'own text');
+  assert.deepStrictEqual(requests.map((r) => 'Authorization' in r.headers), [false, true]);
+  assert.throws(() => client.download('https://live.trading212.com/insecure'), /Unexpected Trading 212 report link/);
+  assert.throws(() => client.download('https://live.trading212.com/nowhere'), /redirect has no usable target/);
+  requests.length = 0;
+  assert.throws(() => client.download('https://live.trading212.com/loop'), /redirects too often/);
+  assert.strictEqual(requests.length, T212.MAX_REDIRECTS + 1);
 });

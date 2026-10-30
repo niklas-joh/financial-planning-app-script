@@ -604,8 +604,9 @@ hand, with a manual option, and save it to the owner's own Drive folder ("Tradin
   set (dividends, interest and transactions; not orders), `fetch` checks the reports list and saves a finished report as
   `trading212-report-<holder>-<from>-to-<to>.csv`. State per key in `T212_EXPORT_<HOLDER>` (report id, period, checks,
   last saved file, last error; never the download link). The client gained `requestReport`, `reports` and `download`;
-  `lib/http` a `text` option for the CSV body. The key goes only to trading212.com hosts (`T212Client.isOwnHost`);
-  a storage link is fetched without it.
+  `lib/http` a `text` option for the CSV body and `followRedirects: false` (a redirect comes back as its target). The
+  key goes only to trading212.com hosts (`T212Client.isOwnHost`), checked at every redirect hop (followed by hand,
+  at most 3); a storage link is fetched without it (review #86).
 - The folder property starts with `CSV_FOLDER_`, so the exports folder is also a CSV connection (`csv-t212-<holder>`):
   Sync all, the daily sync and *Import CSV files* apply the saved reports with no change to the CSV import, and report
   rows whose API rows arrive later are applied later, as for a report uploaded by hand.
@@ -614,8 +615,10 @@ hand, with a manual option, and save it to the owner's own Drive folder ("Tradin
 - Triggers: *Enable daily sync* also creates a monthly trigger (`triggerT212ReportRequest`, day 1, 05:00-06:00);
   the request schedules a one-off `triggerT212ReportFetch` 5 minutes later; an unfinished report is checked every 5
   minutes, at most 6 checks, then stays pending until the next request (a new request replaces it). *Disable daily
-  sync* removes both. Menu *Request Trading 212 report* requests now. No lock: the export touches no tab, only its
-  own Script Property and Drive, and its endpoints are rate-limited apart from the ones Sync all reads.
+  sync* removes both. Menu *Request Trading 212 report* requests now. Requests and checks run under the script lock
+  Sync all takes, so they never overwrite each other's state (review #85); a busy lock fails a request (the menu says
+  so, a trigger's failure email too) and reschedules a check without counting it. After every request a check stays
+  scheduled while any report is pending with checks left, also when that request failed (review #84).
 - *Show status*: "Monthly Trading 212 report: on/off" and per key "report export - CSV_FOLDER_T212_<HOLDER>:
   set/MISSING; last saved <date> (<from> to <to>); requested ...; last error: ...".
 - OAuth: `drive.readonly` replaced by `drive` (manifest and allow-list): `Folder.createFile` needs `drive`, and
