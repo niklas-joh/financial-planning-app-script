@@ -24,6 +24,9 @@
     return keys.map(function (k) { return { header: k, key: k, numeric: numericKeys.indexOf(k) !== -1 }; });
   }
 
+  // `ibanMasked` keeps its name on every tab so sheets and formulas using it still work; it holds the full IBAN
+  // when Config.MASK_ACCOUNT_NUMBERS is off (see Redact.maskAccount).
+
   /** @type {Array<Column>} */
   const ACCOUNT_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountId', 'accountName', 'currency',
     'ibanMasked', 'accountType', 'product', 'detailsAt'], []);
@@ -147,6 +150,8 @@
    * @property {function(Object): string} keyOf - Identity of a row; '' means it has none and is kept as it is.
    * @property {function(Object, Object): number} compare - Order of the written rows.
    * @property {function(Object): boolean} keep - False for rows that have aged out and are dropped.
+   * @property {function(Object): Object} [refresh] - Applied to each stored row before merging (e.g. fresh account
+   *   labels), so rows no fetch returns again still follow their account.
    */
 
   /**
@@ -160,7 +165,8 @@
   function accumulated(stored, fresh, how) {
     const byKey = {};
     const unkeyed = [];
-    stored.concat(fresh).forEach(function (row) {
+    const kept = how.refresh ? stored.map(how.refresh) : stored;
+    kept.concat(fresh).forEach(function (row) {
       const key = how.keyOf(row);
       if (key) byKey[key] = row;
       else unkeyed.push(row);
@@ -171,10 +177,22 @@
   /**
    * Creates a writer.
    * @param {Object} spreadsheet - Spreadsheet-like (getSheetByName, insertSheet).
-   * @returns {{writeTable: function(string, Array<Column>, Array<Object>, Array<string>=): number}} Writer.
+   * @returns {{writeTable: function(string, Array<Column>, Array<Object>, Array<string>=): number,
+   *   readTable: function(string, Array<Column>): Array<Object>}} Writer.
    */
   function create(spreadsheet) {
     return {
+      /**
+       * Reads a tab back as flat rows keyed by header (API columns included).
+       * @param {string} tabName - Tab.
+       * @param {Array<Column>} fixed - Its fixed columns (numeric ones come back as numbers).
+       * @returns {Array<Object>} Rows; [] if the tab is missing or empty.
+       */
+      readTable: function (tabName, fixed) {
+        const sheet = spreadsheet.getSheetByName(tabName);
+        return sheet ? readRows(sheet, fixed) : [];
+      },
+
       /**
        * Writes rows to a tab (created if absent). With `refreshed`, rows of other connections
        * already on the tab are kept (rows without a connection, from before labels existed,

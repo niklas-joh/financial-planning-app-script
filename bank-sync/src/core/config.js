@@ -20,6 +20,12 @@
    * @typedef {Object} BankSyncConfig
    * @property {string} REPORTING_CURRENCY - ISO 4217 code all amounts are converted to.
    * @property {string} TIMEZONE - IANA timezone used for date handling.
+   * @property {boolean} MASK_ACCOUNT_NUMBERS - When true, IBANs and other account, card and reference numbers
+   *   are cut to their last four characters ('****1234') before anything is stored: the `ibanMasked` column,
+   *   `counterpartyAccount`, `reference`, CSV texts and the `api.*` columns. When false (the default) they are
+   *   stored in full. Every such call goes through `Redact.maskAccount`. Log and error text is always
+   *   scrubbed by `Redact.text`, whatever this flag says. After turning it off, *Re-process stored rows*
+   *   rewrites rows synced while it was on.
    * @property {Object} ENABLE_BANKING - API base URL, JWT claims/TTL, consent defaults.
    * @property {Object} LEGACY_CONNECTION - The single login that existed before connections were
    *   stored; used once to migrate its session. Connections are otherwise added with the
@@ -54,6 +60,8 @@
    * @property {Object} CSV - CSV import: provider id, display name of its connections (one Drive folder per
    *   holder), the largest file read, and how many skipped files (and characters each) the last-read record
    *   names, so it stays far below the 9 KB Script Property limit.
+   * @property {{MAX_LISTED: number}} REPROCESS - *Re-process stored rows*: how many rows still holding a masked value
+   *   its summary names (the rest are counted).
    * @property {{WARN_DAYS: Array<number>}} CONSENT - Days before a consent lapses on which a warning
    *   email is sent (each once per consent); one more is sent once it has lapsed.
    */
@@ -62,6 +70,7 @@
   ns.Config = Object.freeze({
     REPORTING_CURRENCY: 'EUR',
     TIMEZONE: 'Europe/Brussels',
+    MASK_ACCOUNT_NUMBERS: false,
     ENABLE_BANKING: Object.freeze({
       PROVIDER_ID: 'enablebanking',
       BASE_URL: 'https://api.enablebanking.com',
@@ -161,6 +170,9 @@
       MAX_FILE_BYTES: 5000000,
       MAX_SKIPPED_LISTED: 10,
       MAX_SKIPPED_CHARS: 200
+    }),
+    REPROCESS: Object.freeze({
+      MAX_LISTED: 25
     }),
     CONSENT: Object.freeze({
       WARN_DAYS: Object.freeze([30, 14, 7, 1])

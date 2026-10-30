@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const BS = require('./load');
+const { withMasking } = require('./masking');
 
 const NOW = Date.parse('2026-01-01T00:00:00Z');
 const memProps = () => {
@@ -8,7 +9,7 @@ const memProps = () => {
   return { getProperty: (k) => (k in m ? m[k] : null), setProperty: (k, v) => { m[k] = v; }, deleteProperty: (k) => { delete m[k]; } };
 };
 
-test('normalizeAccount masks the IBAN, keeps holder and label, keeps every API field, requires uid', () => {
+test('normalizeAccount masks the IBAN, keeps holder and label, keeps every API field, requires uid', () => withMasking(BS, true, () => {
   const a = BS.EbNormalize.normalizeAccount({
     uid: 'u1', name: 'Jane Holder', details: 'Holiday pot', product: 'Savings', currency: 'EUR',
     cash_account_type: 'CACC', account_id: { iban: 'GB82WEST12345698765432' },
@@ -27,7 +28,7 @@ test('normalizeAccount masks the IBAN, keeps holder and label, keeps every API f
   assert.strictEqual(a.apiFields.legal_age, true);
   assert.strictEqual(a.apiFields.credit_limit, '', 'null fields keep their column');
   assert.throws(() => BS.EbNormalize.normalizeAccount({}), { name: 'DataError' });
-});
+}));
 
 test('normalizeBalance converts the decimal string amount', () => {
   const b = BS.EbNormalize.normalizeBalance(
@@ -99,7 +100,7 @@ test('authorize builds the /auth body and stores the pending state', () => {
   assert.strictEqual(store.consumePending('state-1').connection.key, 'revolut-niklas');
 });
 
-test('complete persists the session with masked accounts; list/balances then work', () => {
+test('complete persists the session with masked accounts; list/balances then work', () => withMasking(BS, true, () => {
   const { provider, store, auth, connection } = wired();
   store.savePending('st', { connection, validUntil: '2026-02-01T00:00:00Z' });
   const summary = auth.complete('code', 'st');
@@ -111,7 +112,7 @@ test('complete persists the session with masked accounts; list/balances then wor
   const balances = provider.getBalances('a1');
   assert.strictEqual(balances[0].amount, 5);
   assert.ok(!JSON.stringify(store.loadSession('revolut-niklas')).includes('GB82'));
-});
+}));
 
 test('provider rejects use before authorization, after expiry, and when revoked', () => {
   const { provider, store } = wired();

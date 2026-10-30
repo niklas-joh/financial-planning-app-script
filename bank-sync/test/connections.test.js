@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const BS = require('./load');
+const { withMasking } = require('./masking');
 const { fakeSheetBook } = require('./fake-sheet');
 
 const NOW = Date.parse('2026-04-01T12:00:00Z');
@@ -61,10 +62,10 @@ test('http errors carry the API error code', () => {
   assert.throws(() => http.request({ method: 'GET', url: 'x' }), { name: 'HttpError', apiCode: 'NO_ACCOUNTS_ADDED' });
 });
 
-test('flatten: nested objects and arrays become dotted keys, IBANs are masked, null is empty', () => {
+test('flatten: nested objects and arrays become dotted keys, IBANs are masked, null is empty', () => withMasking(BS, true, () => {
   const f = BS.Flatten.flat({ a: { b: 1 }, c: [{ d: 'x' }, 'GB82WEST12345698765432'], e: null, f: true, g: {}, h: [] });
   assert.deepStrictEqual(f, { 'a.b': 1, 'c[0].d': 'x', 'c[1]': '****5432', e: '', f: true });
-});
+}));
 
 test('labels: account name falls back to the product, unknown accounts are left untouched', () => {
   const labelsFor = BS.AccountLabels.lookup([acct({}), acct({ accountId: 'a2', accountName: '', product: 'Savings' })]);
@@ -333,7 +334,7 @@ test('connections.choose accepts listed numbers only', () => {
   ['0', '3', '', 'x', '1.5', '-1'].forEach((bad) => assert.throws(() => BS.Connections.choose(list, bad), { name: 'InputError' }));
 });
 
-test('flatten: account and card numbers are masked by key, the holder name is kept', () => {
+test('flatten: account and card numbers are masked by key, the holder name is kept', () => withMasking(BS, true, () => {
   const f = BS.Flatten.flat({
     name: 'Jane Holder', account_id: { other: { identification: '12-34-56 98765432', scheme_name: 'BBAN' } },
     all_account_ids: [{ identification: '12345678' }], card_number: '5500000000000004', sort_code: '123456'
@@ -345,7 +346,7 @@ test('flatten: account and card numbers are masked by key, the holder name is ke
   assert.strictEqual(f.sort_code, '****3456');
   assert.strictEqual(f['account_id.other.scheme_name'], 'BBAN');
   assert.ok(!JSON.stringify(f).includes('98765432'));
-});
+}));
 
 test('slug: accents are dropped so names like Asa still work', () => {
   assert.strictEqual(BS.Connections.slug('Åsa Öberg'), 'asa-oberg');
@@ -418,7 +419,7 @@ test('account name falls back to the readable type and currency when the bank se
   assert.strictEqual(labelsFor('z').accountName, 'Mine');
 });
 
-test('transactions keep every API field (account numbers masked) for the raw tab', () => {
+test('transactions keep every API field (account numbers masked) for the raw tab', () => withMasking(BS, true, () => {
   const { transactions } = BS.EbNormalize.normalizeTransactions([{
     entry_reference: 'e1', status: 'BOOK', booking_date: '2026-03-01', credit_debit_indicator: 'DBIT',
     transaction_amount: { amount: '5.00', currency: 'EUR' }, creditor: { name: 'Shop' },
@@ -430,7 +431,7 @@ test('transactions keep every API field (account numbers masked) for the raw tab
   assert.strictEqual(f['bank_transaction_code.code'], 'PMNT');
   assert.strictEqual(f.merchant_category_code, '5411');
   assert.ok(!JSON.stringify(f).includes('GB82'));
-});
+}));
 
 test('sync: raw rows carry API fields and labels; the stored rows never get apiFields', () => {
   let stored = [];

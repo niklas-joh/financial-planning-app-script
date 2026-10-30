@@ -59,11 +59,40 @@ Feature branch per module, small PRs, conventional commits, never push to main.
    get a message to link it in the Enable Banking Control Panel first; nothing is saved
    until the bank grants at least one account.
 5. *Sync all* refreshes the `raw_accounts` and `raw_balances` tabs and the
-   `transactions` tab for every connected login (IBANs are masked to the last four
-   characters). A login that is not connected or whose consent lapsed is reported and
+   `transactions` tab for every connected login (IBANs are stored in full; see "Account numbers" for
+   masking them). A login that is not connected or whose consent lapsed is reported and
    skipped; the others still run.
 
 First run from the editor (e.g. `onOpen`) once so Google can ask you to grant the scopes.
+
+## Account numbers (`MASK_ACCOUNT_NUMBERS`)
+
+`MASK_ACCOUNT_NUMBERS` in `src/core/config.js` decides whether IBANs and other account, card and reference
+numbers are stored in full (`false`, the default) or cut to their last four characters, e.g. `****8707`
+(`true`). It applies to everything that is stored: `ibanMasked` on every tab, `counterpartyAccount`,
+`reference`, CSV texts (`description`, `counterparty`, e.g. "BENEFICIAIRE: ..."), and the `api.*` columns
+(e.g. `api.parsed.Beneficiary account`, `api.creditor_account.other.identification`,
+`api.debtor_account_additional_identification[0].identification`). Every one of these goes through
+`Redact.maskAccount`. The column `ibanMasked` keeps its name either way, so sheets and formulas that use it
+keep working. Error messages and logs are always scrubbed, whatever the setting.
+
+Changing it changes no id: transaction and account ids are built from the source data, never from masked text.
+
+**Re-process stored rows** (menu) rewrites the rows synced while masking was on. It reads every Enable Banking
+account's details again and re-fetches each account's history from its oldest stored row; it re-imports every
+CSV file still in the Drive folders. Rows are updated in place (nothing is added; running it again changes
+nothing). It refuses to run while `MASK_ACCOUNT_NUMBERS` is on. Its summary lists the rows that still hold a
+masked value afterwards (tab, connection, account, date, id and column; no amounts or text):
+
+- "cannot be recovered": the source no longer has them, e.g. a CSV file removed from the folder, or history
+  older than the bank serves (each such date window is counted as "not served by the source"). Put the file
+  back in the folder and run it again to recover CSV rows.
+- "run again": the run stopped at the time budget or the connection failed; run it again.
+
+Rows the run read back from their source are never listed: a mask still on them came from the source itself
+(e.g. a card number a bank sends as `****1234`).
+
+Trading 212 is not re-read (it stores no masked numbers).
 
 ## Connections, labels and raw tabs (Phase 2.5)
 
@@ -79,12 +108,12 @@ told to link it first.
 Every row on `raw_accounts`, `raw_balances` and `transactions` shows `bank`, `connection`,
 `holderName` (the holder's name as the bank reports it), `accountName` (the name set by the
 user or bank, Enable Banking `details`, else the product name, else the account type and
-currency such as "Current account EUR", because banks like Revolut send no name) and `ibanMasked` (last four
-characters), so you can group and total by any of them.
+currency such as "Current account EUR", because banks like Revolut send no name) and `ibanMasked` (the IBAN; the
+column keeps its name, see "Account numbers"), so you can group and total by any of them.
 
 `raw_accounts`, `raw_balances` and `raw_transactions` also show **every field the API returns**, one `api.*`
 column per field (nested fields use dotted names, e.g. `api.balance_amount.amount`,
-`api.postal_address.country`). Values that look like an IBAN are masked. `raw_transactions` accumulates: every sync adds the rows it fetched (the last week or so after
+`api.postal_address.country`). Values that look like an IBAN go through the masking setting. `raw_transactions` accumulates: every sync adds the rows it fetched (the last week or so after
 the first run, which reads 90 days) and replaces older copies of the same transaction, newest first, so the raw
 API fields are kept; rows older than 365 days (`RAW_RETENTION_DAYS`) are dropped. Rows fetched before this was introduced are not recoverable. Account details are
 read automatically the first time and then every 7 days (one bank call per account), so names
@@ -305,7 +334,7 @@ Supported exports:
   - `description`: the remittance text (e.g. "Rent for August"); card payments keep the whole message;
   - `counterparty`: the beneficiary, the payer (`By order of`) or the card merchant;
   - `category`: the kind of movement as a code: `STANDING_ORDER`, `INSTANT_PAYMENT`, `CREDIT`, `CARD_PAYMENT`, ...;
-  - `counterpartyAccount` (masked), `counterpartyBank` (`At` / `Paying bank`), `reference` (end-to-end id, else
+  - `counterpartyAccount`, `counterpartyBank` (`At` / `Paying bank`), `reference` (end-to-end id, else
     the payment reference);
   - every labelled part also as `api.parsed.<label>` on `raw_transactions`.
 - **Trading 212 report** (exported from the Trading 212 app's history, any period, CSV): adds details to rows
@@ -348,10 +377,10 @@ What it writes:
 
 - `transactions` (BIL) and `investment_transactions` (Avanza): one booked row per movement, `provider` `csv`,
   `bank` the source (`BIL`, `Avanza`), `connection` the folder (`csv-niklas`), `accountName` the product from the
-  account line (BIL) or the `Konto` name (Avanza), `ibanMasked` the account number's last four characters (BIL;
+  account line (BIL) or the `Konto` name (Avanza), `ibanMasked` the account number (BIL;
   empty for Avanza, whose export has no number), and the columns above per source. An Avanza account's currency on
   `raw_accounts` is the one most of its rows have; each row keeps its own `Transaktionsvaluta`. Account and card numbers inside the texts are
-  masked to their last four digits. EUR at the booking-date rate, like every other row.
+  kept, or masked to their last four digits when masking is on. EUR at the booking-date rate, like every other row.
 - `raw_accounts` and `raw_transactions`: the account and every CSV column as `api.*` (masked the same way).
 - `transactions` ends with five columns that only some sources fill: `category` (BIL, the Trading 212 report),
   `counterpartyAccount`, `counterpartyBank` and `reference` (BIL), and `classification` (the Trading 212 report). A later

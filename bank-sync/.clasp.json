@@ -57,6 +57,7 @@
     "src/core/consent-warnings.js",
     "src/core/last-run.js",
     "src/core/sync-all.js",
+    "src/core/reprocess.js",
     "src/core/auto-sync.js",
     "src/entry/container.js",
     "src/entry/menu.js",

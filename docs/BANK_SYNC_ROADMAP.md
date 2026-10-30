@@ -6,7 +6,8 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-30 (Trading 212 report export, as it stands once merged and deployed; 6b Avanza CSV import live;
+Last updated: 2026-10-30 (account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
+rows*; Trading 212 report export, as it stands once merged and deployed; 6b Avanza CSV import live;
 Avanza deposits and withdrawals stay on `investment_transactions`; B2 moved into a later classification engine;
 remaining work in order).
 
@@ -40,6 +41,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 9 | Avanza unofficial API (values, positions, cash) | Roadmap item only, not planned: see "Avanza" for the findings and what it would take |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
+| M1 | Account numbers in full: `MASK_ACCOUNT_NUMBERS` (default off), one masking helper, *Re-process stored rows* | Merged; live once deployed and re-processed (see "Account numbers") |
 | B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged; live once deployed (see "Trading 212 report export") |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
@@ -62,6 +64,34 @@ In this order; each item still gets its own PR and stops for review.
 4. Analysis on the classified data, toward one sheet (open decision "One sheet").
 5. When convenient: Phase 8 (partner), B4 (Drive scope), retiring Plaid/SaltEdge, the old portfolio sheet and the
    one-time migration code. Phase 9 (Avanza API) stays unplanned.
+
+## Account numbers (owner, 2026-10-30)
+
+Owner decision: store IBANs and other account, card and reference numbers in full on the Bank Sync sheet.
+`Config.MASK_ACCOUNT_NUMBERS` (default `false`) switches the old masking (`****8707`) back on. As built:
+
+- Every masking site calls `Redact.maskAccount(value)`, which returns the value unchanged when the flag is off and
+  calls the old `maskIban` when it is on: `Flatten` (IBAN-shaped values and `iban`/`identification`/... keys, so all
+  `api.*` columns, e.g. `creditor_account.other.identification`, `debtor_account_additional_identification[0]
+  .identification`), `CsvNormalize.maskNumbers` (IBANs and 12-19 digit runs in CSV texts, `counterpartyAccount`,
+  `reference`, `api.*`, report details), the CSV account's `ibanMasked`, and Enable Banking's `ibanMasked`.
+  `Redact.text` (logs and error text) is not affected.
+- Column names are unchanged (`ibanMasked` stays) so sheets and formulas keep working; its JSDoc says it holds the
+  full value when masking is off.
+- Ids never used masked text (CSV ids hash the raw columns and the raw account number; Enable Banking ids are
+  `entry_reference`, `transaction_id` or a hash of unmasked fields), so the flag changes no id. Tested both ways.
+- *Re-process stored rows* (menu) = Sync all over the Enable Banking and CSV connections with `fullHistory`: every
+  account's details are read again (`refreshStale` with `force`), each account is re-fetched from its oldest stored
+  row (a window the bank refuses with a non-consent error is counted as "not served by the source" and skipped), and
+  every CSV file still in the folder is re-imported. Stored `raw_transactions` rows also take their account's fresh
+  labels now. Afterwards it lists rows still holding a masked value (`Redact.isMasked`) on the three transaction
+  tabs and the raw tabs: "cannot be recovered" (source no longer has them) or "run again" (time budget, failure).
+  Tested end to end on a fake sheet: two runs leave every tab's row count and every id unchanged; the second
+  updates nothing.
+- Deploy: push `bank-sync/` from `main`, reload the sheet, run *Re-process stored rows*, then once more to see
+  0 added / 0 updated. Record the counts and the "cannot be recovered" list (counts only) here in the next PR.
+  Not known yet: how far back Revolut and Danske serve history through Enable Banking; rows older than that keep
+  their masked API fields (their account label is still rewritten).
 
 ## Live state (2026-10-30)
 
@@ -107,7 +137,8 @@ Earlier (2026-10-25):
   field as `api.*` columns; `raw_transactions` accumulates, see below), `transactions` (the full deduplicated
   history, signed amounts, label columns, `amountEur`/`fxRate`/`fxRateDate` filled), and `rates` (ECB rates per
   currency and date). `raw_balances` also carries `amountEur`/`fxRate`/`fxRateDate` at the latest rate.
-- Menu: *Connect a bank...*, *Sync all*, *Import CSV files*, *Show status*, *Enable daily sync*, *Disable daily sync*. Sync all is idempotent: a second run
+- Menu: *Connect a bank...*, *Sync all*, *Import CSV files*, *Show status*, *Enable daily sync*, *Disable daily sync*
+  (since then also *Request Trading 212 report* and *Re-process stored rows*). Sync all is idempotent: a second run
   reports 0 added, 0 updated, 0 removed, and 0 transactions converted to EUR.
 - Apps Script: web-app deployment (the redirect `/exec`) is pinned to version 3; the script
   itself is pushed from `main` after #58 (Phases 3 and 4 did not change the web app, so no redeploy). The three
@@ -155,7 +186,8 @@ Earlier (2026-10-25):
 
 Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`).
 
-- `core/`: `config` (static, non-secret), `errors`, `redact`, `legacy-migration` (one-time, removable), `connections` (bank picker
+- `core/`: `config` (static, non-secret), `errors`, `redact` (log scrubbing, and `maskAccount`: the one place stored
+  account numbers are masked, per `MASK_ACCOUNT_NUMBERS`), `reprocess` (*Re-process stored rows*), `legacy-migration` (one-time, removable), `connections` (bank picker
   helpers and the connection store in Script Properties), `account-labels` (labels joined from
   the accounts list), `raw-sync` (collect and write the three raw tabs), `date-range` (pure
   windows), `txn-merge` (pure upsert), `txn-routing` (B1: the tab rule and the routed store over the three
@@ -790,7 +822,8 @@ merging: it found real bugs on #44 and #49. A PR that edits the workflow itself 
 - Never read, print or copy `.pem` files, Script Property values, `~/.clasprc.json` or
   tokens. The owner pastes secrets. Never put them in the repo, logs, sheets or chat.
 - Bank logins and consent renewals belong to the owner: give the link and wait.
-- No personal financial data in logs, commits, PR text or chat; IBANs stay masked; tests
+- No personal financial data in logs, commits, PR text or chat; IBANs never appear in logs or error text (`Redact.text`;
+  on the sheet they follow `MASK_ACCOUNT_NUMBERS`, owner decision 2026-10-30); tests
   and docs use fake data.
 - Ignore "[github assistant] ..." errors in the Apps Script editor (a Chrome extension).
 - A `client_secret_*.json` sits (gitignored) in the repo root. The owner chose to leave it

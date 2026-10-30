@@ -53,14 +53,17 @@
    * How `raw_transactions` grows: one row per transaction id, newest first, so the raw API
    * fields of earlier fetches are kept even though each sync only reads the last weeks.
    * Rows older than `RAW_RETENTION_DAYS` are dropped so the tab (and each rewrite of it) stays bounded.
+   * Stored rows get their account's current labels (name, IBAN), like the transaction tabs.
    * @param {string} today - ISO date of today.
+   * @param {function(string): ?Object} labelsFor - Labels of the accounts read in this run (`AccountLabels.lookup`).
    * @returns {import('../sheets/raw-writer.js').Accumulate} Policy.
    */
-  function accumulateTransactions(today) {
+  function accumulateTransactions(today, labelsFor) {
     const oldest = ns.DateRange.addDays(today, -ns.Config.TRANSACTIONS.RAW_RETENTION_DAYS);
     return {
       keyOf: function (t) { return t.transactionId ? ns.TxnMerge.rowKey(t) : ''; },
       keep: function (t) { return !dayOf(t) || dayOf(t) >= oldest; },
+      refresh: function (t) { return ns.AccountLabels.stamp(t, labelsFor); },
       compare: function (a, b) {
         if (dayOf(a) !== dayOf(b)) return dayOf(a) < dayOf(b) ? 1 : -1;
         const ka = ns.TxnMerge.rowKey(a);
@@ -90,7 +93,7 @@
     const transactions = (data.transactions || []).map(function (t) { return ns.RawWriter.toRow(ns.AccountLabels.stamp(t, labelsFor)); });
     const tabs = ns.Config.TABS;
     const written = {
-      transactions: writer.writeTable(tabs.RAW_TRANSACTIONS, ns.RawWriter.TRANSACTION_COLUMNS, transactions, refreshed, accumulateTransactions(today)),
+      transactions: writer.writeTable(tabs.RAW_TRANSACTIONS, ns.RawWriter.TRANSACTION_COLUMNS, transactions, refreshed, accumulateTransactions(today, labelsFor)),
       accounts: writer.writeTable(tabs.RAW_ACCOUNTS, ns.RawWriter.ACCOUNT_COLUMNS, accounts, refreshed),
       balances: writer.writeTable(tabs.RAW_BALANCES, ns.RawWriter.BALANCE_COLUMNS, balances, refreshed)
     };

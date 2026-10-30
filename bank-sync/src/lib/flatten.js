@@ -1,7 +1,8 @@
 /**
  * @fileoverview Flattens an API object into one level of dotted keys so every
- * field can be shown as a sheet column. IBANs and other account or card numbers are
- * masked to their last four characters (the holder's name is kept on purpose).
+ * field can be shown as a sheet column. IBANs and other account or card numbers go through
+ * `Redact.maskAccount` (masked to their last four characters when `MASK_ACCOUNT_NUMBERS` is on;
+ * the holder's name is kept on purpose).
  */
 (function (ns) {
   const IBAN = /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/;
@@ -14,13 +15,14 @@
    * @param {*} value - Leaf value.
    * @param {string} path - Dotted path of the value.
    * @returns {string|number|boolean} Number or boolean as is; text truncated; IBAN-shaped values and
-   *   values under account/card-number keys masked to their last four characters; null as ''.
+   *   values under account/card-number keys through `Redact.maskAccount` (kept whole, untruncated, when
+   *   masking is off); null as ''.
    */
   function leaf(value, path) {
     if (value === null || value === undefined) return '';
     const last = path.split('.').pop().replace(/\[\d+\]$/, '');
     const text = String(value);
-    if (IBAN.test(text) || (SENSITIVE_KEY.test(last) && text)) return ns.Redact.maskIban(text);
+    if (IBAN.test(text) || (SENSITIVE_KEY.test(last) && text)) return ns.Redact.maskAccount(text);
     if (typeof value === 'number' || typeof value === 'boolean') return value;
     return text.slice(0, MAX_TEXT);
   }

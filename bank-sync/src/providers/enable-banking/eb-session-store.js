@@ -12,7 +12,7 @@
    * @property {string} sessionId - Enable Banking session id.
    * @property {string} accessValidUntil - ISO date-time when consent lapses.
    * @property {string} createdAt - ISO date-time the session was created.
-   * @property {Array<import('../bank-provider.js').Account>} accounts - Accounts granted (IBANs masked; the
+   * @property {Array<import('../bank-provider.js').Account>} accounts - Accounts granted (IBANs masked when `MASK_ACCOUNT_NUMBERS` is on; the
    *   full API fields live in `loadApiFields`, not here).
    */
 
@@ -115,7 +115,7 @@
        * Keeps an account's full flattened API fields (shown on the raw tabs), one property
        * per account so they never compete with the session for space.
        * @param {string} accountId - Account uid.
-       * @param {Object<string,*>} fields - Flat, IBAN-masked fields.
+       * @param {Object<string,*>} fields - Flat fields (IBANs masked when `MASK_ACCOUNT_NUMBERS` is on).
        * @returns {boolean} False if the fields are too large for one property, or Script Properties refused the
        *   write, and were not stored
        *   (the account then has no `api.*` columns; it never blocks a connect or a sync).

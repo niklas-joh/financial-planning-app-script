@@ -9,7 +9,8 @@
    * @property {string} connection - Connection key (bank plus holder).
    * @property {string} holderName - Account holder's name as the bank reports it, or ''.
    * @property {string} accountName - The name set by the user or bank, else the product name, else account type and currency (e.g. 'Current account EUR').
-   * @property {string} ibanMasked - IBAN reduced to its last four characters, or ''.
+   * @property {string} ibanMasked - The account's IBAN through `Redact.maskAccount`, or ''. Holds the full IBAN
+   *   when `Config.MASK_ACCOUNT_NUMBERS` is off (the default); the name is kept so sheets and formulas still work.
    */
 
   /** Readable names for ISO 20022 cash account type codes; unknown codes are shown as they are. */

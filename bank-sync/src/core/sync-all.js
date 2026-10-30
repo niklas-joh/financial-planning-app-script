@@ -21,6 +21,8 @@
    * @property {function(): string} todayIso - Today's date in the configured time zone.
    * @property {{convertTransactions: function(Array<Object>): Object, convertBalances: function(Array<Object>): Object}} [fx]
    *   FX service for this run; without it the EUR columns are left as they are.
+   * @property {boolean} [fullHistory] - Re-read everything already stored: every account's details now and each
+   *   account's transactions from its oldest stored row (see `TxnSync`). Used by *Re-process stored rows*.
    */
 
   /**
@@ -54,11 +56,11 @@
   function syncOne(connection, deps, budgetMs, startedAt) {
     const provider = deps.providerFor(connection);
     const outOfTime = function () { return deps.nowMs() - startedAt > ns.Config.TRANSACTIONS.TIME_BUDGET_MS; };
-    const accounts = provider.listAccounts({ outOfTime: outOfTime });
+    const accounts = provider.listAccounts({ outOfTime: outOfTime, refreshDetails: Boolean(deps.fullHistory) });
     const data = ns.RawSync.collect(provider, accounts, outOfTime);
     const transactions = ns.TxnSync.run({
       provider: provider, accounts: accounts, store: deps.store,
-      nowMs: deps.nowMs, todayIso: deps.todayIso, budgetMs: budgetMs
+      nowMs: deps.nowMs, todayIso: deps.todayIso, budgetMs: budgetMs, fullHistory: deps.fullHistory
     });
     const enrichments = typeof provider.getEnrichments === 'function' ? provider.getEnrichments() : [];
     return { data: data, transactions: transactions, enrichments: enrichments };
@@ -188,6 +190,7 @@
       if (r.status === 'ok') {
         const t = r.transactions;
         return r.connection + ': ' + t.added + ' added, ' + t.updated + ' updated, ' + t.removed + ' pending removed' +
+          (t.unavailable ? ', ' + t.unavailable + ' date windows not served by the source' : '') +
           (t.complete ? '' : ' (time budget reached; run again to continue)');
       }
       return r.connection + ': ' + r.status + (r.error ? ' (' + r.error + ')' : '');
