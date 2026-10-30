@@ -7,7 +7,7 @@ imports, Node-testable pure logic). This file records what has been built, what 
 decided, and what comes next. Update it in the same PR that changes the state.
 
 Last updated: 2026-10-30 (account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
-rows*, live and re-processed; Trading 212 report export, as it stands once merged and deployed; 6b Avanza CSV import live;
+rows*, live and re-processed; Trading 212 report export live (#83, #88, #94); 6b Avanza CSV import live;
 Avanza deposits and withdrawals stay on `investment_transactions`; B2 moved into a later classification engine;
 remaining work in order).
 
@@ -42,7 +42,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
 | M1 | Account numbers in full: `MASK_ACCOUNT_NUMBERS` (default off), one masking helper, *Re-process stored rows* | Merged (#91), live since 2026-10-30: re-processed twice, nothing left masked (see "Live state") |
-| B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged; live once deployed (see "Trading 212 report export") |
+| B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged (#83, #88, #94), live since 2026-10-30 (see Live state) |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
 commit to `main`, conventional-commit PR title with a lowercase subject (e.g.
@@ -56,8 +56,8 @@ quirks) goes into the next phase's PR.
 
 In this order; each item still gets its own PR and stops for review.
 
-1. Owner actions: deploy the Trading 212 report export (its first report covers the full history and names the
-   unclassified rows; see "Trading 212 report export") and drop an Avanza "Sedan start" export in the CSV folder.
+1. Owner action: drop an Avanza "Sedan start" export in the CSV folder. (The Trading 212 report export is live and named
+   795 of the 817 unclassified rows; see Live state. The 22 left are still to be looked at.)
 2. Bank balances in `daily_values` (tag the booked balance `cash`; BIL has no balance in its export) and Avanza cash from
    a "Sedan start" export (open decision "Daily values for banks").
 3. Classification engine: categories for all spending, with B2 (internal-transfer pairs) as part of it. Design first.
@@ -94,6 +94,17 @@ Owner decision: store IBANs and other account, card and reference numbers in ful
 
 ## Live state (2026-10-30)
 
+- Trading 212 report export (#83, #88, #94) deployed on 2026-10-30, `CSV_FOLDER_T212_NIKLAS` set, monthly trigger on.
+  The first full-history request (2016 to today) got HTTP 400 (fixed in #88: a year per report); the next saved three
+  reports (2024-08-12 to 2026-10-30) unattended, but the import skipped them (dividend rows have no `ID`; fixed in
+  #94). After #94, *Import CSV files*: `csv-t212-niklas` 0 added, 0 updated; "Details from reports: 2559 transactions
+  updated (2586 read)"; "Moved between tabs: 791 to transactions, 4 to investment_transactions". A second import: details
+  0 updated (2586 read), nothing moved. *Show status*: "trading212-report: 3 files, 2578 transactions, 2024-08-12 to
+  2026-10-30", "report export - CSV_FOLDER_T212_NIKLAS: set; last saved 2026-10-30 (2026-07-27 to 2026-10-30)",
+  "Monthly Trading 212 report: on", "Rows: transactions 971, investment_transactions 2107, unclassified_transactions 22";
+  daily sync of 2026-10-30 06:20 OK; Danske and Revolut 84 consent days left.
+- 22 rows stay in `unclassified_transactions`: Trading 212 `WITHDRAW`/`DEPOSIT` rows no saved report names (to look
+  at: e.g. rows whose report `ID` differs from the API `reference`, or newer than the last report; counts only so far).
 - M1 (#91) deployed on 2026-10-30. First *Re-process stored rows*: `danske-bank-niklas` and `revolut-niklas` 0 added,
   0 updated (their only masked value was the `ibanMasked` label, which is rewritten without counting as an update);
   `csv-niklas` 0 added, 112 updated; `csv-t212-niklas` 0 added, 0 updated; "Raw tabs: 8 accounts, 9 balances, 1570
@@ -633,7 +644,7 @@ Compared on 2026-10-26 (code and docs only; no login, no Avanza call). Avanza is
 - **Aggregators:** GoCardless (Nordigen) closed to new sign-ups in 2025; Tink and Insurely list Avanza but sell to
   businesses only; PSD2 covers payment accounts, not ISK or depot positions.
 
-## Trading 212 report export (live once deployed)
+## Trading 212 report export (live since 2026-10-30)
 
 Owner request (2026-10-30): request the Trading 212 report through the API every month instead of exporting it by
 hand, with a manual option, and save it to the owner's own Drive folder ("Trading212 exports"). As built (see
