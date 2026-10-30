@@ -30,6 +30,8 @@
    * @property {string} coveredTo - Last day covered by a saved report, or '' before the first.
    * @property {?{file: string, from: string, to: string, at: string}} saved - The last saved report.
    * @property {string} error - The last problem (redacted), or ''.
+   * @property {?number} catchUp - While older history is still being fetched (a saved report ended before today):
+   *   the follow-up requests that failed in a row, retried with each check up to `REPORT_MAX_CHECKS`; null otherwise.
    */
 
   /**
@@ -50,11 +52,13 @@
    *   throws LockError if it is busy.
    * @property {function(): number} nowMs - Clock.
    * @property {function(): string} todayIso - Today's date (script time zone).
+   * @property {function(import('../../core/config.js').ConnectionConfig): string} [firstDate] - Booking date of
+   *   the connection's oldest stored row, or '' (where the first report starts).
    */
 
   /** @returns {ExportState} State before any report. */
   function emptyState() {
-    return { pending: null, coveredTo: '', saved: null, error: '' };
+    return { pending: null, coveredTo: '', saved: null, error: '', catchUp: null };
   }
 
   /**
@@ -95,15 +99,49 @@
   }
 
   /**
-   * The period the next report covers: the full history the first time, then from a few days before the
+   * The period the next report covers, at most `EXPORT_MAX_DAYS` long (Trading 212 refuses longer ones): the
+   * first one starts at the oldest stored row (else `EXPORT_FIRST_FROM`), each later one a few days before the
    * last saved report's end (a missed month is caught up; the overlap gives the same ids, so it changes nothing).
    * @param {ExportState} state - Current state.
    * @param {string} today - Today (ISO date).
+   * @param {string} [firstDate] - The connection's oldest stored booking date, or ''.
    * @returns {{from: string, to: string}} ISO dates, inclusive.
    */
-  function rangeFor(state, today) {
-    const from = state.coveredTo ? ns.DateRange.addDays(state.coveredTo, -T212.EXPORT_OVERLAP_DAYS) : T212.EXPORT_FIRST_FROM;
-    return { from: from < today ? from : today, to: today };
+  function rangeFor(state, today, firstDate) {
+    let from = state.coveredTo ? ns.DateRange.addDays(state.coveredTo, -T212.EXPORT_OVERLAP_DAYS) : firstDate || T212.EXPORT_FIRST_FROM;
+    if (from > today) from = today;
+    const last = ns.DateRange.addDays(from, T212.EXPORT_MAX_DAYS - 1);
+    return { from: from, to: last < today ? last : today };
+  }
+
+  /**
+   * @param {number} ms - Epoch ms.
+   * @returns {string} ISO date-time in UTC to the second, e.g. `2026-11-01T04:10:00Z`.
+   */
+  function isoSeconds(ms) {
+    return new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  }
+
+  /**
+   * @param {ExportState} state - State.
+   * @returns {boolean} Whether older history is still to be requested and the follow-up has retries left.
+   */
+  function catchingUp(state) {
+    return typeof state.catchUp === 'number' && state.catchUp < A.REPORT_MAX_CHECKS;
+  }
+
+  /**
+   * Where the first report starts: the oldest booking date among a connection's stored rows. It reaches back as
+   * far as the Trading 212 history backfill has (*Show status*: "history: complete").
+   * @param {Array<{connection: string, bookingDate: string}>} rows - Stored rows (all three tabs).
+   * @param {string} connectionKey - Connection, e.g. 'trading212-niklas'.
+   * @returns {string} ISO date, or '' when the connection has no dated row.
+   */
+  function oldestDate(rows, connectionKey) {
+    return rows.reduce(function (first, t) {
+      const date = t.connection === connectionKey ? String(t.bookingDate || '') : '';
+      return date && (!first || date < first) ? date : first;
+    }, '');
   }
 
   /**
@@ -127,30 +165,34 @@
    * Requests a report per connection whose exports folder is set. A report still pending is replaced
    * (the new one covers its period too).
    * @param {ExportDeps} deps - Services.
+   * @param {Array<string>} [only] - Connection keys to request for; all when omitted.
    * @returns {Array<{connection: string, status: string, from: (string|undefined), to: (string|undefined)}>}
    *   One result per connection: 'requested', 'no folder' or 'error: ...'.
    */
-  function request(deps) {
-    return deps.connections.map(function (c) {
+  function request(deps, only) {
+    return deps.connections.filter(function (c) { return !only || only.indexOf(c.key) !== -1; }).map(function (c) {
       if (!folderId(deps.props, c)) {
         return { connection: c.key, status: 'no folder: set ' + folderProperty(c) + ' in Script Properties' };
       }
       const states = store(deps.props, c);
       const state = states.load();
-      const range = rangeFor(state, deps.todayIso());
+      const today = deps.todayIso();
+      const range = rangeFor(state, today, state.coveredTo || !deps.firstDate ? '' : deps.firstDate(c));
       try {
         const out = deps.clientFor(c).requestReport({
           dataIncluded: DATA_INCLUDED,
           timeFrom: range.from + 'T00:00:00Z',
-          timeTo: new Date(deps.nowMs()).toISOString()
+          timeTo: range.to === today ? isoSeconds(deps.nowMs()) : range.to + 'T23:59:59Z'
         });
         if (out.reportId === undefined || out.reportId === null) throw ns.Errors.create('DataError', 'Trading 212 returned no report id');
         state.pending = { reportId: out.reportId, from: range.from, to: range.to, requestedAt: new Date(deps.nowMs()).toISOString(), checks: 0 };
         state.error = '';
+        state.catchUp = null;
         states.save(state);
         return { connection: c.key, status: 'requested', from: range.from, to: range.to };
       } catch (e) {
         state.error = describe(e);
+        if (typeof state.catchUp === 'number') state.catchUp++;
         states.save(state);
         return { connection: c.key, status: 'error: ' + state.error };
       }
@@ -191,16 +233,22 @@
    * Checks every pending report: saves the finished ones; an unfinished one (or a failed check) counts one
    * check, and after `REPORT_MAX_CHECKS` it stays pending without further checks until the next request.
    * @param {ExportDeps} deps - Services.
-   * @returns {{results: Array<{connection: string, status: string}>, again: boolean}} One result per connection
-   *   with a pending report, and whether a later check is needed.
+   * @returns {{results: Array<{connection: string, status: string}>, again: boolean, more: Array<string>}} One
+   *   result per connection with a pending report, whether a later check is needed, and the connections whose
+   *   saved report ended before today, or whose request for the next period failed and has retries left (the
+   *   history continues with the next period).
    */
   function fetchPending(deps) {
     let again = false;
     const results = [];
+    const more = [];
     deps.connections.forEach(function (c) {
       const states = store(deps.props, c);
       const state = states.load();
-      if (!state.pending || state.pending.checks >= A.REPORT_MAX_CHECKS) return;
+      if (!state.pending || state.pending.checks >= A.REPORT_MAX_CHECKS) {
+        if (catchingUp(state)) more.push(c.key);
+        return;
+      }
       let status;
       try {
         status = check(deps, c, state);
@@ -213,10 +261,12 @@
         if (state.pending.checks < A.REPORT_MAX_CHECKS) again = true;
         else status = 'gave up after ' + state.pending.checks + ' checks (' + status + ')';
       }
+      if (status === 'saved') state.catchUp = state.coveredTo < deps.todayIso() ? 0 : null;
       states.save(state);
+      if (catchingUp(state) && !state.pending) more.push(c.key);
       results.push({ connection: c.key, status: status });
     });
-    return { results: results, again: again };
+    return { results: results, again: again, more: more };
   }
 
   /**
@@ -231,12 +281,13 @@
 
   /**
    * @param {ExportDeps} deps - Services.
-   * @returns {boolean} Whether a connection has a pending report with checks left.
+   * @returns {boolean} Whether a connection has a pending report with checks left, or older history to request
+   *   with retries left.
    */
   function hasOpenReport(deps) {
     return deps.connections.some(function (c) {
-      const pending = store(deps.props, c).load().pending;
-      return Boolean(pending) && pending.checks < A.REPORT_MAX_CHECKS;
+      const state = store(deps.props, c).load();
+      return state.pending ? state.pending.checks < A.REPORT_MAX_CHECKS : catchingUp(state);
     });
   }
 
@@ -255,22 +306,29 @@
   }
 
   /**
-   * Checks the pending reports under the script lock and schedules another check while one is unfinished (fetch
-   * trigger). A busy lock counts no check: the check is simply scheduled again.
+   * Checks the pending reports under the script lock (fetch trigger). A saved report that ended before today
+   * (the history is fetched one `EXPORT_MAX_DAYS` period at a time) is followed at once by the request for
+   * the next period. Another check stays scheduled while a report is pending with checks left. A busy lock
+   * counts no check: the check is simply scheduled again.
    * @param {ExportDeps} deps - Services.
-   * @returns {{results: Array<{connection: string, status: string}>, again: boolean, busy: (boolean|undefined)}}
-   *   From `fetchPending`, or `busy` with no results when the lock was held.
+   * @returns {{results: Array<{connection: string, status: string}>, again: boolean, more: Array<string>,
+   *   requested: Array<Object>, busy: (boolean|undefined)}} From `fetchPending` plus the follow-up requests, or
+   *   `busy` with no results when the lock was held.
    */
   function fetchAndSchedule(deps) {
     clearFetchTriggers(deps.triggers);
     let out;
     try {
-      out = deps.withLock(function () { return fetchPending(deps); });
+      out = deps.withLock(function () {
+        const done = fetchPending(deps);
+        done.requested = done.more.length ? request(deps, done.more) : [];
+        return done;
+      });
     } catch (e) {
       if (e.name !== 'LockError') throw e;
-      out = { results: [], again: true, busy: true };
+      out = { results: [], again: true, more: [], requested: [], busy: true };
     }
-    if (out.again) deps.triggers.createAfter(A.REPORT_FETCH_HANDLER, A.REPORT_FETCH_AFTER_MS);
+    if (out.busy || hasOpenReport(deps)) deps.triggers.createAfter(A.REPORT_FETCH_HANDLER, A.REPORT_FETCH_AFTER_MS);
     return out;
   }
 
@@ -304,12 +362,17 @@
       parts.push('requested ' + state.pending.requestedAt.slice(0, 16).replace('T', ' ') + ' UTC, ' + state.pending.checks + ' checks' +
         (state.pending.checks >= A.REPORT_MAX_CHECKS ? ', no more checks until the next request' : ''));
     }
+    if (!state.pending && typeof state.catchUp === 'number') {
+      parts.push(catchingUp(state)
+        ? 'older history: next period retried with the next check (' + state.catchUp + ' failed)'
+        : 'older history: stopped after ' + state.catchUp + ' failed requests; Request Trading 212 report continues it');
+    }
     if (state.error) parts.push('last error: ' + state.error);
     return ns.Connections.label(connection) + ' report export - ' + parts.join('; ');
   }
 
   ns.T212Export = {
-    DATA_INCLUDED: DATA_INCLUDED, store: store, rangeFor: rangeFor, fileName: fileName, request: request, fetchPending: fetchPending,
+    DATA_INCLUDED: DATA_INCLUDED, store: store, rangeFor: rangeFor, oldestDate: oldestDate, fileName: fileName, request: request, fetchPending: fetchPending,
     requestAndSchedule: requestAndSchedule, fetchAndSchedule: fetchAndSchedule, summarize: summarize, statusLine: statusLine
   };
 })(globalThis.BankSync);

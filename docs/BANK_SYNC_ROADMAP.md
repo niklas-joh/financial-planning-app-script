@@ -610,8 +610,16 @@ hand, with a manual option, and save it to the owner's own Drive folder ("Tradin
 - The folder property starts with `CSV_FOLDER_`, so the exports folder is also a CSV connection (`csv-t212-<holder>`):
   Sync all, the daily sync and *Import CSV files* apply the saved reports with no change to the CSV import, and report
   rows whose API rows arrive later are applied later, as for a report uploaded by hand.
-- Period: the first report from `TRADING212.EXPORT_FIRST_FROM` (2016-01-01) to the request day (names the
-  unclassified history); later ones from 7 days before the last saved end, so a missed month catches up.
+- Period: at most `TRADING212.EXPORT_MAX_DAYS` (365) per report. Seen live on 2026-10-30: a request from 2016-01-01 to
+  the request day got HTTP 400 (the error said only "request failed", because the body has no `message`; `lib/http`
+  now shows the body instead), matching the app export's one-year cap. So the first report starts at the connection's
+  oldest stored row (`T212Export.oldestDate`; `EXPORT_FIRST_FROM` only when there is none; it reaches back as far as the
+  history backfill has, which is complete live) and covers a year; when a saved report ends before today, the same
+  check requests the next year at once, until the history reaches today. A failed follow-up request is retried with
+  each check (`catchUp` in the state counts the failures, at most `REPORT_MAX_CHECKS`), then *Show status* says the
+  catch-up stopped and a manual request continues it (review #89). Every report starts 7 days
+  before the last saved end, so a missed month catches up. `timeTo` is the end of the period's last day, or the
+  request time to the second when it ends today.
 - Triggers: *Enable daily sync* also creates a monthly trigger (`triggerT212ReportRequest`, day 1, 05:00-06:00);
   the request schedules a one-off `triggerT212ReportFetch` 5 minutes later; an unfinished report is checked every 5
   minutes, at most 6 checks, then stays pending until the next request (a new request replaces it). *Disable daily
@@ -634,8 +642,8 @@ hand, with a manual option, and save it to the owner's own Drive folder ("Tradin
   updates and moves nothing. If the report is skipped ("its header matches no known export"), the API's report has
   other columns than the app's: send the header line (no values) for a format update. No `clasp deploy` (the web app
   is unchanged).
-- Not yet seen live: the API report's columns, the download link's host, how long a full-history report takes, and
-  whether a 10-year period is accepted (a 400 "Bad filtering arguments" would mean splitting the first request).
+- Not yet seen live: the API report's columns, the download link's host, how long a report takes to build, and the
+  400's body (whether a year is the exact limit).
 
 ## Phase 7: Danske Bank (Sweden): done
 
