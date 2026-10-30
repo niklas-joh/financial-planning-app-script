@@ -316,6 +316,12 @@ test('csv t212 report: every row gives a category (merchant category, else the a
   assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(short))).map((d) => d.transactionId), ['id-cashback-2']);
   const noId = REPORT_HEAD + '\nCard debit,2026-08-21 09:27:53+00:00,,,-1.00,"EUR",,,"X","Y"\n';
   assert.throws(() => BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(noId))), /Record 1: A Trading 212 report row has no ID/);
+  // Dividend rows have no ID in the API's report (live 2026-10-30): they are skipped, the rest still applies.
+  const dividends = REPORT_HEAD + '\nDividend (Dividend),2026-08-21 09:27:53+00:00,,,1.00,"EUR",,,,' +
+    '\nDividend (Dividend manufactured payment),2026-08-22 09:27:53+00:00,,,0.50,"EUR",,,,' +
+    '\nNew card cost,2026-08-23 09:27:53+00:00,,id-card-fee-1,-5.00,"EUR",,,,\n';
+  assert.deepStrictEqual(BS.CsvNormalize.details(BS.CsvNormalize.detect(utf8(dividends))).map((d) => [d.transactionId, d.category, d.classification]),
+    [['id-card-fee-1', 'NEW_CARD_COST', 'card']]);
 });
 
 test('csv t212 report: Sync all adds merchant and category to the API rows, adds no rows, and later API syncs keep them', () => {

@@ -299,8 +299,10 @@ uploaded yourself (see "CSV import").
 - Rate limits (per account): a request 1 per 30 s, the reports list 1 per minute. Requests and checks take the same
   lock as *Sync all*: a request while a sync runs says so (try again in a minute); a check that finds it busy just
   runs again 5 minutes later. A failed request never drops the check of a report still pending.
-- Reports already saved stay in the folder; files are never changed or deleted. If Trading 212's API report ever had
-  other columns than the app's export, the CSV import would skip it and name it in *Show status*.
+- Reports already saved stay in the folder; files are never changed or deleted. The API's report has more columns than
+  the app's export (instrument, shares, price, withholding tax, ATM fee); only the ones in "CSV import" are used. Its
+  dividend rows have no `ID` and are skipped (dividends come from the API). If a report ever had other columns, the
+  CSV import would skip it and name it in *Show status*.
 
 ## CSV import (Phase 6)
 
@@ -345,7 +347,8 @@ Supported exports:
   merchant name, else the notes (e.g. `Bank Transfer`). Only empty fields are filled: what the API gave (e.g. a
   dividend's instrument) is kept. Orders are not imported, so their report rows change nothing. A report row
   whose API row is not there yet is applied on a later sync. Each row also gets a `classification`: `card` (a merchant, a
-  card action such as `CARD_DEBIT`, or `SPENDING_CASHBACK`), `transfer` (`Deposit`, `Withdrawal`: money moved to or
+  card action such as `CARD_DEBIT`, `CARD_CREDIT` or `CARD_ATM_WITHDRAWAL`, `SPENDING_CASHBACK`, or `NEW_CARD_COST`, the
+  card's fee), `transfer` (`Deposit`, `Withdrawal`: money moved to or
   from a bank account) or `investment` (everything else); it decides the row's tab (see "Transaction tabs"). Unlike
   the other details, the report's classification replaces a stored one, so a changed rule applies to rows already
   stored. Comma-separated, UTF-8, times in UTC. It can be fetched for you every month (see "Trading 212 report

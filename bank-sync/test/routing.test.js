@@ -74,6 +74,10 @@ test('report classification: transfer for a deposit or withdrawal; transfers go 
   assert.strictEqual(classify('', 'WITHDRAWAL'), 'transfer');
   assert.strictEqual(classify('', 'CARD_DEBIT'), 'card');
   assert.strictEqual(classify('', 'SPENDING_CASHBACK'), 'card');
+  assert.strictEqual(classify('', 'NEW_CARD_COST'), 'card');
+  assert.strictEqual(classify('', 'CARD_ATM_WITHDRAWAL'), 'card');
+  assert.strictEqual(classify('', 'CARD_CREDIT'), 'card');
+  assert.strictEqual(classify('', 'DIVIDEND_ADJUSTMENT'), 'investment');
   assert.strictEqual(classify('DEMO CAFE', 'SOMETHING_NEW'), 'card');
   assert.strictEqual(classify('', 'INTEREST_ON_CASH'), 'investment');
   assert.strictEqual(classify('', 'MARKET_BUY'), 'investment');
