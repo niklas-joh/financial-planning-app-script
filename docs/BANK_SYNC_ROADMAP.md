@@ -6,8 +6,9 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-30 (6b Avanza CSV import live; Avanza deposits and withdrawals stay on `investment_transactions`;
-B2 moved into a later classification engine; remaining work in order).
+Last updated: 2026-10-30 (Trading 212 report export, as it stands once merged and deployed; 6b Avanza CSV import live;
+Avanza deposits and withdrawals stay on `investment_transactions`; B2 moved into a later classification engine;
+remaining work in order).
 
 ## Setup in one paragraph
 
@@ -53,9 +54,8 @@ quirks) goes into the next phase's PR.
 
 In this order; each item still gets its own PR and stops for review.
 
-1. Owner actions, no code: a full-history Trading 212 report (names the unclassified rows) and an Avanza "Sedan start"
-   export, both dropped in the CSV folder. Automating the Trading 212 report through the API is being looked at (B1
-   trade-off below).
+1. Owner actions: deploy the Trading 212 report export (its first report covers the full history and names the
+   unclassified rows; see "Trading 212 report export") and drop an Avanza "Sedan start" export in the CSV folder.
 2. Bank balances in `daily_values` (tag the booked balance `cash`; BIL has no balance in its export) and Avanza cash from
    a "Sedan start" export (open decision "Daily values for banks").
 3. Classification engine: categories for all spending, with B2 (internal-transfer pairs) as part of it. Design first.
