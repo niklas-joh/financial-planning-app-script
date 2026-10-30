@@ -136,8 +136,34 @@
     };
   }
 
+  /**
+   * Builds the Trading 212 report export services: one API client per key with its secret, the exports
+   * folders, the triggers and the script lock (the same one Sync all takes, so a request, a check and a
+   * sync never interleave their Script Property writes).
+   * @returns {import('../providers/trading212/t212-export.js').ExportDeps} Dependencies for `T212Export`.
+   */
+  function exportDeps() {
+    const wired = services();
+    const formatDate = ns.Gas.dateFormatter(ns.Config.TIMEZONE);
+    const startedAt = wired.nowMs();
+    const msLeft = function () { return startedAt + ns.Config.TRADING212.EXPORT_BUDGET_MS - wired.nowMs(); };
+    return {
+      connections: ns.T212Credentials.connections(wired.props).filter(function (c) { return ns.T212Credentials.isComplete(wired.props, c); }),
+      clientFor: function (c) {
+        const http = ns.Gas.http({ retryDelayMs: ns.T212RateLimit.hook(wired.nowMs, msLeft) });
+        return ns.T212Client.create(http, ns.T212Credentials.credentials(wired.props, c), ns.Gas.base64);
+      },
+      props: wired.props,
+      folder: ns.Gas.driveFolder,
+      triggers: ns.Gas.triggers(),
+      withLock: function (action) { return ns.Lock.run(LockService, ns.Config.TRANSACTIONS.LOCK_WAIT_MS, action); },
+      nowMs: wired.nowMs,
+      todayIso: function () { return formatDate(new Date()); }
+    };
+  }
+
   ns.Container = {
     services: services, providerFor: providerFor, fxService: fxService,
-    syncAllDeps: syncAllDeps, autoSyncDeps: autoSyncDeps
+    syncAllDeps: syncAllDeps, autoSyncDeps: autoSyncDeps, exportDeps: exportDeps
   };
 })(globalThis.BankSync);

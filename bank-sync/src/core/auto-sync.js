@@ -10,6 +10,8 @@
    * @typedef {Object} TriggerService
    * @property {function(): Array<import('./schedule.js').TriggerInfo>} list - The project's triggers.
    * @property {function(string, number): void} createDaily - Daily trigger for a handler at an hour (script time zone).
+   * @property {function(string, number, number): void} createMonthly - Monthly trigger for a handler on a day of
+   *   the month at an hour (script time zone).
    * @property {function(string, number): void} createAfter - One-off trigger for a handler after some ms.
    * @property {function(Array<string>): void} remove - Deletes the triggers with these ids.
    */
@@ -36,28 +38,41 @@
   }
 
   /**
-   * Turns the daily sync on; repairs duplicates if there are any.
-   * @param {TriggerService} triggers - Trigger service.
-   * @returns {boolean} True if a trigger was created, false if one already existed.
+   * @returns {string} When the monthly Trading 212 report is requested, e.g. "on day 1 between 5:00 and 6:00".
    */
-  function enable(triggers) {
+  function reportScheduleText() {
     const A = ns.Config.AUTOMATION;
-    const plan = ns.Schedule.plan(triggers.list(), A.DAILY_HANDLER, true);
-    if (plan.remove.length) triggers.remove(plan.remove);
-    if (plan.create) triggers.createDaily(A.DAILY_HANDLER, A.DAILY_HOUR);
-    return plan.create;
+    return 'on day ' + A.REPORT_DAY + ' between ' + A.REPORT_HOUR + ':00 and ' + (A.REPORT_HOUR + 1) + ':00';
   }
 
   /**
-   * Turns the daily sync off, including a pending follow-up run.
+   * Turns the daily sync on, with the monthly Trading 212 report request; repairs duplicates if there are any.
+   * @param {TriggerService} triggers - Trigger service.
+   * @returns {boolean} True if the daily trigger was created, false if it already existed.
+   */
+  function enable(triggers) {
+    const A = ns.Config.AUTOMATION;
+    const list = triggers.list();
+    const daily = ns.Schedule.plan(list, A.DAILY_HANDLER, true);
+    const monthly = ns.Schedule.plan(list, A.REPORT_REQUEST_HANDLER, true);
+    const duplicates = daily.remove.concat(monthly.remove);
+    if (duplicates.length) triggers.remove(duplicates);
+    if (daily.create) triggers.createDaily(A.DAILY_HANDLER, A.DAILY_HOUR);
+    if (monthly.create) triggers.createMonthly(A.REPORT_REQUEST_HANDLER, A.REPORT_DAY, A.REPORT_HOUR);
+    return daily.create;
+  }
+
+  /**
+   * Turns the daily sync off, including a pending follow-up run, the monthly report request and a pending
+   * report check.
    * @param {TriggerService} triggers - Trigger service.
    * @returns {number} Triggers deleted.
    */
   function disable(triggers) {
     const A = ns.Config.AUTOMATION;
     const list = triggers.list();
-    const ids = ns.Schedule.plan(list, A.DAILY_HANDLER, false).remove
-      .concat(ns.Schedule.plan(list, A.CONTINUE_HANDLER, false).remove);
+    const ids = [A.DAILY_HANDLER, A.CONTINUE_HANDLER, A.REPORT_REQUEST_HANDLER, A.REPORT_FETCH_HANDLER]
+      .reduce(function (all, handler) { return all.concat(ns.Schedule.plan(list, handler, false).remove); }, []);
     if (ids.length) triggers.remove(ids);
     return ids.length;
   }
@@ -153,14 +168,17 @@
   function statusLines(triggers, last) {
     const A = ns.Config.AUTOMATION;
     const on = ns.Schedule.isOn(triggers, A.DAILY_HANDLER);
+    const monthly = ns.Schedule.isOn(triggers, A.REPORT_REQUEST_HANDLER);
     return ['Daily sync: ' + (on
       ? 'on, ' + scheduleText()
-      : 'off (Enable daily sync to turn it on; consent warnings are emailed by it)')]
+      : 'off (Enable daily sync to turn it on; consent warnings are emailed by it)'),
+    'Monthly Trading 212 report: ' + (monthly ? 'on, requested ' + reportScheduleText() + ', saved about ' +
+      Math.round(A.REPORT_FETCH_AFTER_MS / 60000) + ' minutes later' : 'off (Enable daily sync turns it on)')]
       .concat(ns.LastRun.describe(last));
   }
 
   ns.AutoSync = {
     enable: enable, disable: disable, runTriggered: runTriggered, recordManual: recordManual,
-    statusLines: statusLines, scheduleText: scheduleText
+    statusLines: statusLines, scheduleText: scheduleText, reportScheduleText: reportScheduleText
   };
 })(globalThis.BankSync);

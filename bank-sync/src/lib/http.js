@@ -11,6 +11,9 @@
    * @property {string} url - Absolute URL.
    * @property {Object<string,string>} [headers] - Request headers.
    * @property {Object} [body] - JSON-serializable body.
+   * @property {boolean} [text] - Return a successful body as text instead of parsed JSON (e.g. a CSV file).
+   * @property {boolean} [followRedirects] - false: a redirect is not followed but returned as `{redirect: <Location>}`,
+   *   so the caller decides where its headers may go (UrlFetchApp follows redirects with the same headers otherwise).
    */
 
   /**
@@ -66,9 +69,19 @@
   }
 
   /**
+   * @param {Object<string,*>} headers - Response headers.
+   * @param {string} name - Header name, any case.
+   * @returns {string} Its value, or ''.
+   */
+  function header(headers, name) {
+    const key = Object.keys(headers || {}).filter(function (k) { return k.toLowerCase() === name.toLowerCase(); })[0];
+    return key ? String(headers[key]) : '';
+  }
+
+  /**
    * Creates a client.
    * @param {HttpDeps} deps - Injected fetch/sleep.
-   * @returns {{request: function(HttpRequest): *}} Client whose `request` returns parsed JSON.
+   * @returns {{request: function(HttpRequest): *}} Client whose `request` returns parsed JSON (text with `text`).
    * @throws {Error} HttpError from `request` on non-2xx after retries.
    */
   function create(deps) {
@@ -76,6 +89,7 @@
 
     function request(req) {
       const params = { method: req.method, headers: req.headers || {}, muteHttpExceptions: true };
+      if (req.followRedirects === false) params.followRedirects = false;
       if (req.body !== undefined) {
         params.contentType = 'application/json';
         params.payload = JSON.stringify(req.body);
@@ -83,6 +97,10 @@
       for (let attempt = 0; ; attempt++) {
         const response = deps.fetch(req.url, params);
         const status = response.getResponseCode();
+        if (status >= 200 && status < 300 && req.text) return response.getContentText();
+        if (req.followRedirects === false && status >= 300 && status < 400) {
+          return { redirect: header(response.getAllHeaders ? response.getAllHeaders() : {}, 'Location') };
+        }
         const body = parseBody(response.getContentText());
         if (status >= 200 && status < 300) return body;
         if (!isRetryable(status) || attempt >= maxRetries) throw toError(status, body);

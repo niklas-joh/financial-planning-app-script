@@ -52,14 +52,19 @@
     },
 
     /**
-     * Read-only view of one Drive folder (the only DriveApp use; needs `drive.readonly`). Google Docs
-     * formats are left out: a CSV converted to a Sheet on upload has no CSV content to read.
+     * One Drive folder (the only DriveApp use; needs `drive`): its files, and saving a new CSV file in it
+     * (the Trading 212 report export). Nothing is ever changed, moved or deleted. Google Docs formats are
+     * left out of the files: a CSV converted to a Sheet on upload has no CSV content to read.
      * @param {string} id - Folder id.
-     * @returns {{files: function(): Array<import('../providers/csv/csv-provider.js').CsvFile>}} Its files,
-     *   each decoded on demand.
+     * @returns {{files: function(): Array<import('../providers/csv/csv-provider.js').CsvFile>,
+     *   create: function(string, string): void}} Its files, each decoded on demand, and a CSV file writer
+     *   (name, text).
      */
     driveFolder: function (id) {
       return {
+        create: function (name, text) {
+          DriveApp.getFolderById(id).createFile(name, text, 'text/csv');
+        },
         files: function () {
           const out = [];
           const it = DriveApp.getFolderById(id).getFiles();
@@ -100,6 +105,9 @@
         },
         createDaily: function (handler, hour) {
           ScriptApp.newTrigger(handler).timeBased().everyDays(1).atHour(hour).create();
+        },
+        createMonthly: function (handler, day, hour) {
+          ScriptApp.newTrigger(handler).timeBased().onMonthDay(day).atHour(hour).create();
         },
         createAfter: function (handler, ms) {
           ScriptApp.newTrigger(handler).timeBased().after(ms).create();

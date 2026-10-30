@@ -158,21 +158,34 @@
     });
   }
 
-  /** Turns the daily sync on (one trigger, never duplicated). */
+  /**
+   * Asks Trading 212 for a report now (as the monthly trigger does); it is saved to the exports folder a
+   * few minutes later by a one-off trigger.
+   */
+  function requestT212Report() {
+    guarded(function () {
+      showSummary('Bank Sync: Trading 212 report', ns.T212Export.summarize(ns.T212Export.requestAndSchedule(ns.Container.exportDeps())));
+    });
+  }
+
+  /** Turns the daily sync on, with the monthly Trading 212 report (one trigger each, never duplicated). */
   function enableDailySync() {
     guarded(function () {
       const created = ns.AutoSync.enable(ns.Gas.triggers());
       SpreadsheetApp.getUi().alert((created ? 'Daily sync is on.' : 'Daily sync was already on.') +
         ' Sync all runs every day ' + ns.AutoSync.scheduleText() +
-        ' and emails you before a bank consent lapses. Show status shows the last run.');
+        ' and emails you before a bank consent lapses. A Trading 212 report is requested ' + ns.AutoSync.reportScheduleText() +
+        ' each month and saved to the exports folder. Show status shows the last run.');
     });
   }
 
-  /** Turns the daily sync off, including a pending follow-up run. */
+  /** Turns the daily sync off, including a pending follow-up run and the monthly Trading 212 report. */
   function disableDailySync() {
     guarded(function () {
       const removed = ns.AutoSync.disable(ns.Gas.triggers());
-      SpreadsheetApp.getUi().alert(removed ? 'Daily sync is off. Consent warnings are no longer emailed.' : 'Daily sync was already off.');
+      SpreadsheetApp.getUi().alert(removed
+        ? 'Daily sync is off, and so is the monthly Trading 212 report. Consent warnings are no longer emailed.'
+        : 'Daily sync was already off.');
     });
   }
 
@@ -187,7 +200,10 @@
     });
   }
 
-  ns.Menu = { connect: connect, syncAll: syncAll, importCsv: importCsv, status: status, enableDailySync: enableDailySync, disableDailySync: disableDailySync };
+  ns.Menu = {
+    connect: connect, syncAll: syncAll, importCsv: importCsv, requestT212Report: requestT212Report, status: status,
+    enableDailySync: enableDailySync, disableDailySync: disableDailySync
+  };
 })(globalThis.BankSync);
 
 /** Adds the Bank Sync menu when the spreadsheet opens. */
@@ -196,6 +212,7 @@ function onOpen() {
     .addItem('Connect a bank...', 'menuConnect')
     .addItem('Sync all', 'menuSyncAll')
     .addItem('Import CSV files', 'menuImportCsv')
+    .addItem('Request Trading 212 report', 'menuRequestT212Report')
     .addItem('Show status', 'menuStatus')
     .addSeparator()
     .addItem('Enable daily sync', 'menuEnableDailySync')
@@ -211,6 +228,9 @@ function menuSyncAll() { BankSync.Menu.syncAll(); }
 
 /** Menu entry: import the CSV files in the Drive folders now. */
 function menuImportCsv() { BankSync.Menu.importCsv(); }
+
+/** Menu entry: ask Trading 212 for a report now; it is saved to the exports folder a few minutes later. */
+function menuRequestT212Report() { BankSync.Menu.requestT212Report(); }
 
 /** Menu entry: show setup status. */
 function menuStatus() { BankSync.Menu.status(); }

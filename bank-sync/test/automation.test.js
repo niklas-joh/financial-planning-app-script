@@ -22,6 +22,7 @@ const fakeTriggers = (initial) => {
     log, all: list,
     list: () => list.slice(),
     createDaily: (handler, hour) => { log.push('daily ' + handler + ' ' + hour); list.push({ id: String(next++), handler }); },
+    createMonthly: (handler, day, hour) => { log.push('monthly ' + handler + ' ' + day + ' ' + hour); list.push({ id: String(next++), handler }); },
     createAfter: (handler, ms) => { log.push('after ' + handler + ' ' + ms); list.push({ id: String(next++), handler }); },
     remove: (ids) => ids.forEach((id) => { log.push('remove ' + id); list.splice(list.findIndex((t) => t.id === id), 1); })
   };
@@ -178,17 +179,25 @@ test('last run: records counts per connection and marks failures', () => {
 
 // ── AutoSync ──────────────────────────────────────────────────────────────
 
-test('auto sync: enable creates one daily trigger and never a duplicate; disable removes it and follow-ups', () => {
+test('auto sync: enable creates one daily and one monthly report trigger, never a duplicate; disable removes them, follow-ups and report checks', () => {
   const t = fakeTriggers([{ id: '1', handler: 'otherFunction' }]);
   assert.strictEqual(BS.AutoSync.enable(t), true);
   assert.strictEqual(BS.AutoSync.enable(t), false);
-  assert.deepStrictEqual(t.log, ['daily ' + A.DAILY_HANDLER + ' ' + A.DAILY_HOUR]);
-  t.all.push({ id: '7', handler: A.DAILY_HANDLER }, { id: '8', handler: A.CONTINUE_HANDLER });
+  assert.deepStrictEqual(t.log, ['daily ' + A.DAILY_HANDLER + ' ' + A.DAILY_HOUR,
+    'monthly ' + A.REPORT_REQUEST_HANDLER + ' ' + A.REPORT_DAY + ' ' + A.REPORT_HOUR]);
+  t.all.push({ id: '7', handler: A.DAILY_HANDLER }, { id: '8', handler: A.CONTINUE_HANDLER },
+    { id: '9', handler: A.REPORT_REQUEST_HANDLER }, { id: '10', handler: A.REPORT_FETCH_HANDLER });
   assert.strictEqual(BS.AutoSync.enable(t), false);
-  assert.deepStrictEqual(t.log.slice(-1), ['remove 7']);
-  assert.strictEqual(BS.AutoSync.disable(t), 2);
+  assert.deepStrictEqual(t.log.slice(-2), ['remove 7', 'remove 9']);
+  assert.strictEqual(BS.AutoSync.disable(t), 4);
   assert.deepStrictEqual(t.all, [{ id: '1', handler: 'otherFunction' }]);
   assert.strictEqual(BS.AutoSync.disable(t), 0);
+});
+
+test('auto sync: enabling again adds the monthly report trigger to a daily sync that predates it', () => {
+  const t = fakeTriggers([{ id: '1', handler: A.DAILY_HANDLER }]);
+  assert.strictEqual(BS.AutoSync.enable(t), false);
+  assert.deepStrictEqual(t.log, ['monthly ' + A.REPORT_REQUEST_HANDLER + ' ' + A.REPORT_DAY + ' ' + A.REPORT_HOUR]);
 });
 
 const autoDeps = (overrides) => {
@@ -278,9 +287,11 @@ test('auto sync: due consent warnings are emailed; a mail failure fails the reco
 test('auto sync: status lines show whether the daily sync is on and the last run', () => {
   const off = BS.AutoSync.statusLines([], null);
   assert.match(off[0], /^Daily sync: off/);
-  const on = BS.AutoSync.statusLines([{ id: '1', handler: A.DAILY_HANDLER }], null);
+  assert.match(off[1], /^Monthly Trading 212 report: off/);
+  const on = BS.AutoSync.statusLines([{ id: '1', handler: A.DAILY_HANDLER }, { id: '2', handler: A.REPORT_REQUEST_HANDLER }], null);
   assert.match(on[0], /^Daily sync: on, between 6:00 and 7:00 \(Europe\/Brussels\)/);
-  assert.strictEqual(on[1], 'Last sync: none recorded yet');
+  assert.strictEqual(on[1], 'Monthly Trading 212 report: on, requested on day 1 between 5:00 and 6:00, saved about 5 minutes later');
+  assert.strictEqual(on[2], 'Last sync: none recorded yet');
 });
 
 test('auto sync: a manual run is recorded, failed or not, and keeps the follow-up chain', () => {

@@ -137,8 +137,10 @@ from [Frankfurter](https://frankfurter.dev) (`/v2/rates?...&providers=ecb`, no A
 ## Daily sync and consent warnings (Phase 4)
 
 *Bank Sync > Enable daily sync* creates one time-driven trigger that runs *Sync all* every day
-between 06:00 and 07:00 (Europe/Brussels, the same time as Luxembourg); *Disable daily sync* removes it. Enabling twice never
-creates a second trigger (duplicates are removed). The trigger runs as the account that enabled it.
+between 06:00 and 07:00 (Europe/Brussels, the same time as Luxembourg), and one monthly trigger that requests the
+Trading 212 report (see "Trading 212 report export"); *Disable daily sync* removes both. Enabling twice never
+creates a second trigger (duplicates are removed); enabling again adds the monthly trigger to a daily sync turned on
+before it existed. The triggers run as the account that enabled them.
 
 - The triggered run is the same *Sync all* as the menu item, under the same script lock. If it ends at
   the time budget (or the lock is busy because you are syncing by hand), it schedules one follow-up
@@ -171,7 +173,8 @@ pasted in Script Properties and *Sync all* picks it up.
 
 1. In the Trading 212 app (Invest or Stocks ISA account): **Settings > API (Beta)**, create a key.
    Give it only these permissions: `account`, `portfolio`, `history:transactions`,
-   `history:dividends`. Nothing that places or cancels orders. Leave the IP restriction off (Apps
+   `history:dividends`, and the general **History** permission for the monthly report (see "Trading 212 report
+   export"; the API docs name no permission for it, History is the likely one). Nothing that places or cancels orders. Leave the IP restriction off (Apps
    Script's addresses change). Each person creates their own key while logged in to their own account.
 2. In the Apps Script editor, **Project Settings > Script Properties**, add one pair per account,
    with the holder in upper case:
@@ -228,6 +231,43 @@ Notes:
   the API. Only Invest and Stocks ISA accounts have API access.
 - No new OAuth scope: `script.external_request` already covers the calls.
 
+## Trading 212 report export
+
+The card details come only from Trading 212's CSV report (the API has no card endpoint). Instead of exporting it
+from the app by hand, Bank Sync asks the API for it (`POST /equity/history/exports`), waits until Trading 212 has
+built it, and saves it to an exports folder in your Drive; the CSV import then applies it like a report you
+uploaded yourself (see "CSV import").
+
+1. Create (or pick) a Drive folder for the reports, e.g. "Trading212 exports", and copy its id from the URL.
+2. In **Script Properties** add `CSV_FOLDER_T212_<HOLDER>` = the folder id, with the same holder as the key
+   (`CSV_FOLDER_T212_NIKLAS` for `T212_API_KEY_NIKLAS`). The name starts with `CSV_FOLDER_` on purpose: the
+   folder is also a CSV folder (connection `csv-t212-niklas`), so every *Sync all*, the daily sync and *Import CSV
+   files* read the saved reports.
+3. *Enable daily sync* (again, if it was on before) also turns on a monthly trigger: on day 1 between 05:00 and
+   06:00 a report is requested per key with its secret and an exports folder; 5 minutes later a one-off trigger
+   checks the list of reports and, once the report is finished, saves it as
+   `trading212-report-<holder>-<from>-to-<to>.csv`. While it is still being built, it checks again every 5 minutes,
+   at most 6 times; a report that is not ready by then stays pending until the next request. The daily sync (06:00
+   to 07:00) then applies it. *Disable daily sync* turns the monthly report off too.
+4. *Bank Sync > Request Trading 212 report* does the same now (it replaces a report still pending); after about 5
+   minutes run *Import CSV files* to apply it.
+
+- Period: the first report covers the full history (from 2016-01-01), which names every `WITHDRAW` and `DEPOSIT`
+  still in `unclassified_transactions`; each later one starts 7 days before the last saved report ended, so a missed
+  month is caught up and the overlap changes nothing (same ids). The report includes cash transactions, interest and
+  dividends, not orders (they are not imported).
+- The state per key is in `T212_EXPORT_<HOLDER>` (report id, period, checks, the last saved file and the last error;
+  dates only, never the download link). Delete it to start again from the full history. *Show status* shows per key
+  whether the exports folder is set, the last saved report, a pending one and the last error, and whether the monthly
+  report is on.
+- The download link is fetched without your key unless it points to a trading212.com address, so the key never goes
+  to the storage service that hosts the file. Redirects are followed one hop at a time with the same rule (at most 3).
+- Rate limits (per account): a request 1 per 30 s, the reports list 1 per minute. Requests and checks take the same
+  lock as *Sync all*: a request while a sync runs says so (try again in a minute); a check that finds it busy just
+  runs again 5 minutes later. A failed request never drops the check of a report still pending.
+- Reports already saved stay in the folder; files are never changed or deleted. If Trading 212's API report ever had
+  other columns than the app's export, the CSV import would skip it and name it in *Show status*.
+
 ## CSV import (Phase 6)
 
 Banks that Enable Banking does not cover are imported from their CSV exports. You drop the files in a
@@ -274,7 +314,8 @@ Supported exports:
   card action such as `CARD_DEBIT`, or `SPENDING_CASHBACK`), `transfer` (`Deposit`, `Withdrawal`: money moved to or
   from a bank account) or `investment` (everything else); it decides the row's tab (see "Transaction tabs"). Unlike
   the other details, the report's classification replaces a stored one, so a changed rule applies to rows already
-  stored. Comma-separated, UTF-8, times in UTC.
+  stored. Comma-separated, UTF-8, times in UTC. It can be fetched for you every month (see "Trading 212 report
+  export").
 - **Avanza** (every account in one file): on the Avanza **website** (the app has no export), *Min ekonomi >
   Transaktioner*, pick the period ("Sedan start" for the whole history, or any shorter one), then *Exportera
   transaktioner*. Upload the file as it is. UTF-8, `;`-separated, header
@@ -332,14 +373,16 @@ cannot be read (e.g. an amount that is not a number), is skipped as a whole and 
 the other files still import. Nothing is guessed: a new bank needs its export layout added to
 `src/providers/csv/csv-formats.js`.
 
-New OAuth scope: `drive.readonly`, to list the folder and read files you uploaded (`drive.file` only covers
-files the script created or you picked through a Google file picker, so it cannot see a folder you fill by
-hand). Google offers no scope for one folder: `drive.readonly` lets the script read **all** of your Drive. The
-code only opens the folders named in `CSV_FOLDER_<HOLDER>` (`lib/gas-adapters.js` `driveFolder` is the one place
-that calls DriveApp) and never changes, moves or deletes files. Chosen on purpose (2026-10-25) over pasting
-into a tab (no scope, but Sheets re-parses numbers and dates) and an upload dialog (no scope, one manual step
-per file), so new files are picked up by the daily sync. Re-authorize after the push (the daily sync fails
-until you do).
+OAuth scope: `drive`, to list the folders, read the files you uploaded and save the Trading 212 reports into the
+exports folder you created. Google offers no scope for one folder, and `drive.file` only covers files the script
+created or you picked through a Google file picker, so it can neither see a folder you fill by hand nor add a file
+to one (`Folder.createFile` needs `drive`). `drive` lets the script read **and change** all of your Drive. The code
+only opens the folders named in `CSV_FOLDER_<HOLDER>` (`lib/gas-adapters.js` `driveFolder` is the one place that
+calls DriveApp), only adds new report files, and never changes, moves or deletes a file. The import chose a Drive
+folder on purpose (2026-10-25) over pasting into a tab (no scope, but Sheets re-parses numbers and dates) and an
+upload dialog (no scope, one manual step per file), so new files are picked up by the daily sync; `drive.readonly`
+replaced by `drive` (2026-10-30) so the reports can be saved to the owner's own folder. Re-authorize after the push
+(the daily sync fails until you do).
 
 ## Transaction tabs (B1)
 

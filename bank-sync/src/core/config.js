@@ -39,10 +39,16 @@
    *   keeps the rates and the "already checked" markers, and the largest cache value in characters.
    * @property {Object} AUTOMATION - Daily sync: the global functions the daily and the follow-up
    *   triggers call, the hour of the daily run (script time zone), how long after an unfinished run
-   *   the follow-up starts (ms), and how many follow-ups one daily run may chain.
+   *   the follow-up starts (ms), and how many follow-ups one daily run may chain; the monthly Trading 212
+   *   report: the global functions that request it and fetch it, the day of the month and hour of the request
+   *   (script time zone), how long after a request (or an unfinished check) the fetch runs (ms), and how many
+   *   checks a requested report gets before the wait stops.
    * @property {Object} TRADING212 - Trading 212 public API: provider id, display name, origin and API path
-   *   (live), page size (the API's maximum), pages per history feed the one-time backfill reads per run, and
-   *   the longest wait for a rate-limit reset before a call gives up.
+   *   (live), page size (the API's maximum), pages per history feed the one-time backfill reads per run,
+   *   the longest wait for a rate-limit reset before a call gives up; the report export: the start of the
+   *   first (full history) report, the days each later report reaches back before the last one's end, the
+   *   time after an export run starts during which a rate-limited call may still wait for its reset (ms; it
+   *   bounds those waits, not the run), and how many redirects a report download follows.
    * @property {Object} CSV - CSV import: provider id, display name of its connections (one Drive folder per
    *   holder), the largest file read, and how many skipped files (and characters each) the last-read record
    *   names, so it stays far below the 9 KB Script Property limit.
@@ -77,6 +83,8 @@
       T212_API_KEY_PREFIX: 'T212_API_KEY_',
       T212_API_SECRET_PREFIX: 'T212_API_SECRET_',
       T212_HISTORY_PREFIX: 'T212_HISTORY_',
+      T212_EXPORT_PREFIX: 'T212_EXPORT_',
+      T212_EXPORT_FOLDER_PREFIX: 'CSV_FOLDER_T212_',
       CSV_FOLDER_PREFIX: 'CSV_FOLDER_',
       CSV_IMPORTS_PREFIX: 'CSV_IMPORTS_',
       LAST_RUN: 'BS_LAST_RUN',
@@ -123,7 +131,13 @@
       CONTINUE_HANDLER: 'triggerSyncContinue',
       DAILY_HOUR: 6,
       CONTINUE_AFTER_MS: 300000,
-      MAX_CONTINUATIONS: 3
+      MAX_CONTINUATIONS: 3,
+      REPORT_REQUEST_HANDLER: 'triggerT212ReportRequest',
+      REPORT_FETCH_HANDLER: 'triggerT212ReportFetch',
+      REPORT_DAY: 1,
+      REPORT_HOUR: 5,
+      REPORT_FETCH_AFTER_MS: 300000,
+      REPORT_MAX_CHECKS: 6
     }),
     TRADING212: Object.freeze({
       PROVIDER_ID: 'trading212',
@@ -132,7 +146,11 @@
       API_PATH: '/api/v0',
       PAGE_LIMIT: 50,
       BACKFILL_PAGES_PER_RUN: 40,
-      MAX_RETRY_WAIT_MS: 65000
+      MAX_RETRY_WAIT_MS: 65000,
+      EXPORT_FIRST_FROM: '2016-01-01',
+      EXPORT_OVERLAP_DAYS: 7,
+      EXPORT_BUDGET_MS: 240000,
+      MAX_REDIRECTS: 3
     }),
     CSV: Object.freeze({
       PROVIDER_ID: 'csv',
