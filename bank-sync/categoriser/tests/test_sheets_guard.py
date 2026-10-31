@@ -19,7 +19,7 @@ def test_allows_the_output_sheet():
     _assert_writable(SimpleNamespace(title="categorised"), SETTINGS)
 
 
-def test_output_sheet_cannot_be_pointed_at_transactions():
-    bad = Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"), output_sheet="transactions")
-    with pytest.raises(PermissionError):
-        _assert_writable(SimpleNamespace(title="transactions"), bad)
+@pytest.mark.parametrize("name", ["transactions", " transactions "])
+def test_output_sheet_cannot_be_the_transactions_sheet(name):
+    with pytest.raises(ValueError):
+        Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"), output_sheet=name)

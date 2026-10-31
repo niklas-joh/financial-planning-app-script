@@ -56,7 +56,7 @@ overwritten). Not pushed with clasp. Details: `bank-sync/categoriser/README.md`.
   `Dockerfile`, `scripts/run-scheduled.sh`, `deploy/*` or the plist template, nothing
   changes in the scheduled job until that script is re-run (from the branch you want
   live). Apps Script changes never need it.
-- Tests: `pytest` in `bank-sync/categoriser/` (no network).
+- Tests: `pytest` in `bank-sync/categoriser/` (no network); CI runs them in the `Tests (categoriser)` job.
 
 ## Conventions
 

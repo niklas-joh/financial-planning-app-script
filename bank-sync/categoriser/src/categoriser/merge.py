@@ -21,6 +21,30 @@ class UpsertPlan:
     updates: dict[int, list] = field(default_factory=dict)  # 1-based sheet row -> values
     appends: list[list] = field(default_factory=list)
     skipped_reviewed: list[str] = field(default_factory=list)
+    skipped_moved: list[str] = field(default_factory=list)  # row changed under us; next run retries
+
+
+def drop_newly_reviewed(plan: UpsertPlan, keys: list, reviewed: list) -> UpsertPlan:
+    """Re-check planned updates against a fresh read of the key and reviewed columns.
+
+    `keys` and `reviewed` are whole columns incl. header (index 0 = row 1). A planned
+    update is dropped if its row is now reviewed, or no longer holds the same
+    transactionId (the sheet was sorted or edited since the plan was made).
+    """
+    def cell(column: list, row_number: int) -> object:
+        return column[row_number - 1] if len(column) >= row_number else ""
+
+    kept: dict[int, list] = {}
+    for row_number, values in plan.updates.items():
+        key = values[KEY_COLUMN]
+        if str(cell(keys, row_number)).strip() != key:
+            plan.skipped_moved.append(key)
+        elif is_reviewed(cell(reviewed, row_number)):
+            plan.skipped_reviewed.append(key)
+        else:
+            kept[row_number] = values
+    plan.updates = kept
+    return plan
 
 
 def plan_upsert(existing: list[list], incoming: list[CategorisedRow]) -> UpsertPlan:
@@ -31,9 +55,15 @@ def plan_upsert(existing: list[list], incoming: list[CategorisedRow]) -> UpsertP
     index: dict[str, tuple[int, bool]] = {}
     for offset, row in enumerate(existing[1:], start=2):
         key = str(row[KEY_COLUMN]).strip() if len(row) > KEY_COLUMN else ""
-        if key:
-            reviewed = len(row) > REVIEWED_COLUMN and is_reviewed(row[REVIEWED_COLUMN])
-            index[key] = (offset, reviewed)
+        if not key:
+            continue
+        if key in index:
+            raise ValueError(
+                f"transactionId {key} appears more than once in the categorised sheet "
+                f"(rows {index[key][0]} and {offset}). Remove the duplicate and re-run."
+            )
+        reviewed = len(row) > REVIEWED_COLUMN and is_reviewed(row[REVIEWED_COLUMN])
+        index[key] = (offset, reviewed)
 
     plan = UpsertPlan()
     seen: set[str] = set()

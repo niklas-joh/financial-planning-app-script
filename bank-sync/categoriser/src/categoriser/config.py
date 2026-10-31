@@ -1,4 +1,4 @@
-"""Settings loaded from the environment (and categoriser/.env when present)."""
+"""Settings loaded from the environment and the runtime folder's .env."""
 
 from __future__ import annotations
 
@@ -7,9 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
-
-PROJECT_ROOT = Path(__file__).resolve().parents[2]  # categoriser/ (code only)
-
 
 def categoriser_home() -> Path:
     """Runtime folder for .env, credentials/, data/, models/, logs/.
@@ -26,6 +23,10 @@ class Settings:
     credentials_path: Path
     transactions_sheet: str = "transactions"
     output_sheet: str = "categorised"
+
+    def __post_init__(self) -> None:
+        if self.output_sheet.strip() == self.transactions_sheet.strip():
+            raise ValueError("OUTPUT_SHEET must differ from TRANSACTIONS_SHEET.")
 
 
 def load_settings() -> Settings:

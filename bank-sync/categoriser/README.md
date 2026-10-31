@@ -18,6 +18,9 @@ implemented yet. This is the I/O scaffold.
 
   `method` is `rule`, `model` or `manual`; `reviewed` is a checkbox; `updatedAt` is ISO 8601 UTC.
 - Rows with `reviewed = TRUE` are never overwritten. Other existing rows are updated in place; new IDs are appended.
+  Just before writing, the key and `reviewed` columns are re-read: a row ticked or moved while the run was
+  planning is skipped (`skipped_reviewed` / `skipped_moved` in the log). A `transactionId` that appears twice
+  in the sheet stops the run until you remove the duplicate.
 - Missing sheet → created with headers, frozen header row, and checkbox validation on `reviewed`.
   Existing sheet with different headers → the run fails rather than touching it.
 

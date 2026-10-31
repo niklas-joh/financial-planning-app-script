@@ -30,8 +30,9 @@ def main() -> None:
     rows = categorise(transactions)
     plan = upsert_categorised(ws, settings, rows)
     log.info(
-        "read=%d updated=%d appended=%d skipped_reviewed=%d",
-        len(transactions), len(plan.updates), len(plan.appends), len(plan.skipped_reviewed),
+        "read=%d updated=%d appended=%d skipped_reviewed=%d skipped_moved=%d",
+        len(transactions), len(plan.updates), len(plan.appends),
+        len(plan.skipped_reviewed), len(plan.skipped_moved),
     )
 
 

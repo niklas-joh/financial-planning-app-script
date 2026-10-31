@@ -48,6 +48,16 @@ def test_duplicate_ids_in_one_run_are_rejected():
         plan_upsert([HEADER], [row("a"), row("a")])
 
 
+def test_duplicate_ids_already_in_the_sheet_are_rejected():
+    with pytest.raises(ValueError, match="more than once"):
+        plan_upsert([HEADER, sheet_row("a", False), sheet_row("a", False)], [row("b")])
+
+
+def test_missing_confidence_is_written_as_blank():
+    manual = CategorisedRow("a", "me", "Wants/Pleasure", "Dining", "", Method.MANUAL, None, "", True, "t")
+    assert manual.to_values()[CATEGORISED_COLUMNS.index("confidence")] == ""
+
+
 def test_method_is_written_as_plain_string():
     values = row("a").to_values()
     assert values[CATEGORISED_COLUMNS.index("method")] == "rule"

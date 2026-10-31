@@ -36,7 +36,7 @@ class CategorisedRow:
     category: str
     subCategory: str
     method: Method
-    confidence: float | str  # "" when not applicable (e.g. manual)
+    confidence: float | None  # None when not applicable (e.g. manual)
     ruleId: str
     reviewed: bool
     updatedAt: str  # ISO 8601, UTC
@@ -44,4 +44,6 @@ class CategorisedRow:
     def to_values(self) -> list:
         values = list(astuple(self))
         values[CATEGORISED_COLUMNS.index("method")] = str(self.method)
+        if self.confidence is None:
+            values[CATEGORISED_COLUMNS.index("confidence")] = ""
         return values
