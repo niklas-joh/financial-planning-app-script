@@ -109,13 +109,13 @@ test('owners: a new export of another account is appended below the rows already
 });
 
 test('owners: a login or API key starts with its holder; a CSV folder with no owner', () => {
-  assert.strictEqual(BS.AccountOwners.defaultOwner({ key: 'revolut-niklas', holder: 'niklas', bank: {} }), 'niklas');
-  assert.strictEqual(BS.AccountOwners.defaultOwner({ key: 'trading212-niklas-isa', holder: 'niklas-isa', provider: 'trading212' }), 'niklas-isa');
-  assert.strictEqual(BS.AccountOwners.defaultOwner({ key: 'csv-niklas', holder: 'niklas', provider: 'csv' }), '');
+  assert.strictEqual(BS.AccountOwners.defaultOwner({ holder: 'niklas', bank: {} }), 'niklas');
+  assert.strictEqual(BS.AccountOwners.defaultOwner({ holder: 'niklas-isa', provider: 'trading212' }), 'niklas-isa');
+  assert.strictEqual(BS.AccountOwners.defaultOwner({ holder: 'niklas', provider: 'csv' }), '');
   const added = [];
   const owners = BS.AccountOwners.create({ load: () => [], append: (rows) => added.push(...rows) });
   const accounts = owners.assign([{ provider: 'enablebanking', accountId: 'u1', bank: 'Revolut', connection: 'revolut-niklas', accountName: '', currency: 'EUR', accountType: 'CACC' }],
-    { key: 'revolut-niklas', holder: 'niklas', bank: { aspspName: 'Revolut' } });
+    { holder: 'niklas', bank: { aspspName: 'Revolut' } });
   assert.strictEqual(accounts[0].owner, 'niklas');
   assert.deepStrictEqual(owners.save(), { added: 1, missing: [] });
   assert.deepStrictEqual([added[0].owner, added[0].accountName], ['niklas', 'Current account EUR']);
@@ -127,7 +127,7 @@ test('owners: a tab that cannot be read keeps the stored owners, adds nothing an
   const tab = BS.AccountOwnersTab.create(book);
   const owners = BS.AccountOwners.create(tab);
   const account = { provider: 'csv', accountId: 'bil-1', bank: 'BIL', connection: 'csv-niklas', accountName: 'Current' };
-  const assigned = owners.assign([account], { key: 'csv-niklas', holder: 'niklas', provider: 'csv' });
+  const assigned = owners.assign([account], { holder: 'niklas', provider: 'csv' });
   assert.ok(!('owner' in assigned[0]));
   const stored = { accountId: 'bil-1', owner: 'common' };
   assert.strictEqual(BS.AccountLabels.stamp(stored, BS.AccountLabels.lookup(assigned)).owner, 'common');
