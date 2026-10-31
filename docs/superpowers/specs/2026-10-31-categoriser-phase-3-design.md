@@ -78,6 +78,8 @@ review, sorted by `similar` (most first), spot checks last:
 | `accept` | owner | checkbox: "this answer is right" |
 | `allLikeThis` | owner | checkbox: also make a rule for every row like this |
 | `matchText` | job, then owner | the words the rule will match (pre-filled; shorten it to widen the rule) |
+| `suggested` | job | the model's guess as first filled in, kept when the owner changes `answer` |
+| `kind` | job | `merchant` or `spot check` |
 
 - **One `answer` dropdown instead of three.** On a phone, one pick from the full list is quicker than three
   dropdowns that don't depend on each other. The list is every taxonomy triple joined with ` › ` (not `/`,
