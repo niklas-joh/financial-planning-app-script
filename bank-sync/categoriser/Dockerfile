@@ -11,5 +11,7 @@ RUN pip install . && useradd --create-home --uid 1000 app
 
 # credentials/, data/ and models/ are mounted at runtime (see docker-compose.yml).
 USER app
-ENV GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json
+# CATEGORISER_HOME=/app so data/ and models/ are the mounted folders.
+ENV GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/service-account.json \
+    CATEGORISER_HOME=/app
 CMD ["python", "-m", "categoriser.run"]

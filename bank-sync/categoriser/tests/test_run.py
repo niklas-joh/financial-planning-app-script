@@ -5,10 +5,11 @@ import pytest
 from categoriser import run
 from categoriser.config import Settings
 from categoriser.issues import COL
+from categoriser.model import MODEL_FILE, save, train
 from categoriser.rules import RCOL, RULE_COLUMNS
 from categoriser.schema import CATEGORISED_COLUMNS
 from categoriser.taxonomy import TAXONOMY_COLUMNS
-from builders import rule_row, txn
+from builders import TAXONOMY, rule_row, txn
 from fakes import FakeSpreadsheet, FakeWorksheet
 
 HEADER = list(CATEGORISED_COLUMNS)
@@ -29,6 +30,13 @@ def spreadsheet(transactions, categorised, rules=None, taxonomy=None):
     if taxonomy is not None:
         sheets["categoriser_taxonomy"] = FakeWorksheet("categoriser_taxonomy", taxonomy)
     return FakeSpreadsheet(sheets)
+
+
+@pytest.fixture(autouse=True)
+def models(tmp_path, monkeypatch):
+    """Never the real ~/categoriser/models."""
+    monkeypatch.setattr(run, "models_dir", lambda: tmp_path)
+    return tmp_path
 
 
 def run_with(monkeypatch, ss):
@@ -78,3 +86,45 @@ def test_renamed_taxonomy_header_stops_the_run_before_any_write(monkeypatch):
     with pytest.raises(ValueError):
         run_with(monkeypatch, ss)
     assert ss.sheets["categorised"].values == before
+
+
+def model_spreadsheet(categorised):
+    acme = txn("bob", -25, counterparty="Acme Market", tid="new")
+    card = txn("bob", -25, counterparty="Acme Market", tid="card", classification="card")
+    taxonomy = TAXONOMY_ROWS + [["Wants/Pleasure", "Eating out", "Cafe"]]
+    return spreadsheet([acme, card], categorised, [list(RULE_COLUMNS)], taxonomy)
+
+
+def trained(models):
+    grocery, cafe = ("Essentials", "Groceries", "Supermarket"), ("Wants/Pleasure", "Eating out", "Cafe")
+    examples = [(txn(counterparty="Acme Market", amount=-20 - i), grocery, 1.0) for i in range(5)]
+    examples += [(txn(counterparty="Corner Cafe", amount=-3 - i), cafe, 1.0) for i in range(5)]
+    save(train(examples, TAXONOMY, "2026-10-30T00:00:00Z"), models)
+
+
+def test_model_labels_confident_uncovered_rows_and_clears_its_stale_rows(monkeypatch, models, caplog):
+    caplog.set_level("INFO", logger="categoriser")
+    trained(models)
+    monkeypatch.setattr(run, "load_settings", lambda: Settings("x", Path("/dev/null"), model_min_confidence=0.5))
+    monkeypatch.setattr(run, "open_spreadsheet", lambda _: ss)
+    ss = model_spreadsheet([HEADER, sheet_row("old-model", method="model")])
+    run.main()
+
+    rows = {r[0]: r for r in ss.sheets["categorised"].values[1:]}
+    assert rows["new"][1:6] == ["bob", "Essentials", "Groceries", "Supermarket", "model"]
+    assert 0.5 <= rows["new"][6] <= 1 and rows["new"][7] == ""
+    assert "card" not in rows                                   # card rows are left to rules
+    assert rows["old-model"][1:8] == [""] * 7                   # the model no longer labels it
+    assert "model=loaded by_model=1" in caplog.text
+
+
+def test_broken_model_skips_the_model_step_and_keeps_its_rows(monkeypatch, models, caplog):
+    caplog.set_level("INFO", logger="categoriser")
+    trained(models)
+    (models / MODEL_FILE).write_bytes(b"broken")
+    before = sheet_row("old-model", method="model")
+    ss = model_spreadsheet([HEADER, list(before)])
+    run_with(monkeypatch, ss)
+
+    assert ss.sheets["categorised"].values == [HEADER, before]
+    assert "model=unreadable by_model=0" in caplog.text

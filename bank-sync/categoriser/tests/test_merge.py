@@ -88,3 +88,13 @@ def test_unchanged_rows_are_not_rewritten():
     same = row("a", category="Old")
     existing = [HEADER, ["a", "joint", "Essentials", "Old", "", "rule", 1, "R1", False, "2026-01-01T00:00:00Z"]]
     assert plan_upsert(existing, [same]).updates == {}
+
+
+def test_stale_model_rows_are_cleared_only_when_asked():
+    model_row = ["m", "joint", "Essentials", "Old", "", "model", 0.95, "", False, "2026-10-01T00:00:00Z"]
+    existing = [HEADER, model_row, sheet_row("r", False)]
+    plan = plan_upsert(existing, [], clear_stale_at="2026-10-31T00:00:00Z")
+    assert plan.cleared == ["r"]                                  # model rows kept by default
+    plan = plan_upsert(existing, [], clear_stale_at="2026-10-31T00:00:00Z",
+                       clear_methods=frozenset({Method.RULE, Method.MODEL}))
+    assert sorted(plan.cleared) == ["m", "r"]

@@ -5,8 +5,9 @@ transactionId that appears on several rows is left alone on all of them (reporte
 in `UpsertPlan.duplicates` for the issues log) while the rest of the run continues.
 
 A row whose values match what the run would write (ignoring `updatedAt`) is not
-rewritten. With `clear_stale_at` set, an existing unreviewed `rule` row that this run no longer
-categorises (its rule was switched off or changed) is cleared: only its
+rewritten. With `clear_stale_at` set, an existing unreviewed row of one of the
+`clear_methods` (by default `rule`) that this run no longer categorises (its rule was
+switched off or changed, or the model is no longer confident) is cleared: only its
 transactionId and `updatedAt` remain, so a wrong category does not linger.
 """
 
@@ -30,7 +31,7 @@ class UpsertPlan:
     skipped_reviewed: list[str] = field(default_factory=list)
     skipped_moved: list[str] = field(default_factory=list)  # row changed under us; next run retries
     duplicates: dict[str, list[int]] = field(default_factory=dict)  # transactionId -> sheet rows
-    cleared: list[str] = field(default_factory=list)  # stale rule rows emptied (a subset of updates)
+    cleared: list[str] = field(default_factory=list)  # stale rows emptied (a subset of updates)
 
 
 def drop_newly_reviewed(plan: UpsertPlan, keys: list, reviewed: list) -> UpsertPlan:
@@ -80,7 +81,8 @@ def cleared_values(transaction_id: str, now: str) -> list:
     return values
 
 
-def plan_upsert(existing: list[list], incoming: list[CategorisedRow], clear_stale_at: str | None = None) -> UpsertPlan:
+def plan_upsert(existing: list[list], incoming: list[CategorisedRow], clear_stale_at: str | None = None,
+                clear_methods: frozenset[Method] = frozenset({Method.RULE})) -> UpsertPlan:
     """`existing` is the full sheet incl. header (row 1), unformatted values."""
     if existing and [str(h) for h in existing[0][: len(CATEGORISED_COLUMNS)]] != list(CATEGORISED_COLUMNS):
         raise ValueError("Header row of the categorised sheet does not match the expected columns.")
@@ -119,10 +121,11 @@ def plan_upsert(existing: list[list], incoming: list[CategorisedRow], clear_stal
 
     if clear_stale_at is not None:
         method_col = CATEGORISED_COLUMNS.index("method")
+        stale_methods = {str(m) for m in clear_methods}
         for key, (row_number, reviewed) in index.items():
             row = existing[row_number - 1]
             method = str(row[method_col]).strip() if len(row) > method_col else ""
-            if key not in seen and not reviewed and method == str(Method.RULE):
+            if key not in seen and not reviewed and method in stale_methods:
                 plan.updates[row_number] = cleared_values(key, clear_stale_at)
                 plan.cleared.append(key)
     return plan

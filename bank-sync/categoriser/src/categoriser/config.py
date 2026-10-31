@@ -29,8 +29,10 @@ class Settings:
     owners_sheet: str = "account_owners"  # bank-sync's tab; read only (owner dropdown on rules)
     # Owner value used for shared accounts (the `owner` column on `transactions`).
     joint_owner: str = "common"
-    # Legacy "Financial Planning" sheet: read only, by the mine/evaluate/seed commands.
+    # Legacy "Financial Planning" sheet: read only, by the mine/evaluate/seed/train commands.
     legacy_spreadsheet_id: str = ""
+    # The model labels a row only when its probability is at least this (0-1).
+    model_min_confidence: float = 0.9
 
     def __post_init__(self) -> None:
         names = [n.strip() for n in (self.transactions_sheet, self.output_sheet, self.issues_sheet,
@@ -38,6 +40,8 @@ class Settings:
         if len(set(names)) != len(names):
             raise ValueError("TRANSACTIONS_SHEET, OUTPUT_SHEET, ISSUES_SHEET, RULES_SHEET and "
                              "TAXONOMY_SHEET must all differ.")
+        if not 0 < self.model_min_confidence <= 1:
+            raise ValueError("MODEL_MIN_CONFIDENCE must be above 0 and at most 1.")
 
     @property
     def writable_sheets(self) -> frozenset[str]:
@@ -73,4 +77,18 @@ def load_settings() -> Settings:
         taxonomy_sheet=os.environ.get("TAXONOMY_SHEET", "categoriser_taxonomy"),
         joint_owner=os.environ.get("JOINT_OWNER", "common").strip().lower(),
         legacy_spreadsheet_id=os.environ.get("LEGACY_SPREADSHEET_ID", "").strip(),
+        model_min_confidence=_float("MODEL_MIN_CONFIDENCE", 0.9),
     )
+
+
+def _float(name: str, default: float) -> float:
+    value = os.environ.get(name, "").strip()
+    try:
+        return float(value) if value else default
+    except ValueError:
+        raise ValueError(f"{name} must be a number, e.g. {default}.") from None
+
+
+def models_dir() -> Path:
+    """Where `categoriser.train` saves the model and the daily run loads it."""
+    return categoriser_home() / "models"

@@ -18,7 +18,7 @@ from .engine import RuleStats
 from .issues import ISSUE_COLUMNS, Issue, IssuesPlan, plan_issues
 from .merge import UpsertPlan, drop_newly_reviewed, plan_upsert
 from .rules import DIRECTIONS, RCOL, RULE_COLUMNS, SOURCES
-from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow
+from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
 from .taxonomy import TAXONOMY_COLUMNS
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -227,7 +227,8 @@ def _column_letter(index: int) -> str:
 
 
 def upsert_categorised(ws: gspread.Worksheet, settings: Settings, rows: list[CategorisedRow],
-                       clear_stale_at: str | None = None) -> UpsertPlan:
+                       clear_stale_at: str | None = None,
+                       clear_methods: frozenset[Method] = frozenset({Method.RULE})) -> UpsertPlan:
     """Write rows keyed by transactionId; rows marked reviewed are left untouched.
 
     The key and reviewed columns are re-read just before writing, so a row
@@ -237,7 +238,7 @@ def upsert_categorised(ws: gspread.Worksheet, settings: Settings, rows: list[Cat
     """
     _assert_writable(ws, settings)
     existing = ws.get_all_values(value_render_option=ValueRenderOption.unformatted)
-    plan = plan_upsert(existing, rows, clear_stale_at)
+    plan = plan_upsert(existing, rows, clear_stale_at, clear_methods)
 
     if plan.updates:
         key_col, reviewed_col = _column_letter(KEY_COLUMN), _column_letter(REVIEWED_COLUMN)
