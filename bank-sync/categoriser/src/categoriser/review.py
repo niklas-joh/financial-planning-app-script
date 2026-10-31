@@ -10,11 +10,13 @@ rows the model labelled. Pure: no I/O (see `sheets.write_review`).
 from __future__ import annotations
 
 import hashlib
+import random
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .issues import Issue
 from .merge import is_reviewed
-from .rules import RCOL, RULE_COLUMNS, amount_eur, normalise, owner_slug
+from .rules import RCOL, RULE_COLUMNS, account_label, amount_eur, normalise, owner_slug
 from .schema import CATEGORISED_COLUMNS, CategorisedRow, Method
 from .taxonomy import Taxonomy, Triple
 
@@ -217,3 +219,111 @@ def apply_answers(review: list[list], transactions: dict[str, dict], taxonomy: T
                              "confidence": _number(_cell(row, "confidence")), "answer": answer,
                              "spotCheck": spot, "card": str(txn.get("classification", "")).strip().lower() == "card"})
     return plan
+
+
+Guess = Callable[[list[dict]], list[tuple[Triple, float]]]  # `Model.predict` has this shape
+
+
+def _padded(row: list) -> list:
+    return list(row[: len(REVIEW_COLUMNS)]) + [""] * (len(REVIEW_COLUMNS) - len(row))
+
+
+def _new_row(txn: dict, why: str, similar: object, kind: str) -> list:
+    values = [""] * len(REVIEW_COLUMNS)
+    values[VCOL["transactionId"]] = str(txn.get("transactionId", "")).strip()
+    values[VCOL["bookingDate"]] = str(txn.get("bookingDate", ""))[:10]
+    values[VCOL["account"]] = account_label(txn)
+    values[VCOL["amountEur"]] = amount_eur(txn)
+    values[VCOL["counterparty"]] = txn.get("counterparty", "")
+    values[VCOL["description"]] = txn.get("description", "")
+    values[VCOL["why"]] = why
+    values[VCOL["similar"]] = similar
+    values[VCOL["owner"]] = owner_slug(txn.get("owner", ""))
+    values[VCOL["accept"]] = values[VCOL["allLikeThis"]] = False
+    values[VCOL["matchText"]] = merchant_key(txn)[1]
+    values[VCOL["kind"]] = kind
+    return values
+
+
+def _similar(row: list) -> int:
+    value = _cell(row, "similar")
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
+
+
+def plan_inbox(previous: list[list], answers: AnswerPlan, transactions: list[dict], labelled: set[str],
+               model_ids: set[str], taxonomy: Taxonomy, guess: Guess | None, size: int, spot_checks: int,
+               rng: random.Random) -> list[list]:
+    """The inbox rows for this run (no header).
+
+    `previous` is the review tab as read at the start of the run, `labelled` the ids
+    with a label on `categorised` after this run's write, `model_ids` the ids the model
+    labelled this run. Rows the owner may still be working on are kept unchanged and
+    never dropped; new rows fill up to `size`, the last `spot_checks` of them spot checks.
+    """
+    by_id: dict[str, dict] = {}
+    for t in transactions:
+        tid = str(t.get("transactionId", "")).strip()
+        if tid and tid not in by_id:
+            by_id[tid] = t
+
+    kept: list[list] = [_padded(r) for r in answers.keep]
+    kept_ids = {_text(r, "transactionId") for r in kept}
+    for row in previous[1:]:
+        row = _padded(row)
+        tid = _text(row, "transactionId")
+        if (not tid or tid in kept_ids or tid in answers.processed or tid not in by_id
+                or is_reviewed(_cell(row, "accept"))):
+            continue
+        kind = _text(row, "kind")
+        if (kind == KIND_MERCHANT and tid not in labelled) or (kind == KIND_SPOT_CHECK and tid in model_ids):
+            kept.append(row)
+            kept_ids.add(tid)
+
+    taken_keys = {merchant_key(by_id[tid]) for tid in kept_ids if tid in by_id}
+    groups: dict[tuple[str, str, str], list[dict]] = {}
+    for tid, t in by_id.items():
+        if tid not in labelled and tid not in kept_ids:
+            key = merchant_key(t)
+            if key not in taken_keys:
+                groups.setdefault(key, []).append(t)
+
+    kept_spots = sum(_text(r, "kind") == KIND_SPOT_CHECK for r in kept)
+    spot_new = max(0, spot_checks - kept_spots)
+    merchant_new = max(0, size - len(kept) - spot_new)
+
+    chosen: list[tuple[dict, str, object, str]] = []
+    for key, members in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:merchant_new]:
+        latest = max(members, key=lambda t: (str(t.get("bookingDate", "")), str(t.get("transactionId", ""))))
+        n = len(members)
+        why = "1 row like this has no category" if n == 1 else f"{n} rows like this have no category"
+        chosen.append((latest, why, n, KIND_MERCHANT))
+        taken_keys.add(key)
+
+    spot_pool = sorted(tid for tid in model_ids
+                       if tid in by_id and tid not in kept_ids and merchant_key(by_id[tid]) not in taken_keys)
+    spots = rng.sample(spot_pool, min(spot_new, len(spot_pool)))
+
+    new_txns = [t for t, *_ in chosen] + [by_id[tid] for tid in spots]
+    guesses = guess(new_txns) if guess is not None and new_txns else [None] * len(new_txns)
+    merchant_rows, spot_rows = [], []
+    for i, txn in enumerate(new_txns):
+        if i < len(chosen):
+            _t, why, similar, kind = chosen[i]
+        else:
+            why, similar, kind = "", "", KIND_SPOT_CHECK
+        row = _new_row(txn, why, similar, kind)
+        if guesses[i] is not None and tuple(guesses[i][0]) in taxonomy:
+            triple, p = guesses[i]
+            row[VCOL["answer"]] = row[VCOL["suggested"]] = answer_text(tuple(triple))
+            row[VCOL["confidence"]] = round(p, 2)
+        if kind == KIND_SPOT_CHECK:
+            confidence = row[VCOL["confidence"]]
+            row[VCOL["why"]] = f"spot check: model {round(confidence * 100)}% sure" if confidence != "" else "spot check"
+            spot_rows.append(row)
+        else:
+            merchant_rows.append(row)
+
+    kept_merchants = [r for r in kept if _text(r, "kind") != KIND_SPOT_CHECK]
+    kept_spot_rows = [r for r in kept if _text(r, "kind") == KIND_SPOT_CHECK]
+    ordered = sorted(kept_merchants + merchant_rows, key=lambda r: -_similar(r))
+    return ordered + kept_spot_rows + spot_rows
