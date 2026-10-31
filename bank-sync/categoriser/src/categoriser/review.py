@@ -10,10 +10,13 @@ rows the model labelled. Pure: no I/O (see `sheets.write_review`).
 from __future__ import annotations
 
 import hashlib
+from dataclasses import dataclass, field
 
+from .issues import Issue
 from .merge import is_reviewed
-from .rules import amount_eur, normalise
-from .taxonomy import Triple
+from .rules import RCOL, RULE_COLUMNS, amount_eur, normalise, owner_slug
+from .schema import CATEGORISED_COLUMNS, CategorisedRow, Method
+from .taxonomy import Taxonomy, Triple
 
 REVIEW_COLUMNS: tuple[str, ...] = (
     "transactionId", "bookingDate", "account", "amountEur", "counterparty", "description",
@@ -83,3 +86,134 @@ def ticked(review: list[list]) -> set[str]:
     """transactionIds of inbox rows with `accept` ticked (`review` incl. header)."""
     return {str(_cell(r, "transactionId")).strip() for r in review[1:]
             if is_reviewed(_cell(r, "accept")) and str(_cell(r, "transactionId")).strip()}
+
+
+def _text(row: list, name: str) -> str:
+    return str(_cell(row, name)).strip()
+
+
+@dataclass
+class AnswerPlan:
+    manual_rows: list[CategorisedRow] = field(default_factory=list)  # reviewed=True, method=manual
+    new_rules: list[list] = field(default_factory=list)              # rows for categoriser_rules
+    keep: list[list] = field(default_factory=list)                   # ticked inbox rows not applied, as read
+    processed: set[str] = field(default_factory=set)                 # answers done: leave the inbox
+    issues: list[Issue] = field(default_factory=list)
+    history: list[dict] = field(default_factory=list)                # one per manual row written
+    changed: int = 0          # manual rows whose answer differs from a non-blank `suggested`
+    spot_right: int = 0
+    spot_wrong: int = 0
+
+
+_CCOL = {name: i for i, name in enumerate(CATEGORISED_COLUMNS)}
+_LABEL = ("owner", "type", "category", "subCategory")
+
+
+def _categorised_index(categorised: list[list]) -> tuple[dict[str, int], dict[str, tuple[str, ...]]]:
+    """(rows per transactionId, reviewed (owner, type, category, subCategory) per transactionId)."""
+    counts: dict[str, int] = {}
+    reviewed: dict[str, tuple[str, ...]] = {}
+    for row in categorised[1:]:
+        row = list(row) + [""] * (len(CATEGORISED_COLUMNS) - len(row))
+        tid = str(row[_CCOL["transactionId"]]).strip()
+        if not tid:
+            continue
+        counts[tid] = counts.get(tid, 0) + 1
+        if is_reviewed(row[_CCOL["reviewed"]]):
+            reviewed[tid] = tuple(str(row[_CCOL[f]]).strip() for f in _LABEL)
+    return counts, reviewed
+
+
+def _number(value: object) -> float | None:
+    try:
+        return float(value) if value not in ("", None) and not isinstance(value, bool) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _rule_values(rule_id: str, field_name: str, words: str, way: str, owner: str, triple: Triple,
+                 today: str) -> list:
+    values = [""] * len(RULE_COLUMNS)
+    values[RCOL["ruleId"]] = rule_id
+    values[RCOL["active"]] = True
+    values[RCOL["priority"]] = REVIEW_RULE_PRIORITY
+    values[RCOL["direction"]] = way
+    values[RCOL[field_name]] = words
+    values[RCOL["owner"]] = owner
+    values[RCOL["type"]], values[RCOL["category"]], values[RCOL["subCategory"]] = triple
+    values[RCOL["notes"]] = f"from review {today}"
+    values[RCOL["source"]] = "review"
+    return values
+
+
+def apply_answers(review: list[list], transactions: dict[str, dict], taxonomy: Taxonomy, owners: set[str],
+                  categorised: list[list], rule_ids: set[str], today: str, now: str, sheet: str) -> AnswerPlan:
+    """Turn ticked inbox rows into reviewed manual rows (and rules for "all like this").
+
+    `review` and `categorised` are whole sheets incl. header; `rule_ids` are the
+    ruleIds already on the rules sheet. An answer that cannot be applied stays in
+    the inbox (`keep`) with an issue; nothing here raises on a bad answer.
+    """
+    plan = AnswerPlan()
+    counts, reviewed = _categorised_index(categorised)
+    added_rules: set[str] = set()
+    handled: set[str] = set()
+    source = f"categoriser.run: '{sheet}' answers"
+
+    def problem(row: list, tid: str, kind: str, detail: str) -> None:
+        plan.keep.append(row)
+        plan.issues.append(Issue(type=kind, transactionId=tid, detail=detail, source=source))
+
+    for row in review[1:]:
+        row = list(row) + [""] * (len(REVIEW_COLUMNS) - len(row))
+        tid = _text(row, "transactionId")
+        if not tid or not is_reviewed(_cell(row, "accept")) or tid in handled:
+            continue
+        handled.add(tid)
+        txn = transactions.get(tid)
+        triple = parse_answer(_cell(row, "answer"))
+        owner = owner_slug(_text(row, "owner")) or owner_slug((txn or {}).get("owner", ""))
+        if txn is None:
+            problem(row, tid, INVALID_REVIEW, f"Not on transactions any more; delete the row in '{sheet}'.")
+            continue
+        if triple is None or triple not in taxonomy:
+            problem(row, tid, INVALID_REVIEW, "The answer is not a type › category › subCategory of the taxonomy.")
+            continue
+        if owner not in owners:
+            problem(row, tid, INVALID_REVIEW, f"Unknown owner '{owner}'.")
+            continue
+        if counts.get(tid, 0) > 1:
+            problem(row, tid, INVALID_REVIEW, "On several rows of categorised; delete the extra rows first.")
+            continue
+        if tid in reviewed:
+            if reviewed[tid] != (owner, *triple):
+                problem(row, tid, REVIEW_CONFLICT,
+                        f"categorised already has a reviewed row with {' / '.join(reviewed[tid])}. Change that "
+                        f"row, or untick or delete this one in '{sheet}'.")
+            else:
+                plan.processed.add(tid)
+            continue
+
+        rule_id = ""
+        words = normalise(_cell(row, "matchText"))
+        if is_reviewed(_cell(row, "allLikeThis")) and words:
+            field_name, _key_words, way = merchant_key(txn)
+            rule_id = review_rule_id(field_name, words, way)
+            if rule_id not in rule_ids and rule_id not in added_rules:
+                added_rules.add(rule_id)
+                account_owner = owner_slug(txn.get("owner", ""))
+                plan.new_rules.append(_rule_values(rule_id, field_name, words, way,
+                                                   "" if owner == account_owner else owner, triple, today))
+
+        plan.manual_rows.append(CategorisedRow(tid, owner, *triple, Method.MANUAL, None, rule_id, True, now))
+        plan.processed.add(tid)
+        answer, suggested = answer_text(triple), _text(row, "suggested")
+        spot = _text(row, "kind") == KIND_SPOT_CHECK
+        plan.changed += bool(suggested) and suggested != answer
+        if spot:
+            plan.spot_right += suggested == answer
+            plan.spot_wrong += suggested != answer
+        plan.history.append({"date": today, "transactionId": tid, "suggested": suggested,
+                             "confidence": _number(_cell(row, "confidence")), "answer": answer,
+                             "spotCheck": spot, "card": str(txn.get("classification", "")).strip().lower() == "card"})
+    return plan
