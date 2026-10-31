@@ -25,30 +25,31 @@
   }
 
   // `ibanMasked` keeps its name on every tab so sheets and formulas using it still work; it holds the full IBAN
-  // when Config.MASK_ACCOUNT_NUMBERS is off (see Redact.maskAccount).
+  // when Config.MASK_ACCOUNT_NUMBERS is off (see Redact.maskAccount). `owner` (see AccountOwners) is last on each tab so
+  // the columns before it keep their place.
 
   /** @type {Array<Column>} */
   const ACCOUNT_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountId', 'accountName', 'currency',
-    'ibanMasked', 'accountType', 'product', 'detailsAt'], []);
+    'ibanMasked', 'accountType', 'product', 'detailsAt', 'owner'], []);
 
   /** @type {Array<Column>} */
   const BALANCE_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
-    'balanceType', 'description', 'valueKind', 'amount', 'currency', 'amountEur', 'fxRate', 'fxRateDate', 'referenceDate', 'lastChange', 'fetchedAt'],
+    'balanceType', 'description', 'valueKind', 'amount', 'currency', 'amountEur', 'fxRate', 'fxRateDate', 'referenceDate', 'lastChange', 'fetchedAt', 'owner'],
   ['amount', 'amountEur', 'fxRate']);
 
   /** @type {Array<Column>} */
   const TRANSACTION_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountName', 'ibanMasked', 'accountId',
-    'transactionId', 'status', 'bookingDate', 'valueDate', 'amount', 'currency', 'counterparty', 'description'], ['amount']);
+    'transactionId', 'status', 'bookingDate', 'valueDate', 'amount', 'currency', 'counterparty', 'description', 'owner'], ['amount']);
 
   /** @type {Array<Column>} Open positions; values in the account currency, prices in the instrument's. */
   const HOLDING_COLUMNS = columns(['provider', 'bank', 'connection', 'holderName', 'accountName', 'accountId', 'ticker', 'isin',
     'name', 'instrumentCurrency', 'quantity', 'averagePrice', 'currentPrice', 'amount', 'currency', 'amountEur', 'fxRate',
-    'fxRateDate', 'totalCost', 'unrealizedPnl', 'fxImpact', 'openedAt', 'asOf'],
+    'fxRateDate', 'totalCost', 'unrealizedPnl', 'fxImpact', 'openedAt', 'asOf', 'owner'],
   ['quantity', 'averagePrice', 'currentPrice', 'amount', 'amountEur', 'fxRate', 'totalCost', 'unrealizedPnl', 'fxImpact']);
 
   /** @type {Array<Column>} One row per account per day (see `core/daily-values.js`). */
   const DAILY_VALUE_COLUMNS = columns(['date', 'provider', 'bank', 'connection', 'holderName', 'accountName', 'accountId',
-    'currency', 'cash', 'investments', 'total', 'cashEur', 'investmentsEur', 'totalEur', 'fxRate', 'fxRateDate', 'fetchedAt'],
+    'currency', 'cash', 'investments', 'total', 'cashEur', 'investmentsEur', 'totalEur', 'fxRate', 'fxRateDate', 'fetchedAt', 'owner'],
   ['cash', 'investments', 'total', 'cashEur', 'investmentsEur', 'totalEur', 'fxRate']);
 
   /**

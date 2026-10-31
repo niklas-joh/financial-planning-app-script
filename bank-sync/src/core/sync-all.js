@@ -23,6 +23,9 @@
    *   FX service for this run; without it the EUR columns are left as they are.
    * @property {boolean} [fullHistory] - Re-read everything already stored: every account's details now and each
    *   account's transactions from its oldest stored row (see `TxnSync`). Used by *Re-process stored rows*.
+   * @property {{assign: function(Array<Object>, import('./config.js').ConnectionConfig): Array<Object>,
+   *   save: function(): import('./account-owners.js').OwnersOutcome}} [owners] - Account owners for this run
+   *   (`AccountOwners.create`); without it rows keep the owner they have.
    */
 
   /**
@@ -56,7 +59,8 @@
   function syncOne(connection, deps, budgetMs, startedAt) {
     const provider = deps.providerFor(connection);
     const outOfTime = function () { return deps.nowMs() - startedAt > ns.Config.TRANSACTIONS.TIME_BUDGET_MS; };
-    const accounts = provider.listAccounts({ outOfTime: outOfTime, refreshDetails: Boolean(deps.fullHistory) });
+    const listed = provider.listAccounts({ outOfTime: outOfTime, refreshDetails: Boolean(deps.fullHistory) });
+    const accounts = deps.owners ? deps.owners.assign(listed, connection) : listed;
     const data = ns.RawSync.collect(provider, accounts, outOfTime);
     const transactions = ns.TxnSync.run({
       provider: provider, accounts: accounts, store: deps.store,
@@ -90,9 +94,10 @@
    * Runs the sync for all connections.
    * @param {SyncAllDeps} deps - Injected services.
    * @returns {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome,
-   *   moved: ?Object<string,number>}} Per-connection outcome, the row counts from `RawSync.write` (null if no
-   *   connection could be read), the details applied (null if none were read), the EUR conversion counts (null
-   *   without `deps.fx`) and the rows moved into each tab (null for a store that does not route). No
+   *   moved: ?Object<string,number>, owners: ?import('./account-owners.js').OwnersOutcome}} Per-connection outcome,
+   *   the row counts from `RawSync.write` (null if no connection could be read), the details applied (null if none
+   *   were read), the EUR conversion counts (null without `deps.fx`), the rows moved into each tab (null for a store
+   *   that does not route) and the accounts added to or missing an owner (null without `deps.owners`). No
    *   transaction content.
    */
   function run(deps) {
@@ -162,7 +167,8 @@
       });
     }
     const moved = typeof deps.store.moved === 'function' ? deps.store.moved() : null;
-    return { results: results, raw: raw, details: details, fx: fx, moved: moved };
+    const owners = deps.owners ? deps.owners.save() : null;
+    return { results: results, raw: raw, details: details, fx: fx, moved: moved, owners: owners };
   }
 
   /**
@@ -180,9 +186,10 @@
   }
 
   /**
-   * Turns a run into the text shown to the user. Counts only, no transaction content.
+   * Turns a run into the text shown to the user. Counts and account names only, no transaction content.
    * @param {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome,
-   *   moved: (?Object<string,number>|undefined)}} outcome - From `run`.
+   *   moved: (?Object<string,number>|undefined), owners: (?import('./account-owners.js').OwnersOutcome|undefined)}} outcome
+   *   - From `run`.
    * @returns {string} Multi-line summary.
    */
   function summarize(outcome) {
@@ -216,6 +223,8 @@
     }
     const moved = ns.TxnRouting.movedText(outcome.moved);
     if (moved) lines.push('Moved between tabs: ' + moved + '.');
+    const owners = ns.AccountOwners.summaryLine(outcome.owners || null);
+    if (owners) lines.push(owners);
     return lines.join('\n');
   }
 

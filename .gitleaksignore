@@ -3,3 +3,7 @@
 # - salt-edge-swagger-v6.json: example tokens from SaltEdge's public API spec.
 46ef6f7799b780288e89b4d1b30327b9524931df:docs/salt-edge-swagger-v6.json:generic-api-key:1
 cbd9955e94943034ea3b3b652c593b5c29690bcc:src/services/salt-edge/salt-edge-client.js:private-key:64
+# - bank-sync/test/account-owners.test.js (2026-10-31): a test connection key ('trading212-...'), not a secret;
+#   removed in the next commit of PR #101. History only: once the PR is squash-merged this commit is not on main, and
+#   the entry only keeps the PR branch's full-history scan green.
+c06c5a31151c7326e6e51179ef6bade3dc60aef6:bank-sync/test/account-owners.test.js:generic-api-key:113

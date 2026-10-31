@@ -18,6 +18,8 @@
    * @property {string} accountType - Provider account type (e.g. ISO cash account type).
    * @property {string} product - Provider product name, or ''.
    * @property {string} detailsAt - ISO date-time the full details were last read, or ''.
+   * @property {string} [owner] - Whose account it is (e.g. 'niklas', 'common'), from the `account_owners` tab; set by
+   *   Sync all (`AccountOwners`), never by the provider.
    * @property {Object<string,*>} [apiFields] - Every API field, flattened; account numbers masked only when
    *   `MASK_ACCOUNT_NUMBERS` is on (raw tab).
    */
@@ -46,6 +48,7 @@
    * @property {string} holderName - Label, as above.
    * @property {string} accountName - Label, as above.
    * @property {string} ibanMasked - Label, as above (the full IBAN when masking is off; the name is kept).
+   * @property {string} [owner] - Label, as above: whose account it is, or ''.
    * @property {string} accountId
    * @property {string} transactionId
    * @property {string} bookingDate
@@ -99,6 +102,7 @@
    * @property {string} connection - Label.
    * @property {string} holderName - Label.
    * @property {string} accountName - Label.
+   * @property {string} owner - Label.
    * @property {string} accountId
    * @property {string} currency - Account currency.
    * @property {number} cash - Sum of the account's 'cash' balances.

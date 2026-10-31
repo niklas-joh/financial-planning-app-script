@@ -110,7 +110,8 @@
       UNCLASSIFIED_TRANSACTIONS: 'unclassified_transactions',
       RATES: 'rates',
       HOLDINGS: 'holdings',
-      DAILY_VALUES: 'daily_values'
+      DAILY_VALUES: 'daily_values',
+      ACCOUNT_OWNERS: 'account_owners'
     }),
     ROUTING: Object.freeze({
       INVESTMENT_PROVIDERS: Object.freeze({

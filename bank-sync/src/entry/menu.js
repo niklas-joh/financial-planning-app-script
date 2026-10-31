@@ -209,8 +209,9 @@
   function status() {
     guarded(function () {
       const s = ns.Container.services();
+      const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
       showSummary('Bank Sync: Status', ns.ProviderRegistry.statusLines(s)
-        .concat([ns.TxnRouting.statusLine(SpreadsheetApp.getActiveSpreadsheet())])
+        .concat([ns.AccountOwners.statusLine(ns.AccountOwnersTab.create(spreadsheet)), ns.TxnRouting.statusLine(spreadsheet)])
         .concat(ns.AutoSync.statusLines(ns.Gas.triggers().list(), ns.LastRun.create(s.props).load()))
         .join('\n'));
     });

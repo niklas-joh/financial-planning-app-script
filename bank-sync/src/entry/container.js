@@ -109,7 +109,8 @@
       rawWriter: ns.RawWriter.create(spreadsheet),
       nowMs: wired.nowMs,
       todayIso: todayIso,
-      fx: fxService(spreadsheet, formatDate, todayIso)
+      fx: fxService(spreadsheet, formatDate, todayIso),
+      owners: ns.AccountOwners.create(ns.AccountOwnersTab.create(spreadsheet))
     };
   }
 
