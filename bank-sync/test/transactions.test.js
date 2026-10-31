@@ -159,7 +159,7 @@ test('store round-trips rows, forces text format on text columns, tolerates Date
   const rows = [tx({ transactionId: '007', description: '=SUM(A1)', amountEur: -0.5, fxRate: 0.1 })];
   assert.strictEqual(store.save(rows), 1);
   // A row without a category reads back with an empty one.
-  assert.deepStrictEqual(store.load(), rows.map((r) => ({ ...r, category: '', counterpartyAccount: '', counterpartyBank: '', reference: '', classification: '' })));
+  assert.deepStrictEqual(store.load(), rows.map((r) => ({ ...r, category: '', counterpartyAccount: '', counterpartyBank: '', reference: '', classification: '', owner: '' })));
   store.save([{ ...rows[0], category: 'GROCERIES' }]);
   assert.strictEqual(store.load()[0].category, 'GROCERIES');
   const sheet = book.sheets.transactions;
@@ -197,9 +197,9 @@ test('store: load fails loudly when the header was changed', () => {
 
 test('store: an older tab without the label or category columns, or with reordered columns, still loads', () => {
   const keys = BS.TransactionsStore.COLUMNS.map((c) => c.key);
-  const added = ['category', 'counterpartyAccount', 'counterpartyBank', 'reference', 'classification'];
+  const added = ['category', 'counterpartyAccount', 'counterpartyBank', 'reference', 'classification', 'owner'];
   const legacyKeys = keys.filter((k) => !['bank', 'connection', 'holderName', 'accountName', 'ibanMasked'].concat(added).includes(k));
-  const row = tx({ transactionId: 'a', amount: -2, category: '', counterpartyAccount: '', counterpartyBank: '', reference: '', classification: '' });
+  const row = tx({ transactionId: 'a', amount: -2, category: '', counterpartyAccount: '', counterpartyBank: '', reference: '', classification: '', owner: '' });
   const cells = (order) => order.map((k) => (row[k] === null ? '' : row[k]));
   const book = fakeSheetBook();
   const sheet = book.insertSheet('transactions');

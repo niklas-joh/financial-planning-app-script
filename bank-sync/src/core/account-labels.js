@@ -1,5 +1,5 @@
 /**
- * @fileoverview Pure helpers that say which bank, connection and account a row
+ * @fileoverview Pure helpers that say which bank, connection, account and owner a row
  * belongs to. Labels are joined from the accounts list, never recomputed per row.
  */
 (function (ns) {
@@ -11,6 +11,8 @@
    * @property {string} accountName - The name set by the user or bank, else the product name, else account type and currency (e.g. 'Current account EUR').
    * @property {string} ibanMasked - The account's IBAN through `Redact.maskAccount`, or ''. Holds the full IBAN
    *   when `Config.MASK_ACCOUNT_NUMBERS` is off (the default); the name is kept so sheets and formulas still work.
+   * @property {string} [owner] - Whose account it is (see `AccountOwners`), or ''. Only set when the account has an
+   *   `owner`, so a run that could not read the owners keeps the stored ones.
    */
 
   /** Readable names for ISO 20022 cash account type codes; unknown codes are shown as they are. */
@@ -35,13 +37,15 @@
   function lookup(accounts) {
     const byId = {};
     accounts.forEach(function (a) {
-      byId[a.accountId] = {
+      const labels = {
         bank: a.bank || '',
         connection: a.connection || '',
         holderName: a.holderName || '',
         accountName: displayName(a),
         ibanMasked: a.ibanMasked || ''
       };
+      if (a.owner !== undefined) labels.owner = a.owner;
+      byId[a.accountId] = labels;
     });
     return function (accountId) { return byId[accountId] || null; };
   }

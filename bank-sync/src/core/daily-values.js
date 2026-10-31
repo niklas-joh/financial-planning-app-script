@@ -65,7 +65,8 @@
         totalEur: eur(totalEur),
         fxRate: acc.eurComplete && typeof b.fxRate === 'number' ? b.fxRate : null,
         fxRateDate: acc.eurComplete ? b.fxRateDate || '' : '',
-        fetchedAt: b.fetchedAt || ''
+        fetchedAt: b.fetchedAt || '',
+        owner: b.owner || ''
       };
     });
   }

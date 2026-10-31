@@ -38,7 +38,9 @@
     { key: 'counterpartyAccount', text: true, optional: true },
     { key: 'counterpartyBank', text: true, optional: true },
     { key: 'reference', text: true, optional: true },
-    { key: 'classification', text: true, optional: true }
+    { key: 'classification', text: true, optional: true },
+    // Added last so existing columns keep their place.
+    { key: 'owner', text: true, optional: true }
   ];
 
   /**

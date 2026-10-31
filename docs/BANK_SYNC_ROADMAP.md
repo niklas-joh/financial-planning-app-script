@@ -6,7 +6,8 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-30 (account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
+Last updated: 2026-10-31 (O1 account owners: one CSV folder for everyone, owner per account on `account_owners`;
+before that: account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
 rows*, live and re-processed; Trading 212 report export live (#83, #88, #94); 6b Avanza CSV import live;
 Avanza deposits and withdrawals stay on `investment_transactions`; B2 moved into a later classification engine;
 remaining work in order).
@@ -42,6 +43,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
 | M1 | Account numbers in full: `MASK_ACCOUNT_NUMBERS` (default off), one masking helper, *Re-process stored rows* | Merged (#91), live since 2026-10-30: re-processed twice, nothing left masked (see "Live state") |
+| O1 | Account owners: `account_owners` tab (owner per account, typed by the owner), `owner` label on every tab, one CSV folder for everyone's exports | Merged, not deployed yet (see "O1: account owners" for the deploy steps) |
 | B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged (#83, #88, #94), live since 2026-10-30 (see Live state) |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
@@ -212,7 +214,9 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   transaction tabs), `txn-sync`, `sync-all` (all connections, shared time
   budget, failures isolated), `schedule` (pure trigger de-duplication and follow-up decisions),
   `consent-warnings` (which warnings are due, the email text, the sent record), `last-run` (outcome
-  record for Show status), `auto-sync` (daily trigger on/off and the triggered run).
+  record for Show status), `auto-sync` (daily trigger on/off and the triggered run), `account-owners` (O1: owner per
+  account, applied by Sync all after each connection's `listAccounts`).
+- `sheets/account-owners-tab.js`: the `account_owners` tab (read by header, rows only ever appended).
 - `lib/`: `jwt`, `http` (retry/backoff, carries the API error code), `hash` (FNV-1a),
   `flatten` (API object to dotted keys, account numbers masked), `gas-adapters` (the only
   place touching Apps Script services directly, including ScriptApp triggers, MailApp and Session).
@@ -711,6 +715,36 @@ Danske connected through *Connect a bank...* (country SE, bank picked from the l
 holder label) with no code or config change, and synced with SEK data. BGL, Spuerkeess,
 Raiffeisen and SEB follow the same route once they are linked in the Enable Banking Control
 Panel (the Connect flow explains it when a bank is not yet enabled).
+
+## O1: account owners (owner, 2026-10-31)
+
+Owner request: one Drive folder for every CSV export (own, shared and Marie-Aude's accounts, from different banks)
+instead of a `CSV_FOLDER_<HOLDER>` property per person, with the owner decided at import. Chosen (owner, from three
+options: an owner tab, the owner in the file name, a subfolder per owner): an owner list tab, so files are uploaded as
+exported and no Script Property is needed for a new person. Owners named: Niklas, Common, Marie-Aude.
+
+As built (see `bank-sync/README.md`, "Account owners"):
+
+- `account_owners` tab, one row per account: `owner`, `bank`, `accountName`, `ibanMasked`, `connection`, `provider`,
+  `accountId` (the key). Read by header; new accounts are appended, nothing typed is rewritten.
+- Sync all (`deps.owners`, built in `Container.syncAllDeps`, so the daily sync, *Import CSV files* and *Re-process
+  stored rows* do the same) gives each listed account its `owner` before anything is written. A new account starts
+  with its connection's holder (Enable Banking, Trading 212) or empty (CSV). Owners are slugged (`marie-aude`).
+- `owner` is an account label (`AccountLabels`), so it is stamped on stored rows like the bank and account name,
+  without counting as an update. The column is last on the three transaction tabs and on the raw, holdings and
+  daily values tabs, so no existing column moves. When the tab cannot be read (header renamed), accounts get no
+  `owner` and rows keep theirs; the summary says so.
+- The CSV folder property is unchanged: `CSV_FOLDER_NIKLAS` (connection `csv-niklas`) stays the one folder; its
+  name now only labels the folder. Several folders still work. Account ids do not depend on the folder.
+- No new OAuth scope; the web app is unchanged, so no `clasp deploy`.
+
+Deploy: `npm run check` (repo root) and `npm test` (`bank-sync/`), `clasp push` from `bank-sync/`, reload the sheet,
+*Sync all*. Expected: the summary adds every account to `account_owners` (bank logins and Trading 212 with `niklas`,
+CSV accounts with no owner) and names the CSV accounts without one. Type their owners, *Sync all* again: 0 added,
+0 updated, and the `owner` column filled on every tab. Record the counts here in the next PR.
+
+Phase 8 is simpler with this: a partner's own login is a new connection whose holder becomes the owner, and a shared
+account seen through either login is set to `common` on the tab.
 
 ## Phase 8: second holder at the same bank (last)
 

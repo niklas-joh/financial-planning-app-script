@@ -82,7 +82,7 @@
     }
   };
 
-  /** @type {ProviderEntry} CSV exports in a Drive folder per holder; read by every Sync all. */
+  /** @type {ProviderEntry} CSV exports in Drive folders (one is enough for everyone); read by every Sync all. */
   const csv = {
     id: ns.Config.CSV.PROVIDER_ID,
     connections: function (wired) { return ns.CsvFolders.connections(wired.props); },

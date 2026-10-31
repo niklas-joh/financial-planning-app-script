@@ -1,6 +1,7 @@
 /**
- * @fileoverview CSV connections come from Script Properties: one Drive folder per holder,
- * `CSV_FOLDER_<HOLDER>` = the folder id (pasted by the owner; not a secret). What the last read of
+ * @fileoverview CSV connections come from Script Properties: one Drive folder per property,
+ * `CSV_FOLDER_<NAME>` = the folder id (pasted by the owner; not a secret). One folder can hold several people's
+ * exports: the name only labels the folder, and each account's owner comes from `AccountOwners`. What the last read of
  * each folder found is kept in `CSV_IMPORTS_<HOLDER>` (counts and dates only, never amounts or
  * text) for Show status.
  */

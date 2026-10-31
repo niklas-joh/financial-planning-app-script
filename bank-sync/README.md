@@ -126,6 +126,29 @@ keep notes elsewhere). Later runs only replace the rows of connections that sync
 `transactions` tab is read by header name, so a tab from before 2.5 loads and is rewritten with
 the label columns on the next sync.
 
+## Account owners
+
+Every account has an **owner**, so rows can be split by person even when one CSV folder or one login holds
+several people's accounts: your own, shared ones and your partner's. Owners are kept on the `account_owners`
+tab, one row per account (`owner`, `bank`, `accountName`, `ibanMasked`, `connection`, `provider`, `accountId`).
+
+- Every sync adds a row for each account the tab does not list yet. A bank login or a Trading 212 key starts with
+  its holder as the owner (`revolut-niklas` gives `niklas`); a CSV account starts with **no owner**, because one
+  folder holds everyone's exports and only you can say whose a file is. The summary and *Show status* name the
+  accounts without an owner.
+- Type the owner in the `owner` column, e.g. `Niklas`, `Common` or `Marie-Aude` (change a prefilled one the same
+  way, e.g. a shared account seen through your login). Any text works, so a new person needs no setting; it is
+  stored in the same lowercase, dash-separated form as connection keys (`niklas`, `common`, `marie-aude`).
+- The next sync puts the owner on every row of that account: the `owner` column, last on `transactions`,
+  `investment_transactions`, `unclassified_transactions`, `raw_accounts`, `raw_balances`, `raw_transactions`,
+  `holdings` and `daily_values`. Changing it later moves the account's stored rows to the new owner at its next
+  sync (it does not count as an update). Rows of an account without an owner have an empty `owner`.
+- The tab is read by header name, so columns can be moved and your own (e.g. notes) added; new accounts are only
+  ever added below the last row. Don't rename the `owner` or `accountId` header: without them the tab is
+  reported as unreadable and every row keeps the owner it has.
+- An account is recognised by its `accountId` (for CSV accounts: the source plus a hash of the account number,
+  see "CSV import"), so it keeps its owner across files and syncs.
+
 ## Transactions (Phase 2)
 
 *Bank Sync > Sync all* writes the `transactions` tab (one row per
@@ -309,11 +332,15 @@ uploaded yourself (see "CSV import").
 Banks that Enable Banking does not cover are imported from their CSV exports. You drop the files in a
 Google Drive folder; *Sync all* (and the daily sync) reads every `.csv` file in it, and
 *Bank Sync > Import CSV files* does the same on demand (only the folders, no bank or Trading 212 calls).
+**One folder holds everyone's exports** (your own, shared and your partner's accounts, from any supported bank):
+whose an account is comes from the `account_owners` tab (see "Account owners"), not from the folder.
 
-1. Create a Drive folder per person, e.g. "Bank Sync imports (niklas)". Copy its id from the URL
+1. Create one Drive folder, e.g. "Bank Sync imports". Copy its id from the URL
    (`https://drive.google.com/drive/folders/<id>`).
-2. In **Project Settings > Script Properties** add `CSV_FOLDER_<HOLDER>` = the folder id, e.g.
-   `CSV_FOLDER_NIKLAS` (connection `csv-niklas`). The id is not a secret, but keep the folder private.
+2. In **Project Settings > Script Properties** add `CSV_FOLDER_<NAME>` = the folder id, once, e.g.
+   `CSV_FOLDER_NIKLAS` (connection `csv-niklas`; the name only labels the folder, not the owner of its accounts).
+   The id is not a secret, but keep the folder private. More `CSV_FOLDER_<NAME>` folders still work, but are not
+   needed for another person.
 3. Export from the bank and upload the file as it is. If Drive is set to convert uploads to Google
    formats, turn that off (**Drive settings > Convert uploads**): a converted file is a Sheet, not a CSV,
    and is ignored. Don't edit exports in a spreadsheet app and save them again; that can change
@@ -321,6 +348,8 @@ Google Drive folder; *Sync all* (and the daily sync) reads every `.csv` file in 
 4. *Import CSV files*, or wait for the next sync. *Show status* shows per folder when it was last read
    and, per source, how many files and transactions it found and their date range, plus any file it
    skipped and why.
+5. The first import of an account adds it to `account_owners` with no owner. Type its owner there; the next sync
+   (or *Import CSV files*) puts it on the account's rows.
 
 Supported exports:
 
@@ -379,7 +408,7 @@ Supported exports:
 What it writes:
 
 - `transactions` (BIL) and `investment_transactions` (Avanza): one booked row per movement, `provider` `csv`,
-  `bank` the source (`BIL`, `Avanza`), `connection` the folder (`csv-niklas`), `accountName` the product from the
+  `bank` the source (`BIL`, `Avanza`), `connection` the folder (`csv-niklas`), `owner` from `account_owners`, `accountName` the product from the
   account line (BIL) or the `Konto` name (Avanza), `ibanMasked` the account number (BIL;
   empty for Avanza, whose export has no number), and the columns above per source. An Avanza account's currency on
   `raw_accounts` is the one most of its rows have; each row keeps its own `Transaktionsvaluta`. Account and card numbers inside the texts are
