@@ -40,7 +40,10 @@ def main() -> None:
     report = write_report(ev, transactions, legacy, reviewed, taxonomy, manual, settings.joint_owner)
 
     items = labelled(transactions, legacy, reviewed)
-    model = train(weighted(items), taxonomy, datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    try:
+        model = train(weighted(items), taxonomy, datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    except ValueError as error:
+        raise SystemExit(f"No model saved: {error}") from None
     model.meta["examplesByKind"] = dict(Counter(kind for _t, _l, kind in items))
     model.meta["holdout"] = {
         "cutoff": args.cutoff, "minConfidence": threshold,

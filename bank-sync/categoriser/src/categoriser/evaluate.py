@@ -214,6 +214,7 @@ def write_report(ev: Evaluation, transactions: list[dict], legacy: list[LegacyRo
     from .config import categoriser_home
     from .mine import build_examples
 
+    # Rules mined from all labelled rows (not just before the cutoff, as in `evaluate`), for the coverage table.
     all_mined = [m.as_rule() for m in mine_rules(transactions, build_examples(transactions, legacy, reviewed),
                                                  taxonomy)]
     coverage = coverage_by_account(transactions, [r for r in manual if r.active] + all_mined, taxonomy, joint_owner)

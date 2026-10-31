@@ -66,13 +66,14 @@ def main() -> None:
             model, model_status = None, "failed"
     # Without a working model, keep the model rows already on the sheet instead of clearing them.
     clear_methods = frozenset({Method.RULE, Method.MODEL} if model is not None else {Method.RULE})
-    existing = read_values(ws)  # reviewed rows; the upsert never changes them
-    reviewed_checked, reviewed_wrong = review_check(model_rows, reviewed_labels(existing))
+    # Read for the reviewed rows only (the upsert never changes those); the upsert re-reads the sheet.
+    before_upsert = read_values(ws)
+    reviewed_checked, reviewed_wrong = review_check(model_rows, reviewed_labels(before_upsert))
     plan = upsert_categorised(ws, settings, result.rows + model_rows, clear_stale_at=now,
                               clear_methods=clear_methods)
     stats_written = write_rule_stats(rules_ws, settings, result.stats)
 
-    found = (parsed.issues + review_disagreements(existing, result.rows, settings.output_sheet)
+    found = (parsed.issues + review_disagreements(before_upsert, result.rows, settings.output_sheet)
              + duplicate_issues(plan.duplicates, settings.output_sheet))
     issues = record_issues(issues_ws, settings, found, CHECKED_TYPES, now)
     log.info(
