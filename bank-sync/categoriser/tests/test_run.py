@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -7,9 +8,10 @@ from categoriser.config import Settings
 from categoriser.issues import COL
 from categoriser.model import MODEL_FILE, save, train
 from categoriser.rules import RCOL, RULE_COLUMNS
+from categoriser.review import REVIEW_COLUMNS, VCOL
 from categoriser.schema import CATEGORISED_COLUMNS
 from categoriser.taxonomy import TAXONOMY_COLUMNS
-from builders import TAXONOMY, rule_row, txn
+from builders import TAXONOMY, review_row, review_sheet, rule_row, txn
 from fakes import FakeSpreadsheet, FakeWorksheet
 
 HEADER = list(CATEGORISED_COLUMNS)
@@ -21,7 +23,7 @@ def sheet_row(tid, method="rule"):
     return [tid, "joint", "Essentials", "Old", "", method, 1, "R1", False, "2026-10-01T00:00:00Z"]
 
 
-def spreadsheet(transactions, categorised, rules=None, taxonomy=None):
+def spreadsheet(transactions, categorised, rules=None, taxonomy=None, review=None):
     tx = FakeWorksheet("transactions", [["transactionId"]])
     tx.get_all_records = lambda **_: transactions
     sheets = {"transactions": tx, "categorised": FakeWorksheet("categorised", categorised)}
@@ -29,6 +31,8 @@ def spreadsheet(transactions, categorised, rules=None, taxonomy=None):
         sheets["categoriser_rules"] = FakeWorksheet("categoriser_rules", rules)
     if taxonomy is not None:
         sheets["categoriser_taxonomy"] = FakeWorksheet("categoriser_taxonomy", taxonomy)
+    if review is not None:
+        sheets["categoriser_review"] = FakeWorksheet("categoriser_review", review)
     return FakeSpreadsheet(sheets)
 
 
@@ -37,6 +41,14 @@ def models(tmp_path, monkeypatch):
     """Never the real ~/categoriser/models."""
     monkeypatch.setattr(run, "models_dir", lambda: tmp_path)
     return tmp_path
+
+
+@pytest.fixture(autouse=True)
+def data(tmp_path, monkeypatch):
+    """Never the real ~/categoriser/data."""
+    folder = tmp_path / "data"
+    monkeypatch.setattr(run, "data_dir", lambda: folder)
+    return folder
 
 
 def run_with(monkeypatch, ss):
@@ -128,3 +140,90 @@ def test_broken_model_skips_the_model_step_and_keeps_its_rows(monkeypatch, model
 
     assert ss.sheets["categorised"].values == [HEADER, before]
     assert "model=unreadable by_model=0" in caplog.text
+
+
+# --- review inbox -------------------------------------------------------------
+
+GROCERY = "Essentials › Groceries › Supermarket"
+
+
+def review_spreadsheet(answer=GROCERY, extra_rows=()):
+    txns = [txn("bob", -5, counterparty="Acme Market", tid="a1", day="2026-05-01"),
+            txn("bob", -6, counterparty="Acme Market", tid="a2", day="2026-05-02"),
+            txn("bob", -7, counterparty="Lone Shop", tid="n")]
+    review = review_sheet(review_row("a1", answer=answer, accept=True, all_like_this=True, match_text="acme market"),
+                          *extra_rows)
+    return spreadsheet(txns, [HEADER], [list(RULE_COLUMNS)], TAXONOMY_ROWS, review)
+
+
+def inbox_ids(ss):
+    return [r[0] for r in ss.sheets["categoriser_review"].values[1:] if r and r[0]]
+
+
+def history(data):
+    path = data / "review-history.jsonl"
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def test_answer_with_all_like_this_labels_the_merchant_in_the_same_run(monkeypatch, data, caplog):
+    caplog.set_level("INFO", logger="categoriser")
+    ss = review_spreadsheet()
+    run_with(monkeypatch, ss)
+
+    rows = {r[0]: r for r in ss.sheets["categorised"].values[1:]}
+    [rule] = ss.sheets["categoriser_rules"].values[1:]
+    rid = rule[RCOL["ruleId"]]
+    assert rid.startswith("r-") and rule[RCOL["source"]] == "review" and rule[RCOL["active"]] is True
+    assert rows["a1"][1:6] == ["bob", "Essentials", "Groceries", "Supermarket", "manual"]
+    assert rows["a1"][CATEGORISED_COLUMNS.index("reviewed")] is True and rows["a1"][7] == rid
+    assert rows["a2"][5] == "rule" and rows["a2"][7] == rid
+    assert inbox_ids(ss) == ["n"]
+    assert [h["transactionId"] for h in history(data)] == ["a1"]
+    assert "review_answers=1" in caplog.text and "review_rules_added=1" in caplog.text
+    assert "review=written" in caplog.text
+
+
+def test_second_run_changes_nothing(monkeypatch):
+    ss = review_spreadsheet()
+    run_with(monkeypatch, ss)
+    names = ("categorised", "categoriser_rules", "categoriser_review")
+    after_first = {n: [list(r) for r in ss.sheets[n].values] for n in names}
+    run_with(monkeypatch, ss)
+    assert {n: ss.sheets[n].values for n in names} == after_first
+
+
+def test_answer_seen_twice_is_applied_once(monkeypatch, data, caplog):
+    caplog.set_level("INFO", logger="categoriser")
+    ss = review_spreadsheet(extra_rows=[review_row("n")])
+    review_ws = ss.sheets["categoriser_review"]
+
+    def tick_n(ws):
+        ws.values[2][VCOL["accept"]] = True
+    review_ws.before_batch_get = tick_n
+    run_with(monkeypatch, ss)
+    assert "review=skipped_busy" in caplog.text and inbox_ids(ss) == ["a1", "n"]
+
+    review_ws.before_batch_get = None
+    run_with(monkeypatch, ss)
+    assert len(ss.sheets["categoriser_rules"].values) == 2 and len(history(data)) == 1
+    a1 = next(r for r in ss.sheets["categorised"].values[1:] if r[0] == "a1")
+    assert a1[5] == "manual" and a1[CATEGORISED_COLUMNS.index("reviewed")] is True
+
+
+def test_invalid_answer_is_logged_and_stays_ticked(monkeypatch):
+    ss = review_spreadsheet(answer="Essentials › Groceries › Bakery")
+    run_with(monkeypatch, ss)
+    issues = {r[COL["issueKey"]]: r for r in ss.sheets["categoriser_issues"].values[1:]}
+    assert issues["invalid_review_answer:a1"][COL["status"]] == "open"
+    review = {r[0]: r for r in ss.sheets["categoriser_review"].values[1:] if r and r[0]}
+    assert review["a1"][VCOL["accept"]] is True
+    assert "a1" not in {r[0] for r in ss.sheets["categorised"].values[1:]}
+    assert len(ss.sheets["categoriser_rules"].values) == 1
+
+
+def test_inbox_is_created_and_filled_on_the_first_run(monkeypatch):
+    ss = spreadsheet([txn(counterparty="Acme Market", tid="a"), txn(counterparty="Lone Shop", tid="l")],
+                     [HEADER], [list(RULE_COLUMNS)], TAXONOMY_ROWS)
+    run_with(monkeypatch, ss)
+    review = ss.sheets["categoriser_review"].values
+    assert review[0] == list(REVIEW_COLUMNS) and sorted(inbox_ids(ss)) == ["a", "l"]

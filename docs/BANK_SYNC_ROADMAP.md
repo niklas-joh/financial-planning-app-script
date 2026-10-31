@@ -6,7 +6,8 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-31 (O1 account owners: one CSV folder for everyone, owner per account on `account_owners`;
+Last updated: 2026-10-31 (categoriser phase 3a: review inbox, see
+`docs/superpowers/specs/2026-10-31-categoriser-phase-3-design.md`; before that: O1 account owners: one CSV folder for everyone, owner per account on `account_owners`;
 before that: account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
 rows*, live and re-processed; Trading 212 report export live (#83, #88, #94); 6b Avanza CSV import live;
 Avanza deposits and withdrawals stay on `investment_transactions`; B2 moved into a later classification engine;
@@ -62,7 +63,10 @@ In this order; each item still gets its own PR and stops for review.
    795 of the 817 unclassified rows; see Live state. The 22 left are still to be looked at.)
 2. Bank balances in `daily_values` (tag the booked balance `cash`; BIL has no balance in its export) and Avanza cash from
    a "Sedan start" export (open decision "Daily values for banks").
-3. Classification engine: categories for all spending, with B2 (internal-transfer pairs) as part of it. Design first.
+3. Classification engine: categories for all spending, with B2 (internal-transfer pairs) as part of it. Built as
+   `bank-sync/categoriser/` (Python): rules and transfer pairing (#104), model (#105), review inbox (phase 3a).
+   Next: 3b, the model retrains itself from the reviews (design in
+   `docs/superpowers/specs/2026-10-31-categoriser-phase-3-design.md`).
 4. Analysis on the classified data, toward one sheet (open decision "One sheet").
 5. When convenient: Phase 8 (partner), B4 (Drive scope), retiring Plaid/SaltEdge, the old portfolio sheet and the
    one-time migration code. Phase 9 (Avanza API) stays unplanned.
