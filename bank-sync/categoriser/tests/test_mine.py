@@ -89,3 +89,13 @@ def test_suggestion_must_cover_its_own_transaction():
     current = [txn(counterparty="Acme", amount=5)]               # incoming
     ex = examples(3, GROCERIES, counterparty="Acme")             # all outgoing
     assert mine_rules(current, ex, TAXONOMY) == []
+
+
+def test_labelled_tags_each_row_with_where_its_label_came_from():
+    from categoriser.mine import labelled
+    r, j = txn(tid="r", amount=-9, day="2026-02-02"), txn(tid="j", amount=-4, day="2026-02-02")
+    legacy = [LegacyRow(date(2026, 2, 2), -4, "Old", *CAFE, counterparty="ACME", description=""),
+              LegacyRow(date(2025, 1, 1), -3, "Old", *LUNCH, counterparty="Canteen", description="")]
+    out = labelled([r, j], legacy, {"r": GROCERIES})
+    assert [(t.get("transactionId"), label, kind) for t, label, kind in out] == [
+        ("r", GROCERIES, "reviewed"), ("j", CAFE, "joined"), (None, LUNCH, "legacy")]

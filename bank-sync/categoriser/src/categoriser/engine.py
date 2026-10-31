@@ -1,6 +1,7 @@
 """Turns transactions into categorised rows: rules first, then internal transfers.
 
-Rows that neither covers are left out (not guessed). Pure: no I/O.
+Rows that neither covers are returned in `Result.uncovered_rows` for the model
+(`model.py`), which labels only those it is confident about. Pure: no I/O.
 """
 
 from __future__ import annotations
@@ -30,6 +31,7 @@ class Result:
     by_rule: int = 0
     by_transfer: int = 0
     uncovered: int = 0
+    uncovered_rows: list[dict] = field(default_factory=list)  # for the model step
 
 
 def rule_stats(rules: list[Rule], transactions: list[dict]) -> dict[str, RuleStats]:
@@ -74,10 +76,12 @@ def categorise(transactions: list[dict], rules: list[Rule], taxonomy: Taxonomy,
         transfer = transfers.get(tid)
         if transfer is None:
             result.uncovered += 1
+            result.uncovered_rows.append(txn)
             continue
         sub = transfer_sub_category(transfer, joint_owner, sub_categories)
         if (TRANSFER_TYPE, TRANSFER_CATEGORY, sub) not in taxonomy:
             result.uncovered += 1
+            result.uncovered_rows.append(txn)
             continue
         result.rows.append(CategorisedRow(tid, owner_slug(txn.get("owner", "")), TRANSFER_TYPE,
                                           TRANSFER_CATEGORY, sub, Method.RULE, None, transfer.ruleId,

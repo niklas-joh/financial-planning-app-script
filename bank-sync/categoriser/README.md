@@ -1,8 +1,8 @@
 # categoriser
 
 Python job (inside `bank-sync/`) that reads the **Bank Sync** Google Sheet and writes categories to a
-separate `categorised` sheet. Phase 1: rules you keep in the `categoriser_rules` sheet, plus internal
-transfer pairing. Rows neither covers are left out, not guessed (a model for those is phase 2).
+separate `categorised` sheet: rules you keep in the `categoriser_rules` sheet, internal transfer pairing,
+then a model for the rest, which labels a row only when it is confident. Everything else is left blank.
 
 > **This repo is public.** Keys, `.env`, CSVs, models and logs are git-ignored
 > and blocked by the pre-commit hook (`../../scripts/hooks/pre-commit`). Never use
@@ -23,8 +23,9 @@ transfer pairing. Rows neither covers are left out, not guessed (a model for tho
   `confidence` is blank when not applicable.
 - Rows with `reviewed = TRUE` are never overwritten. Other existing rows are updated in place when something
   changed (so `updatedAt` is the last change); new IDs are appended below the last row with an ID.
-- A `rule` row that no rule covers any more (rule switched off or changed) is cleared: only its
-  `transactionId` and `updatedAt` stay (`cleared` in the log).
+- A `rule` or `model` row that the run no longer produces (rule switched off or changed, model no longer
+  confident) is cleared: only its `transactionId` and `updatedAt` stay (`cleared` in the log). `model` rows
+  are kept as they are when the model could not be loaded.
   Just before writing, the key and `reviewed` columns are re-read: a row ticked or moved while the run was
   planning is skipped (`skipped_reviewed` / `skipped_moved` in the log).
 - A `transactionId` on more than one row is ambiguous: every copy is left unchanged, the rest of the run
@@ -56,7 +57,10 @@ Created automatically. One row per issue, never repeated:
    closest date. A single leg sent to one of our own IBANs is `transfer:own-account`. `<sub>` is
    `From <Person>` when exactly one person (not `JOINT_OWNER`) is involved and the taxonomy has it, else
    `Internal Transfer`.
-3. Everything else is left out.
+3. **Model**, for rows neither covers, except card rows: `method` = `model`, `confidence` = its probability
+   (two decimals), `ruleId` blank. Written only when `confidence` ≥ `MODEL_MIN_CONFIDENCE` (`.env`, default
+   0.9). See [Model](#model).
+4. Everything else is left out.
 
 **Owner** = the `owner` column on `transactions` (bank-sync fills it from `account_owners`), unless the rule
 sets one.
@@ -90,7 +94,7 @@ there. The rules sheet's dropdowns read from it.
 
 ### Mining and holdout accuracy (run by hand, never by the schedule)
 
-Both need `LEGACY_SPREADSHEET_ID` in `~/categoriser/.env` and the legacy sheet shared with the service account
+These (and `categoriser.train`) need `LEGACY_SPREADSHEET_ID` in `~/categoriser/.env` and the legacy sheet shared with the service account
 as Viewer.
 
 - `python -m categoriser.mine [--dry-run]` appends suggestions to `categoriser_rules` with `active` = FALSE and
@@ -104,6 +108,30 @@ as Viewer.
 
 With Docker: `docker compose run --rm categoriser python -m categoriser.mine --dry-run`.
 
+### Model
+
+Logistic regression (scikit-learn) over the words and letter groups of counterparty, description and reference
+(numbers dropped), plus direction and the size of the amount. It predicts a `type / category / subCategory` that
+must be in the taxonomy. Owner is the account's owner.
+
+- **Train** by hand, after reviewing rows or approving rules: from the runtime folder,
+  `docker compose run --rm categoriser python -m categoriser.train`. Use the scheduled image: the model is saved
+  with its scikit-learn version and the daily run skips a model from another version (`model=incompatible` in the
+  log). scikit-learn is pinned in `pyproject.toml`; after bumping it, re-run `install-schedule.sh` and retrain.
+- Examples are the same as for mining: legacy rows, Bank Sync rows joined to them and rows you reviewed
+  (these count three times). Labels with fewer than 2 examples are not learnt.
+- It first runs the holdout below, then trains on everything and writes `models/categoriser-model.joblib` and
+  `models/categoriser-model.json` (when, how many examples per label, holdout scores). Never in the repo.
+- **Holdout:** `categoriser.evaluate` (and `train`) also trains a model on rows before the cutoff and reports, per
+  account, how many of the rows the rules leave it labels and how many correctly, for confidence 0.5 to 0.95.
+  Pick `MODEL_MIN_CONFIDENCE` from that table; `--min-confidence` tries another value.
+- **Card rows are skipped.** The hand-labelled history has few card rows like Trading 212's, and on them the model
+  was often confidently wrong. Review a few rows per merchant instead: mining turns them into rules.
+- **Daily run:** no model file → `model=missing`, unreadable or failing → `model=unreadable` / `failed`; the run
+  carries on without it. `model_reviewed_checked` / `model_reviewed_wrong` count rows you reviewed that the model
+  would label, and how many it gets wrong (reviewed rows are part of training, so this is optimistic; the
+  holdout is the real test). Retraining is manual.
+
 ## Layout
 
 ```
@@ -111,6 +139,7 @@ bank-sync/categoriser/
   src/categoriser/  config.py  schema.py  merge.py (pure upsert plan)  sheets.py (gspread I/O)
                     rules.py (parse, validate, match)  transfers.py  engine.py (rules + transfers)
                     taxonomy.py  legacy.py (read + join)  mine.py  evaluate.py  seed_taxonomy.py
+                    model.py (features, train, predict, save/load)  train.py
                     smoke.py   run.py (entry point)
   tests/            pytest, no network
   Dockerfile  docker-compose.yml (dev)  deploy/docker-compose.runtime.yml
@@ -195,6 +224,7 @@ want live (normally `main`).
 | `scripts/run-scheduled.sh`, `deploy/*`, `launchd/*.plist.template` | **Yes** (re-copies them to `~/categoriser`) |
 | `bank-sync/categoriser/tests/**`, this README | No |
 | `~/categoriser/.env`, or the key in `~/categoriser/credentials/` | No (read on every run) |
+| The model in `~/categoriser/models/` (after `categoriser.train`) | No (loaded on every run) |
 | Apps Script code (`src/`, `bank-sync/src/`) or anything else in the repo | No (not part of the categoriser; deploy with clasp as usual) |
 | Column names in the `transactions` sheet | Check the code still matches, then yes if you changed it |
 

@@ -102,19 +102,30 @@ def reviewed_labels(categorised: list[list]) -> dict[str, Triple]:
     return out
 
 
-def build_examples(transactions: list[dict], legacy: list[LegacyRow], reviewed: dict[str, Triple]) -> list[Example]:
-    """Reviewed rows win over a joined legacy label for the same transaction."""
+REVIEWED, JOINED, LEGACY = "reviewed", "joined", "legacy"
+
+
+def labelled(transactions: list[dict], legacy: list[LegacyRow],
+             reviewed: dict[str, Triple]) -> list[tuple[dict, Triple, str]]:
+    """(transaction-shaped dict, label, kind) for every labelled row: Bank Sync rows you
+    reviewed (these win), Bank Sync rows joined to a legacy row, and legacy rows that
+    join to nothing (their own text, kind `legacy`)."""
     joined = join_legacy(legacy, transactions)
     used = {id(r) for r in joined.values()}
-    examples = []
+    out = []
     for t in transactions:
         tid = str(t.get("transactionId", "")).strip()
         if tid in reviewed:
-            examples.append(_example(t, reviewed[tid]))
+            out.append((t, reviewed[tid], REVIEWED))
         elif tid in joined:
-            examples.append(_example(t, joined[tid].label))
-    examples += [_example(r.as_transaction(), r.label, legacy=True) for r in legacy if id(r) not in used]
-    return examples
+            out.append((t, joined[tid].label, JOINED))
+    out += [(r.as_transaction(), r.label, LEGACY) for r in legacy if id(r) not in used]
+    return out
+
+
+def build_examples(transactions: list[dict], legacy: list[LegacyRow], reviewed: dict[str, Triple]) -> list[Example]:
+    """Reviewed rows win over a joined legacy label for the same transaction."""
+    return [_example(t, label, legacy=kind == LEGACY) for t, label, kind in labelled(transactions, legacy, reviewed)]
 
 
 def _needles(text: object) -> list[str]:

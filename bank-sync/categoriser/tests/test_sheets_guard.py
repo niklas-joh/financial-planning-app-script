@@ -37,3 +37,9 @@ def test_allows_the_job_sheets(title):
 def test_writable_sheets_cannot_collide(field, name):
     with pytest.raises(ValueError):
         Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"), **{field: name})
+
+
+@pytest.mark.parametrize("value", [0, -0.1, 1.5])
+def test_model_min_confidence_must_be_a_probability(value):
+    with pytest.raises(ValueError):
+        Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"), model_min_confidence=value)

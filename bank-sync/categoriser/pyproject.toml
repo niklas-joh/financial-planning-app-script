@@ -9,7 +9,7 @@ description = "Categorises Bank Sync transactions into a separate 'categorised' 
 requires-python = ">=3.12"
 dependencies = [
   "pandas>=2.2",
-  "scikit-learn>=1.5",
+  "scikit-learn==1.9.1",  # exact: a saved model only loads with the version that trained it
   "gspread>=6.1",
   "google-auth>=2.30",
   "python-dotenv>=1.0",
