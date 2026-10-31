@@ -1,4 +1,4 @@
-from categoriser.engine import REVIEW_DISAGREES, categorise, review_disagreements
+from categoriser.engine import REVIEW_DISAGREES, SAMPLE_MAX_CHARS, categorise, review_disagreements, sample_text
 from categoriser.rules import parse_rules
 from categoriser.schema import CATEGORISED_COLUMNS, Method
 from builders import OWNERS, TAXONOMY, rule_row, rules_sheet, txn
@@ -82,3 +82,33 @@ def test_reviewed_rows_that_disagree_with_a_rule_are_reported():
     issues = review_disagreements(sheet, result.rows, "categorised")
     assert [(i.type, i.transactionId) for i in issues] == [(REVIEW_DISAGREES, "x")]
     assert "R1" in issues[0].detail
+
+
+def test_hits_count_every_match_and_wins_only_the_rows_a_rule_labelled():
+    rows = [txn(counterparty="Acme Market"), txn(counterparty="Acme Market Online"), txn(counterparty="Acme Fuel")]
+    result = categorise(rows, rules(
+        rule_row("market", priority=1, counterpartyContains="acme market"),
+        rule_row("acme", priority=2, counterpartyContains="acme"),
+        rule_row("off", active=False, counterpartyContains="acme fuel"),
+    ), TAXONOMY, "common", NOW)
+    got = {rid: (s.hits, s.wins) for rid, s in result.stats.items()}
+    assert got == {"market": (2, 2), "acme": (3, 1), "off": (1, 0)}   # inactive: hits, never wins
+
+
+def test_sample_groups_spellings_and_counts_largest_first():
+    rows = ([txn(counterparty="ACME MARKET")] * 2 + [txn(counterparty="Acme-Market")]
+            + [txn(counterparty="Corner Cafe")] + [txn(description="card 1234 Fuelstop")]
+            + [txn(counterparty="Bakery"), txn(counterparty="Zoo")])
+    assert sample_text(rows) == "ACME MARKET (3); Bakery (1); card 1234 Fuelstop (1); +2 more"
+    assert sample_text([]) == ""
+    long = sample_text([txn(counterparty="x" * 400)])
+    assert len(long) == SAMPLE_MAX_CHARS and long.endswith("…")
+
+
+def test_rule_and_transfer_rows_carry_the_transaction_context():
+    g = txn("alice", -12.5, counterparty="Acme Market", description="card payment", day="2026-05-02T10:00:00")
+    out, inc = txn("alice", -300, tid="o"), txn("common", 300, tid="i")
+    rows = by_id(categorise([g, out, inc], rules(rule_row("R1", counterpartyContains="acme market")),
+                            TAXONOMY, "common", NOW))
+    assert rows[g["transactionId"]].to_values()[10:] == ["2026-05-02", "Acme Market", "card payment", -12.5]
+    assert rows["o"].amountEur == -300 and rows["i"].ruleId == "transfer:pair"

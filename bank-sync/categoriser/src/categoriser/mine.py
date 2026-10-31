@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 
 from .legacy import TRANSACTIONS_TAB, LegacyRow, join_legacy, parse_legacy
 from .merge import is_reviewed
-from .rules import DEFAULT_PRIORITY, RCOL, RULE_COLUMNS, Rule, amount_eur, normalise
+from .rules import DEFAULT_PRIORITY, RULE_COLUMNS, Rule, amount_eur, normalise, rule_columns
 from .schema import CATEGORISED_COLUMNS
 from .taxonomy import Taxonomy, Triple
 
@@ -67,17 +67,19 @@ class MinedRule:
                     type=self.label[0], category=self.label[1], subCategory=self.label[2], source="mined",
                     **{self.field: self.needle})
 
-    def to_values(self, today: str) -> list:
-        values = [""] * len(RULE_COLUMNS)
-        values[RCOL["ruleId"]] = self.rule_id
-        values[RCOL["active"]] = False
-        values[RCOL["priority"]] = int(DEFAULT_PRIORITY)
-        values[RCOL["direction"]] = self.direction
-        values[RCOL[self.field]] = self.needle
-        values[RCOL["type"]], values[RCOL["category"]], values[RCOL["subCategory"]] = self.label
-        values[RCOL["notes"]] = (f"mined {today}: {self.examples} labelled rows, "
-                                 f"{round(self.agreement * 100)}% agree")
-        values[RCOL["source"]] = "mined"
+    def to_values(self, today: str, header: list | None = None) -> list:
+        """A row for the rules sheet, in the order of its `header` (default: a new sheet's)."""
+        col = rule_columns(header) if header else {n: i for i, n in enumerate(RULE_COLUMNS)}
+        values = [""] * (max(col.values()) + 1)
+        named = {
+            "ruleId": self.rule_id, "active": False, "priority": int(DEFAULT_PRIORITY),
+            "direction": self.direction, self.field: self.needle,
+            "type": self.label[0], "category": self.label[1], "subCategory": self.label[2],
+            "notes": f"mined {today}: {self.examples} labelled rows, {round(self.agreement * 100)}% agree",
+            "source": "mined",
+        }
+        for name, value in named.items():
+            values[col[name]] = value
         return values
 
 
@@ -198,9 +200,12 @@ def mine_rules(transactions: list[dict], examples: list[Example], taxonomy: Taxo
 def existing_signatures(rules_values: list[list]) -> set[tuple[str, str]]:
     """(field, normalised value) of every rule's text/provider-category match columns."""
     out = set()
+    if not rules_values:
+        return out
+    col = rule_columns(rules_values[0])
     for row in rules_values[1:]:
         for field in (*TEXT_FIELDS, "providerCategory"):
-            i = RCOL[field]
+            i = col[field]
             if len(row) > i and normalise(row[i]):
                 out.add((field, normalise(row[i])))
     return out
@@ -229,12 +234,14 @@ def main() -> None:
     reviewed = reviewed_labels(read_values(ensure_categorised_sheet(ss, settings)))
     examples = build_examples(transactions, legacy, reviewed)
     rules_values = read_values(rules_ws)
-    known_ids = {str(r[0]).strip() for r in rules_values[1:] if r}
+    id_col = rule_columns(rules_values[0])["ruleId"]
+    known_ids = {str(r[id_col]).strip() for r in rules_values[1:] if len(r) > id_col}
     mined = [m for m in mine_rules(transactions, examples, taxonomy, existing_signatures(rules_values))
              if m.rule_id not in known_ids]
     today = datetime.now(UTC).date().isoformat()
     if not args.dry_run and mined:
-        append_rows(rules_ws, settings, [m.to_values(today) for m in mined])
+        append_rows(rules_ws, settings, [m.to_values(today, rules_values[0]) for m in mined],
+                    key_column=id_col + 1)
     log.info("examples=%d (reviewed=%d) suggestions=%d written=%s",
              len(examples), len(reviewed), len(mined), not args.dry_run)
 

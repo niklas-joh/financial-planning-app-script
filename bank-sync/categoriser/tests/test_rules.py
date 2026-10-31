@@ -1,6 +1,6 @@
 import pytest
 
-from categoriser.rules import INVALID_RULE, contains_words, first_match, normalise, owner_slug, parse_rules
+from categoriser.rules import INVALID_RULE, RULE_COLUMNS, contains_words, first_match, normalise, owner_slug, parse_rules
 from builders import OWNERS, TAXONOMY, rule_row, rules_sheet, txn
 
 
@@ -110,3 +110,17 @@ def test_blank_rows_are_ignored_and_row_numbers_kept():
 def test_rejects_a_renamed_header():
     with pytest.raises(ValueError):
         parse_rules([["ruleID"]], TAXONOMY, OWNERS, "categoriser_rules")
+
+
+def test_columns_are_found_by_name_in_any_order_and_extra_columns_are_ignored():
+    header = ["my notes", *reversed(RULE_COLUMNS)]
+    row = dict(zip(RULE_COLUMNS, rule_row("R1", counterpartyContains="acme market")))
+    values = [header, ["keep", *(row[c] for c in reversed(RULE_COLUMNS))]]
+    parsed = parse_rules(values, TAXONOMY, OWNERS, "categoriser_rules")
+    assert [r.ruleId for r in parsed.rules] == ["R1"] and parsed.issues == []
+    assert parsed.rules[0].matches(txn(counterparty="Acme Market"))
+
+
+def test_rejects_a_header_missing_a_column():
+    with pytest.raises(ValueError, match="missing column"):
+        parse_rules([[c for c in RULE_COLUMNS if c != "textRegex"]], TAXONOMY, OWNERS, "categoriser_rules")

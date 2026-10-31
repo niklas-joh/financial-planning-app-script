@@ -17,7 +17,7 @@ from .config import Settings
 from .engine import RuleStats
 from .issues import ISSUE_COLUMNS, Issue, IssuesPlan, plan_issues
 from .merge import UpsertPlan, drop_newly_reviewed, plan_upsert
-from .rules import DIRECTIONS, RCOL, RULE_COLUMNS, SOURCES
+from .rules import DIRECTIONS, JOB_COLUMNS, RULE_COLUMNS, SOURCES, rule_columns
 from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
 from .taxonomy import TAXONOMY_COLUMNS
 
@@ -69,21 +69,23 @@ def _one_of_range(sheet: str, column: str) -> dict:
             "showCustomUi": True, "strict": False}
 
 
-def _validations(settings: Settings, title: str) -> dict[int, dict]:
+def _validations(settings: Settings, title: str, header: list) -> dict[int, dict]:
     """Checkboxes and dropdowns per column of each job sheet (re-applied after appends,
-    since rows added at the bottom don't inherit them)."""
+    since rows added at the bottom don't inherit them). Rules sheet columns are found
+    by name in `header`."""
     if title == settings.output_sheet:
         return {REVIEWED_COLUMN: CHECKBOX}
     if title == settings.rules_sheet:
+        col = rule_columns(header)
         tax, owners = settings.taxonomy_sheet, settings.owners_sheet
         return {
-            RCOL["active"]: CHECKBOX,
-            RCOL["direction"]: _one_of_list(DIRECTIONS),
-            RCOL["source"]: _one_of_list(SOURCES),
-            RCOL["owner"]: _one_of_range(owners, "A"),
-            RCOL["type"]: _one_of_range(tax, "A"),
-            RCOL["category"]: _one_of_range(tax, "B"),
-            RCOL["subCategory"]: _one_of_range(tax, "C"),
+            col["active"]: CHECKBOX,
+            col["direction"]: _one_of_list(DIRECTIONS),
+            col["source"]: _one_of_list(SOURCES),
+            col["owner"]: _one_of_range(owners, "A"),
+            col["type"]: _one_of_range(tax, "A"),
+            col["category"]: _one_of_range(tax, "B"),
+            col["subCategory"]: _one_of_range(tax, "C"),
         }
     return {}
 
@@ -106,12 +108,34 @@ def ensure_taxonomy_sheet(ss: gspread.Spreadsheet, settings: Settings) -> gsprea
 def ensure_rules_sheet(ss: gspread.Spreadsheet, settings: Settings) -> gspread.Worksheet:
     """Return the rules sheet, creating it with a checkbox on `active` and dropdowns on
     `direction`, `source`, `owner` (from the account owners tab) and the three
-    category columns (from the taxonomy sheet)."""
-    return _ensure_sheet(ss, settings, settings.rules_sheet, RULE_COLUMNS)
+    category columns (from the taxonomy sheet), and a filter so it can be sorted.
+
+    Its columns are matched by name, in any order; a missing one is added at the end."""
+    ws = _ensure_sheet(ss, settings, settings.rules_sheet, RULE_COLUMNS, by_name=True)
+    _ensure_basic_filter(ss, ws, settings)
+    return ws
+
+
+def _missing_columns(header: list[str], columns: tuple[str, ...], by_name: bool) -> list[str] | None:
+    """Columns to add at the end of an existing header, or None if the header doesn't fit.
+
+    Positional sheets must start with `columns`, or with a leading part of it (a sheet
+    from before columns were added at the end). `by_name` sheets may hold the columns
+    in any order, plus others."""
+    header = [str(h).strip() for h in header]
+    if by_name:
+        if any(header.count(c) > 1 for c in columns):
+            return None
+        return [c for c in columns if c not in header]
+    if header[: len(columns)] == list(columns):
+        return []
+    if header == list(columns[: len(header)]):
+        return list(columns[len(header):])
+    return None
 
 
 def _ensure_sheet(ss: gspread.Spreadsheet, settings: Settings, title: str,
-                  columns: tuple[str, ...]) -> gspread.Worksheet:
+                  columns: tuple[str, ...], by_name: bool = False) -> gspread.Worksheet:
     try:
         ws = ss.worksheet(title)
     except gspread.WorksheetNotFound:
@@ -122,9 +146,33 @@ def _ensure_sheet(ss: gspread.Spreadsheet, settings: Settings, title: str,
     header = ws.row_values(1)
     if not header:
         _init_sheet(ss, ws, settings, columns)
-    elif header[: len(columns)] != list(columns):
+        return ws
+    missing = _missing_columns(header, columns, by_name)
+    if missing is None:
         raise ValueError(f"Sheet '{title}' exists with unexpected headers: {header}")
+    if missing:
+        _extend_header(ws, settings, header, missing)
     return ws
+
+
+def _extend_header(ws: gspread.Worksheet, settings: Settings, header: list, missing: list[str]) -> None:
+    """Add new job columns after the last header cell (existing rows keep their values)."""
+    _assert_writable(ws, settings)
+    needed = len(header) + len(missing)
+    if needed > ws.col_count:
+        ws.add_cols(needed - ws.col_count)
+    ws.update([missing], rowcol_to_a1(1, len(header) + 1), value_input_option=ValueInputOption.raw)
+
+
+def _ensure_basic_filter(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settings) -> None:
+    """Add a filter over the whole sheet if it has none, so its columns can be sorted on the
+    phone. An existing filter (with your criteria or sort) is left as it is."""
+    meta = ss.fetch_sheet_metadata(params={"fields": "sheets(properties(sheetId),basicFilter(range))"})
+    sheet = next((s for s in meta.get("sheets", []) if s.get("properties", {}).get("sheetId") == ws.id), {})
+    if "basicFilter" in sheet:
+        return
+    _assert_writable(ws, settings)
+    ss.batch_update({"requests": [{"setBasicFilter": {"filter": {"range": {"sheetId": ws.id}}}}]})
 
 
 def _init_sheet(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settings,
@@ -137,7 +185,8 @@ def _init_sheet(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settin
 
 
 def _apply_validations(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settings) -> None:
-    validations = _validations(settings, ws.title)
+    header = ws.row_values(1) if ws.title == settings.rules_sheet else []
+    validations = _validations(settings, ws.title, header)
     if not validations:
         return
     ss.batch_update({"requests": [{
@@ -153,44 +202,49 @@ def _apply_validations(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings:
     } for column, rule in sorted(validations.items())]})
 
 
-def append_rows(ws: gspread.Worksheet, settings: Settings, rows: list[list]) -> None:
-    """Append rows below the existing ones (mined rules, taxonomy seed)."""
+def append_rows(ws: gspread.Worksheet, settings: Settings, rows: list[list], key_column: int = 1) -> None:
+    """Append rows below the last row with a value in `key_column` (1-based), e.g. the
+    rules sheet's `ruleId` column (mined rules) or column A (taxonomy seed)."""
     _assert_writable(ws, settings)
-    _write_rows(ws, settings, {}, rows, 0)
+    _write_rows(ws, settings, {}, rows, 0, key_column)
 
 
 def write_rule_stats(ws: gspread.Worksheet, settings: Settings, stats: dict[str, RuleStats]) -> int:
-    """Fill `hits` and `lastMatched` for each rule; touches only those two columns.
+    """Fill the job columns (`hits`, `wins`, `lastMatched`, `sample`) of each rule; touches
+    only those cells, found by header name.
 
     The sheet is read just before writing and rows are found by ruleId, so rules
-    added, moved or deleted from the phone meanwhile are not overwritten. A ruleId
-    on more than one row is skipped. Returns the number of rows changed.
+    added, moved, sorted or deleted from the phone meanwhile are not overwritten. A
+    ruleId on more than one row is skipped. Returns the number of rows changed.
     """
     _assert_writable(ws, settings)
     values = read_values(ws)
+    if not values:
+        return 0
+    col = rule_columns(values[0])
     rows: dict[str, list[int]] = {}
     for n, row in enumerate(values[1:], start=2):
-        rid = str(row[0]).strip() if row else ""
+        rid = str(row[col["ruleId"]]).strip() if len(row) > col["ruleId"] else ""
         if rid:
             rows.setdefault(rid, []).append(n)
-    hits_col, last_col = RCOL["hits"], RCOL["lastMatched"]
-    data = []
+    data, changed = [], 0
     for rid, st in stats.items():
         if len(rows.get(rid, [])) != 1:
             continue
         n = rows[rid][0]
         row = values[n - 1]
-        current = [str(row[c]) if len(row) > c else "" for c in (hits_col, last_col)]
-        if current != [str(st.hits), st.lastMatched]:
-            data.append({"range": f"{rowcol_to_a1(n, hits_col + 1)}:{rowcol_to_a1(n, last_col + 1)}",
-                         "values": [[st.hits, st.lastMatched]]})
+        cells = [(name, getattr(st, name)) for name in JOB_COLUMNS]
+        updates = [(name, v) for name, v in cells
+                   if (str(row[col[name]]) if len(row) > col[name] else "") != str(v)]
+        data += [{"range": rowcol_to_a1(n, col[name] + 1), "values": [[v]]} for name, v in updates]
+        changed += bool(updates)
     if data:
         ws.batch_update(data, value_input_option=ValueInputOption.raw)
-    return len(data)
+    return changed
 
 
 def _write_rows(ws: gspread.Worksheet, settings: Settings, updates: dict[int, list], appends: list[list],
-                width: int) -> None:
+                width: int, key_column: int = 1) -> None:
     """One batch_update for changed rows; new rows go right below the last row with a key.
 
     Not `append_rows`: an empty checkbox reads as FALSE, so Sheets' own append would
@@ -203,7 +257,7 @@ def _write_rows(ws: gspread.Worksheet, settings: Settings, updates: dict[int, li
             value_input_option=ValueInputOption.raw,
         )
     if appends:
-        keys = ws.col_values(1, value_render_option=ValueRenderOption.unformatted)
+        keys = ws.col_values(key_column, value_render_option=ValueRenderOption.unformatted)
         start = max((n for n, v in enumerate(keys, start=1) if str(v).strip()), default=1) + 1
         end = start + len(appends) - 1
         if end > ws.row_count:

@@ -3,7 +3,7 @@
 Reads transactions, the taxonomy and the rules, categorises with the active
 rules and internal-transfer pairing, then lets the model (if one is trained)
 label the confident rest. Writes `categorised`, refreshes the rules'
-`hits`/`lastMatched` and logs problems in `categoriser_issues`. Logs counts
+`hits`/`wins`/`lastMatched`/`sample` and logs problems in `categoriser_issues`. Logs counts
 only, never transaction contents. A job sheet with renamed headers stops the run
 before anything is written; a missing or broken model only skips the model step.
 """
