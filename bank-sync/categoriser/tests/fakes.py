@@ -9,10 +9,12 @@ from gspread.utils import a1_to_rowcol
 
 
 class FakeWorksheet:
-    def __init__(self, title: str, values: list[list] | None = None, sheet_id: int = 1):
+    def __init__(self, title: str, values: list[list] | None = None, sheet_id: int = 1, row_count: int = 1000):
         self.title = title
         self.id = sheet_id
         self.values = [list(r) for r in (values or [])]
+        self.row_count = row_count
+        self.spreadsheet = None  # set by FakeSpreadsheet
         self.frozen_rows = 0
         self.before_batch_get = None  # hook: simulate an edit between plan and write
         self.calls: list[str] = []
@@ -21,6 +23,12 @@ class FakeWorksheet:
     def get_all_values(self, **_):
         self.calls.append("get_all_values")
         return [list(r) for r in self.values]
+
+    def col_values(self, col, **_):
+        out = [r[col - 1] if len(r) >= col else "" for r in self.values]
+        while out and out[-1] in ("", None):
+            out.pop()
+        return out
 
     def row_values(self, row, **_):
         return list(self.values[row - 1]) if len(self.values) >= row else []
@@ -53,10 +61,16 @@ class FakeWorksheet:
         self.calls.append("append_rows")
         self.values.extend(list(r) for r in rows)
 
+    def add_rows(self, n):
+        self.calls.append("add_rows")
+        self.row_count += n
+
     def freeze(self, rows=0, **_):
         self.frozen_rows = rows
 
     def _set_row(self, row, col, vals):
+        if row > self.row_count:
+            raise IndexError(f"row {row} is beyond the grid ({self.row_count} rows)")
         while len(self.values) < row:
             self.values.append([])
         target = self.values[row - 1]
@@ -69,6 +83,8 @@ class FakeSpreadsheet:
     def __init__(self, sheets: dict[str, FakeWorksheet] | None = None):
         self.sheets = dict(sheets or {})
         self.requests: list[dict] = []
+        for ws in self.sheets.values():
+            ws.spreadsheet = self
 
     def worksheet(self, title):
         if title not in self.sheets:
@@ -76,7 +92,8 @@ class FakeSpreadsheet:
         return self.sheets[title]
 
     def add_worksheet(self, title, rows, cols):
-        ws = FakeWorksheet(title, sheet_id=len(self.sheets) + 1)
+        ws = FakeWorksheet(title, sheet_id=len(self.sheets) + 1, row_count=rows)
+        ws.spreadsheet = self
         self.sheets[title] = ws
         return ws
 

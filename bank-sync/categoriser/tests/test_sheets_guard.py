@@ -15,8 +15,14 @@ def test_refuses_to_write_anywhere_but_the_output_sheet(title):
         _assert_writable(SimpleNamespace(title=title), SETTINGS)
 
 
-@pytest.mark.parametrize("title", ["categorised", "categoriser_issues"])
-def test_allows_the_output_and_issues_sheets(title):
+@pytest.mark.parametrize("title", ["account_owners", "Financial Planning", "All Transactions"])
+def test_refuses_the_owners_tab_and_legacy_names(title):
+    with pytest.raises(PermissionError):
+        _assert_writable(SimpleNamespace(title=title), SETTINGS)
+
+
+@pytest.mark.parametrize("title", ["categorised", "categoriser_issues", "categoriser_rules", "categoriser_taxonomy"])
+def test_allows_the_job_sheets(title):
     _assert_writable(SimpleNamespace(title=title), SETTINGS)
 
 
@@ -25,6 +31,8 @@ def test_allows_the_output_and_issues_sheets(title):
     ("output_sheet", " transactions "),
     ("issues_sheet", "transactions"),
     ("issues_sheet", "categorised"),
+    ("rules_sheet", "transactions"),
+    ("taxonomy_sheet", "categoriser_rules"),
 ])
 def test_writable_sheets_cannot_collide(field, name):
     with pytest.raises(ValueError):
