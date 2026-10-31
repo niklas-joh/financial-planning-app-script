@@ -3,13 +3,18 @@
 Rules: an existing row whose `reviewed` cell is TRUE is never overwritten, and a
 transactionId that appears on several rows is left alone on all of them (reported
 in `UpsertPlan.duplicates` for the issues log) while the rest of the run continues.
+
+A row whose values match what the run would write (ignoring `updatedAt`) is not
+rewritten. With `clear_stale_at` set, an existing unreviewed `rule` row that this run no longer
+categorises (its rule was switched off or changed) is cleared: only its
+transactionId and `updatedAt` remain, so a wrong category does not linger.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow
+from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
 
 
 def is_reviewed(value: object) -> bool:
@@ -25,6 +30,7 @@ class UpsertPlan:
     skipped_reviewed: list[str] = field(default_factory=list)
     skipped_moved: list[str] = field(default_factory=list)  # row changed under us; next run retries
     duplicates: dict[str, list[int]] = field(default_factory=dict)  # transactionId -> sheet rows
+    cleared: list[str] = field(default_factory=list)  # stale rule rows emptied (a subset of updates)
 
 
 def drop_newly_reviewed(plan: UpsertPlan, keys: list, reviewed: list) -> UpsertPlan:
@@ -47,10 +53,34 @@ def drop_newly_reviewed(plan: UpsertPlan, keys: list, reviewed: list) -> UpsertP
         else:
             kept[row_number] = values
     plan.updates = kept
+    plan.cleared = [k for k in plan.cleared if any(v[KEY_COLUMN] == k for v in kept.values())]
     return plan
 
 
-def plan_upsert(existing: list[list], incoming: list[CategorisedRow]) -> UpsertPlan:
+_UPDATED_AT = CATEGORISED_COLUMNS.index("updatedAt")
+
+
+def _same_except_timestamp(row: list, values: list) -> bool:
+    """An unchanged row is not rewritten, so `updatedAt` shows when it last changed."""
+    def norm(v: object) -> str:
+        if isinstance(v, bool):
+            return str(v).upper()
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        return str(v).strip()
+    row = list(row) + [""] * (len(values) - len(row))
+    return all(norm(a) == norm(b) for i, (a, b) in enumerate(zip(row, values)) if i != _UPDATED_AT)
+
+
+def cleared_values(transaction_id: str, now: str) -> list:
+    values = [""] * len(CATEGORISED_COLUMNS)
+    values[KEY_COLUMN] = transaction_id
+    values[REVIEWED_COLUMN] = False
+    values[CATEGORISED_COLUMNS.index("updatedAt")] = now
+    return values
+
+
+def plan_upsert(existing: list[list], incoming: list[CategorisedRow], clear_stale_at: str | None = None) -> UpsertPlan:
     """`existing` is the full sheet incl. header (row 1), unformatted values."""
     if existing and [str(h) for h in existing[0][: len(CATEGORISED_COLUMNS)]] != list(CATEGORISED_COLUMNS):
         raise ValueError("Header row of the categorised sheet does not match the expected columns.")
@@ -82,8 +112,17 @@ def plan_upsert(existing: list[list], incoming: list[CategorisedRow]) -> UpsertP
             row_number, reviewed = index[key]
             if reviewed:
                 plan.skipped_reviewed.append(key)
-            else:
+            elif not _same_except_timestamp(existing[row_number - 1], item.to_values()):
                 plan.updates[row_number] = item.to_values()
         else:
             plan.appends.append(item.to_values())
+
+    if clear_stale_at is not None:
+        method_col = CATEGORISED_COLUMNS.index("method")
+        for key, (row_number, reviewed) in index.items():
+            row = existing[row_number - 1]
+            method = str(row[method_col]).strip() if len(row) > method_col else ""
+            if key not in seen and not reviewed and method == str(Method.RULE):
+                plan.updates[row_number] = cleared_values(key, clear_stale_at)
+                plan.cleared.append(key)
     return plan

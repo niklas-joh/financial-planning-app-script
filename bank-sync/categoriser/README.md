@@ -1,8 +1,8 @@
 # categoriser
 
 Python job (inside `bank-sync/`) that reads the **Bank Sync** Google Sheet and writes categories to a
-separate `categorised` sheet. Categorisation logic (rules, model) is not
-implemented yet. This is the I/O scaffold.
+separate `categorised` sheet. Phase 1: rules you keep in the `categoriser_rules` sheet, plus internal
+transfer pairing. Rows neither covers are left out, not guessed (a model for those is phase 2).
 
 > **This repo is public.** Keys, `.env`, CSVs, models and logs are git-ignored
 > and blocked by the pre-commit hook (`../../scripts/hooks/pre-commit`). Never use
@@ -11,14 +11,20 @@ implemented yet. This is the I/O scaffold.
 ## Output contract
 
 - Reads `transactions`. **Never writes to it** (enforced in `sheets._assert_writable`).
-- Writes only to `categorised`, keyed by `transactionId`:
+- Writes only to `categorised`, `categoriser_issues`, `categoriser_rules` (only `hits`/`lastMatched`, and
+  rows appended by `categoriser.mine`) and `categoriser_taxonomy` (created, and seeded once). This list is
+  `Settings.writable_sheets`. The legacy sheet is only opened with a read-only token.
+- `categorised` is keyed by `transactionId`:
 
   | transactionId | owner | type | category | subCategory | method | confidence | ruleId | reviewed | updatedAt |
   |---|---|---|---|---|---|---|---|---|---|
 
   `method` is `rule`, `model` or `manual`; `reviewed` is a checkbox; `updatedAt` is ISO 8601 UTC;
   `confidence` is blank when not applicable.
-- Rows with `reviewed = TRUE` are never overwritten. Other existing rows are updated in place; new IDs are appended.
+- Rows with `reviewed = TRUE` are never overwritten. Other existing rows are updated in place when something
+  changed (so `updatedAt` is the last change); new IDs are appended below the last row with an ID.
+- A `rule` row that no rule covers any more (rule switched off or changed) is cleared: only its
+  `transactionId` and `updatedAt` stay (`cleared` in the log).
   Just before writing, the key and `reviewed` columns are re-read: a row ticked or moved while the run was
   planning is skipped (`skipped_reviewed` / `skipped_moved` in the log).
 - A `transactionId` on more than one row is ambiguous: every copy is left unchanged, the rest of the run
@@ -33,15 +39,78 @@ Created automatically. One row per issue, never repeated:
 
 - New issue → appended as `open`. Still there next run → only `lastSeen` and `detail` are refreshed.
 - Gone → `status` becomes `resolved` with `resolvedAt`. Comes back → reopened on the same row.
-- Issue types today: `duplicate_transaction_id`. The job writes only to `categorised` and this sheet.
-- Missing sheet → created with headers, frozen header row, and checkbox validation on `reviewed`.
-  Existing sheet with different headers → the run fails rather than touching it.
+- Issue types: `duplicate_transaction_id`; `invalid_rule` (an active rule that was skipped, keyed by
+  ruleId); `rule_disagrees_with_review` (a reviewed row a rule would label differently, so the rule can be
+  fixed).
+- Missing job sheet → created with headers, frozen header row, and its checkboxes/dropdowns.
+  Existing sheet with different headers → the run fails before writing anything.
+
+## How rows are categorised
+
+1. **Rules** (`categoriser_rules`, active ones). Tried by `priority` (lowest first), then by how many match
+   columns are set (most first), then `ruleId`. The first match wins. Output: `method` = `rule`, `ruleId` set.
+2. **Internal transfers**, for rows no rule covered. Both legs of a pair are labelled
+   `Internal Transfer / Internal Transfer / <sub>`, `ruleId` = `transfer:pair`. A pair is an outgoing and an
+   incoming row on two of our accounts, same currency and amount, at most 3 days apart; card rows are never
+   paired. Ties: a leg whose `counterpartyAccount` is the other's IBAN first, then the same description, then the
+   closest date. A single leg sent to one of our own IBANs is `transfer:own-account`. `<sub>` is
+   `From <Person>` when exactly one person (not `JOINT_OWNER`) is involved and the taxonomy has it, else
+   `Internal Transfer`.
+3. Everything else is left out.
+
+**Owner** = the `owner` column on `transactions` (bank-sync fills it from `account_owners`), unless the rule
+sets one.
+
+### Rules sheet (`categoriser_rules`)
+
+| column | meaning |
+|---|---|
+| `ruleId` | unique; mined rules are `m-<hash>` |
+| `active` | checkbox; only active rules categorise |
+| `priority` | number, lower first; blank = 100 |
+| `account` | `bank / accountName`, exact (case-insensitive) |
+| `direction` | `in`, `out` or `any` |
+| `counterpartyContains`, `descriptionContains` | whole words, case and punctuation ignored (`corner cafe` matches `Shop 12 - Corner_Cafe Ltd`) |
+| `textRegex` | Python regex, case-insensitive, searched in `counterparty \| description \| reference` |
+| `providerCategory` | the provider's `category` on `transactions`, exact (e.g. `SPENDING_CASHBACK`) |
+| `amountMin`, `amountMax` | on the EUR magnitude (`abs(amountEur)`) |
+| `owner` | blank = the account's owner |
+| `type`, `category`, `subCategory` | must be a row of `categoriser_taxonomy` |
+| `notes`, `source` | free text; `manual` or `mined` |
+| `hits`, `lastMatched` | written by the job: rows the rule matches on its own (active or not), and the latest `bookingDate` |
+
+Blank match columns mean "any", but at least one must be set. An active rule that breaks a check is skipped and
+logged as `invalid_rule`; the run carries on. The job never edits your rules, only `hits` and `lastMatched`.
+
+### Taxonomy sheet (`categoriser_taxonomy`)
+
+`type | category | subCategory`, one allowed combination per row. Seed it once from the legacy sheet's
+`Dropdowns` tab with `python -m categoriser.seed_taxonomy` (does nothing if it already has rows), then edit it
+there. The rules sheet's dropdowns read from it.
+
+### Mining and holdout accuracy (run by hand, never by the schedule)
+
+Both need `LEGACY_SPREADSHEET_ID` in `~/categoriser/.env` and the legacy sheet shared with the service account
+as Viewer.
+
+- `python -m categoriser.mine [--dry-run]` appends suggestions to `categoriser_rules` with `active` = FALSE and
+  `source` = mined. Labelled examples: legacy rows joined to a Bank Sync row (same amount, ≤ 3 days, ties broken
+  by shared words), legacy rows that join to nothing, and rows you marked reviewed (these win). Per kind of
+  transaction it tries counterparty words, then description words, then the provider category, and keeps the
+  first needle with at least 3 examples of which 90% agree. Rows an existing rule already names get nothing new.
+- `python -m categoriser.evaluate [--cutoff 2026-03-01]` mines only from examples before the cutoff and scores
+  on labelled rows from the cutoff on. The report (coverage, exact and type accuracy, misses) goes to
+  `~/categoriser/data/eval/`, never into the repo or the logs.
+
+With Docker: `docker compose run --rm categoriser python -m categoriser.mine --dry-run`.
 
 ## Layout
 
 ```
 bank-sync/categoriser/
   src/categoriser/  config.py  schema.py  merge.py (pure upsert plan)  sheets.py (gspread I/O)
+                    rules.py (parse, validate, match)  transfers.py  engine.py (rules + transfers)
+                    taxonomy.py  legacy.py (read + join)  mine.py  evaluate.py  seed_taxonomy.py
                     smoke.py   run.py (entry point)
   tests/            pytest, no network
   Dockerfile  docker-compose.yml (dev)  deploy/docker-compose.runtime.yml

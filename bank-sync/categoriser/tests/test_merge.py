@@ -65,3 +65,26 @@ def test_method_is_written_as_plain_string():
     values = row("a").to_values()
     assert values[CATEGORISED_COLUMNS.index("method")] == "rule"
     assert type(values[CATEGORISED_COLUMNS.index("method")]) is str
+
+
+def test_stale_unreviewed_rule_rows_are_cleared():
+    from categoriser.merge import drop_newly_reviewed
+    existing = [HEADER, sheet_row("gone", False), sheet_row("kept-reviewed", True),
+                ["manual-row", "joint", "Essentials", "X", "", "manual", "", "", False, ""], sheet_row("still", False)]
+    plan = plan_upsert(existing, [row("still")], clear_stale_at="2026-10-31T00:00:00Z")
+    assert plan.cleared == ["gone"]
+    assert plan.updates[2] == ["gone", "", "", "", "", "", "", "", False, "2026-10-31T00:00:00Z"]
+    assert set(plan.updates) == {2, 5}
+    plan = drop_newly_reviewed(plan, ["transactionId", "gone", "kept-reviewed", "manual-row", "still"],
+                               ["reviewed", True, True, False, False])
+    assert plan.cleared == [] and plan.skipped_reviewed == ["gone"]
+
+
+def test_no_clearing_without_a_timestamp():
+    assert plan_upsert([HEADER, sheet_row("gone", False)], []).updates == {}
+
+
+def test_unchanged_rows_are_not_rewritten():
+    same = row("a", category="Old")
+    existing = [HEADER, ["a", "joint", "Essentials", "Old", "", "rule", 1, "R1", False, "2026-01-01T00:00:00Z"]]
+    assert plan_upsert(existing, [same]).updates == {}

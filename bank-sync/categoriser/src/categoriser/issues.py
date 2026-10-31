@@ -37,10 +37,11 @@ class Issue:
     transactionId: str
     detail: str
     source: str
+    ref: str = ""  # what the issue is about when it is not a transaction, e.g. a ruleId
 
     @property
     def key(self) -> str:
-        return f"{self.type}:{self.transactionId}"
+        return f"{self.type}:{self.ref or self.transactionId}"
 
 
 @dataclass

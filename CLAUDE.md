@@ -42,12 +42,18 @@ Current state, phases and deploy rules: `docs/BANK_SYNC_ROADMAP.md` (read it fir
 
 ### `bank-sync/categoriser/` (Python, separate from Apps Script)
 
-Python job that reads the Bank Sync sheet's `transactions` tab and writes only to a
-`categorised` tab and its `categoriser_issues` log (never to `transactions`; rows with
-`reviewed` = TRUE are never overwritten). Problems such as duplicate `transactionId`
-rows are skipped and logged once in `categoriser_issues`, never allowed to stop the
-daily run. Not pushed with clasp. Details: `bank-sync/categoriser/README.md`.
+Python job that reads the Bank Sync sheet's `transactions` tab and writes only to the
+sheets in `Settings.writable_sheets`: `categorised`, its `categoriser_issues` log,
+`categoriser_rules` (job fills only `hits`/`lastMatched`; mining appends inactive rows)
+and `categoriser_taxonomy` (never to `transactions`; rows with `reviewed` = TRUE are
+never overwritten). The legacy "Financial Planning" sheet is read only, with a read-only
+token, and only by the hand-run `mine`/`evaluate`/`seed_taxonomy` commands. Problems such
+as duplicate `transactionId` rows or invalid rules are skipped and logged once in
+`categoriser_issues`, never allowed to stop the daily run. Not pushed with clasp.
+Details: `bank-sync/categoriser/README.md`.
 
+- Tests and fixtures use synthetic people, merchants and IBANs only (`tests/builders.py`);
+  real names, merchants and amounts stay in the sheets and `~/categoriser/data/`.
 - **Secrets and data live outside the repo** in `~/categoriser/` (`.env`, service-account
   key, `data/`, `models/`, `logs/`). Never add them to the repo; the pre-commit hook
   blocks CSVs, `.joblib`, `.env*` and credential files.
