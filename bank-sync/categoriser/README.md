@@ -16,11 +16,24 @@ implemented yet. This is the I/O scaffold.
   | transactionId | owner | type | category | subCategory | method | confidence | ruleId | reviewed | updatedAt |
   |---|---|---|---|---|---|---|---|---|---|
 
-  `method` is `rule`, `model` or `manual`; `reviewed` is a checkbox; `updatedAt` is ISO 8601 UTC.
+  `method` is `rule`, `model` or `manual`; `reviewed` is a checkbox; `updatedAt` is ISO 8601 UTC;
+  `confidence` is blank when not applicable.
 - Rows with `reviewed = TRUE` are never overwritten. Other existing rows are updated in place; new IDs are appended.
   Just before writing, the key and `reviewed` columns are re-read: a row ticked or moved while the run was
-  planning is skipped (`skipped_reviewed` / `skipped_moved` in the log). A `transactionId` that appears twice
-  in the sheet stops the run until you remove the duplicate.
+  planning is skipped (`skipped_reviewed` / `skipped_moved` in the log).
+- A `transactionId` on more than one row is ambiguous: every copy is left unchanged, the rest of the run
+  carries on, and the problem goes to the issues log. Delete the extra rows to resolve it.
+
+### Issues log (`categoriser_issues` sheet)
+
+Created automatically. One row per issue, never repeated:
+
+| issueKey | status | type | transactionId | detail | source | firstSeen | lastSeen | resolvedAt |
+|---|---|---|---|---|---|---|---|---|
+
+- New issue → appended as `open`. Still there next run → only `lastSeen` and `detail` are refreshed.
+- Gone → `status` becomes `resolved` with `resolvedAt`. Comes back → reopened on the same row.
+- Issue types today: `duplicate_transaction_id`. The job writes only to `categorised` and this sheet.
 - Missing sheet → created with headers, frozen header row, and checkbox validation on `reviewed`.
   Existing sheet with different headers → the run fails rather than touching it.
 

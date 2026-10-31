@@ -48,9 +48,12 @@ def test_duplicate_ids_in_one_run_are_rejected():
         plan_upsert([HEADER], [row("a"), row("a")])
 
 
-def test_duplicate_ids_already_in_the_sheet_are_rejected():
-    with pytest.raises(ValueError, match="more than once"):
-        plan_upsert([HEADER, sheet_row("a", False), sheet_row("a", False)], [row("b")])
+def test_duplicate_ids_in_the_sheet_are_skipped_and_reported():
+    existing = [HEADER, sheet_row("a", False), sheet_row("b", False), sheet_row("a", False)]
+    plan = plan_upsert(existing, [row("a"), row("b")])
+    assert plan.duplicates == {"a": [2, 4]}
+    assert list(plan.updates) == [3]          # b still updated
+    assert plan.appends == []                 # a is not appended a third time
 
 
 def test_missing_confidence_is_written_as_blank():

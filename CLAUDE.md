@@ -43,8 +43,10 @@ Current state, phases and deploy rules: `docs/BANK_SYNC_ROADMAP.md` (read it fir
 ### `bank-sync/categoriser/` (Python, separate from Apps Script)
 
 Python job that reads the Bank Sync sheet's `transactions` tab and writes only to a
-`categorised` tab (never to `transactions`; rows with `reviewed` = TRUE are never
-overwritten). Not pushed with clasp. Details: `bank-sync/categoriser/README.md`.
+`categorised` tab and its `categoriser_issues` log (never to `transactions`; rows with
+`reviewed` = TRUE are never overwritten). Problems such as duplicate `transactionId`
+rows are skipped and logged once in `categoriser_issues`, never allowed to stop the
+daily run. Not pushed with clasp. Details: `bank-sync/categoriser/README.md`.
 
 - **Secrets and data live outside the repo** in `~/categoriser/` (`.env`, service-account
   key, `data/`, `models/`, `logs/`). Never add them to the repo; the pre-commit hook

@@ -23,10 +23,17 @@ class Settings:
     credentials_path: Path
     transactions_sheet: str = "transactions"
     output_sheet: str = "categorised"
+    issues_sheet: str = "categoriser_issues"
 
     def __post_init__(self) -> None:
-        if self.output_sheet.strip() == self.transactions_sheet.strip():
-            raise ValueError("OUTPUT_SHEET must differ from TRANSACTIONS_SHEET.")
+        names = [n.strip() for n in (self.transactions_sheet, self.output_sheet, self.issues_sheet)]
+        if len(set(names)) != len(names):
+            raise ValueError("TRANSACTIONS_SHEET, OUTPUT_SHEET and ISSUES_SHEET must all differ.")
+
+    @property
+    def writable_sheets(self) -> frozenset[str]:
+        """The only sheets this job may write to. Never the transactions sheet."""
+        return frozenset({self.output_sheet, self.issues_sheet})
 
 
 def load_settings() -> Settings:
@@ -47,4 +54,5 @@ def load_settings() -> Settings:
         credentials_path=creds,
         transactions_sheet=os.environ.get("TRANSACTIONS_SHEET", "transactions"),
         output_sheet=os.environ.get("OUTPUT_SHEET", "categorised"),
+        issues_sheet=os.environ.get("ISSUES_SHEET", "categoriser_issues"),
     )

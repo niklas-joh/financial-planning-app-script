@@ -1,6 +1,8 @@
 """Pure upsert planning for the `categorised` sheet (no I/O, easy to test).
 
-Rule: an existing row whose `reviewed` cell is TRUE is never overwritten.
+Rules: an existing row whose `reviewed` cell is TRUE is never overwritten, and a
+transactionId that appears on several rows is left alone on all of them (reported
+in `UpsertPlan.duplicates` for the issues log) while the rest of the run continues.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ class UpsertPlan:
     appends: list[list] = field(default_factory=list)
     skipped_reviewed: list[str] = field(default_factory=list)
     skipped_moved: list[str] = field(default_factory=list)  # row changed under us; next run retries
+    duplicates: dict[str, list[int]] = field(default_factory=dict)  # transactionId -> sheet rows
 
 
 def drop_newly_reviewed(plan: UpsertPlan, keys: list, reviewed: list) -> UpsertPlan:
@@ -52,20 +55,18 @@ def plan_upsert(existing: list[list], incoming: list[CategorisedRow]) -> UpsertP
     if existing and [str(h) for h in existing[0][: len(CATEGORISED_COLUMNS)]] != list(CATEGORISED_COLUMNS):
         raise ValueError("Header row of the categorised sheet does not match the expected columns.")
 
-    index: dict[str, tuple[int, bool]] = {}
+    rows_by_key: dict[str, list[int]] = {}
+    reviewed_by_row: dict[int, bool] = {}
     for offset, row in enumerate(existing[1:], start=2):
         key = str(row[KEY_COLUMN]).strip() if len(row) > KEY_COLUMN else ""
-        if not key:
-            continue
-        if key in index:
-            raise ValueError(
-                f"transactionId {key} appears more than once in the categorised sheet "
-                f"(rows {index[key][0]} and {offset}). Remove the duplicate and re-run."
-            )
-        reviewed = len(row) > REVIEWED_COLUMN and is_reviewed(row[REVIEWED_COLUMN])
-        index[key] = (offset, reviewed)
+        if key:
+            rows_by_key.setdefault(key, []).append(offset)
+            reviewed_by_row[offset] = len(row) > REVIEWED_COLUMN and is_reviewed(row[REVIEWED_COLUMN])
 
-    plan = UpsertPlan()
+    duplicates = {k: rows for k, rows in rows_by_key.items() if len(rows) > 1}
+    index = {k: (rows[0], reviewed_by_row[rows[0]]) for k, rows in rows_by_key.items() if len(rows) == 1}
+
+    plan = UpsertPlan(duplicates=duplicates)
     seen: set[str] = set()
     for item in incoming:
         key = item.transactionId.strip()
@@ -75,6 +76,8 @@ def plan_upsert(existing: list[list], incoming: list[CategorisedRow]) -> UpsertP
             raise ValueError(f"Duplicate transactionId in one run: {key}")
         seen.add(key)
 
+        if key in duplicates:
+            continue  # ambiguous: leave every copy alone, reported via plan.duplicates
         if key in index:
             row_number, reviewed = index[key]
             if reviewed:

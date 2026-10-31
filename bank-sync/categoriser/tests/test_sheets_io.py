@@ -3,8 +3,9 @@ from pathlib import Path
 import pytest
 
 from categoriser.config import Settings
+from categoriser.issues import COL, DUPLICATE_ID, ISSUE_COLUMNS, duplicate_issues
 from categoriser.schema import CATEGORISED_COLUMNS, REVIEWED_COLUMN, CategorisedRow, Method
-from categoriser.sheets import ensure_categorised_sheet, upsert_categorised
+from categoriser.sheets import ensure_categorised_sheet, ensure_issues_sheet, record_issues, upsert_categorised
 from fakes import FakeSpreadsheet, FakeWorksheet
 
 SETTINGS = Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"))
@@ -74,4 +75,33 @@ def test_never_writes_to_transactions():
     ws = FakeWorksheet("transactions", [TXN_HEADER])
     with pytest.raises(PermissionError):
         upsert_categorised(ws, SETTINGS, [row("a")])
+    assert ws.calls == []
+
+
+def test_duplicate_ids_are_skipped_and_the_rest_is_written():
+    ws = FakeWorksheet("categorised", [HEADER, sheet_row("a"), sheet_row("b"), sheet_row("a")])
+    plan = upsert_categorised(ws, SETTINGS, [row("a"), row("b")])
+    assert plan.duplicates == {"a": [2, 4]}
+    assert [r[3] for r in ws.values[1:]] == ["Old", "Groceries", "Old"]
+
+
+def test_issues_log_records_once_then_resolves():
+    ss = FakeSpreadsheet()
+    ws = ensure_issues_sheet(ss, SETTINGS)
+    assert ws.values == [list(ISSUE_COLUMNS)] and ss.requests == []  # no checkbox column
+
+    found = duplicate_issues({"a": [2, 4]}, "categorised")
+    record_issues(ws, SETTINGS, found, {DUPLICATE_ID}, "2026-10-31T06:15:00Z")
+    record_issues(ws, SETTINGS, found, {DUPLICATE_ID}, "2026-11-01T06:15:00Z")
+    assert len(ws.values) == 2                                       # logged once
+    assert ws.values[1][COL["lastSeen"]] == "2026-11-01T06:15:00Z"
+
+    plan = record_issues(ws, SETTINGS, [], {DUPLICATE_ID}, "2026-11-02T06:15:00Z")
+    assert plan.resolved == 1 and ws.values[1][COL["status"]] == "resolved"
+
+
+def test_issues_log_is_never_written_to_transactions():
+    ws = FakeWorksheet("transactions", [TXN_HEADER])
+    with pytest.raises(PermissionError):
+        record_issues(ws, SETTINGS, duplicate_issues({"a": [2, 3]}, "categorised"), {DUPLICATE_ID}, "t")
     assert ws.calls == []

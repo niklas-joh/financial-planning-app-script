@@ -20,6 +20,9 @@ until you re-run:**
 ~/Documents/Coding/appscript/financial-planning-app-script/bank-sync/categoriser/scripts/install-schedule.sh
 ```
 
+Problems the job skipped (e.g. duplicate rows) are listed in the `categoriser_issues`
+sheet of Bank Sync, not only in the logs.
+
 Status: `launchctl print gui/$(id -u)/lu.niklas.categoriser | grep -E 'state|last exit code'`
 Run now: `rm -f logs/.last-success && launchctl kickstart gui/$(id -u)/lu.niklas.categoriser`
 Stop: `launchctl bootout gui/$(id -u)/lu.niklas.categoriser`

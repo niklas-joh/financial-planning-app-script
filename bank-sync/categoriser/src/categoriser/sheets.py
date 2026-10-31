@@ -1,8 +1,9 @@
 """Google Sheets I/O.
 
 Hard rule: this module reads `transactions` but only ever writes to the output
-sheet (`categorised`). `_assert_writable` enforces that at every write, and
-`Settings` refuses an output sheet named like the transactions sheet.
+sheet (`categorised`) and the issues log (`categoriser_issues`).
+`_assert_writable` enforces that at every write, and `Settings` refuses sheet
+names that collide with the transactions sheet.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from google.oauth2.service_account import Credentials
 from gspread.utils import Dimension, ValueInputOption, ValueRenderOption, rowcol_to_a1
 
 from .config import Settings
+from .issues import ISSUE_COLUMNS, Issue, IssuesPlan, plan_issues
 from .merge import UpsertPlan, drop_newly_reviewed, plan_upsert
 from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow
 
@@ -24,7 +26,7 @@ def open_spreadsheet(settings: Settings) -> gspread.Spreadsheet:
 
 
 def _assert_writable(ws: gspread.Worksheet, settings: Settings) -> None:
-    if ws.title != settings.output_sheet:
+    if ws.title not in settings.writable_sheets:
         raise PermissionError(f"Refusing to write to sheet '{ws.title}'.")
 
 
@@ -39,37 +41,72 @@ def read_transactions(ss: gspread.Spreadsheet, settings: Settings) -> list[dict]
 
 def ensure_categorised_sheet(ss: gspread.Spreadsheet, settings: Settings) -> gspread.Worksheet:
     """Return the output sheet, creating it with headers and a checkbox column if missing."""
+    return _ensure_sheet(ss, settings, settings.output_sheet, CATEGORISED_COLUMNS, REVIEWED_COLUMN)
+
+
+def ensure_issues_sheet(ss: gspread.Spreadsheet, settings: Settings) -> gspread.Worksheet:
+    """Return the issues log sheet, creating it with headers if missing."""
+    return _ensure_sheet(ss, settings, settings.issues_sheet, ISSUE_COLUMNS)
+
+
+def _ensure_sheet(ss: gspread.Spreadsheet, settings: Settings, title: str,
+                  columns: tuple[str, ...], checkbox_column: int | None = None) -> gspread.Worksheet:
     try:
-        ws = ss.worksheet(settings.output_sheet)
+        ws = ss.worksheet(title)
     except gspread.WorksheetNotFound:
-        ws = ss.add_worksheet(title=settings.output_sheet, rows=1000, cols=len(CATEGORISED_COLUMNS))
-        _init_sheet(ss, ws, settings)
+        ws = ss.add_worksheet(title=title, rows=1000, cols=len(columns))
+        _init_sheet(ss, ws, settings, columns, checkbox_column)
         return ws
 
     header = ws.row_values(1)
     if not header:
-        _init_sheet(ss, ws, settings)
-    elif header[: len(CATEGORISED_COLUMNS)] != list(CATEGORISED_COLUMNS):
-        raise ValueError(f"Sheet '{settings.output_sheet}' exists with unexpected headers: {header}")
+        _init_sheet(ss, ws, settings, columns, checkbox_column)
+    elif header[: len(columns)] != list(columns):
+        raise ValueError(f"Sheet '{title}' exists with unexpected headers: {header}")
     return ws
 
 
-def _init_sheet(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settings) -> None:
-    """Write the header row, freeze it and make `reviewed` a checkbox column."""
+def _init_sheet(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settings,
+                columns: tuple[str, ...], checkbox_column: int | None) -> None:
+    """Write the header row, freeze it and optionally make one column a checkbox column."""
     _assert_writable(ws, settings)
-    ws.update([list(CATEGORISED_COLUMNS)], "A1", value_input_option=ValueInputOption.raw)
+    ws.update([list(columns)], "A1", value_input_option=ValueInputOption.raw)
     ws.freeze(rows=1)
+    if checkbox_column is None:
+        return
     ss.batch_update({"requests": [{
         "setDataValidation": {
             "range": {
                 "sheetId": ws.id,
                 "startRowIndex": 1,
-                "startColumnIndex": REVIEWED_COLUMN,
-                "endColumnIndex": REVIEWED_COLUMN + 1,
+                "startColumnIndex": checkbox_column,
+                "endColumnIndex": checkbox_column + 1,
             },
             "rule": {"condition": {"type": "BOOLEAN"}, "strict": True},
         }
     }]})
+
+
+def _write_rows(ws: gspread.Worksheet, updates: dict[int, list], appends: list[list], width: int) -> None:
+    """One batch_update for changed rows, one append for new rows."""
+    if updates:
+        ws.batch_update(
+            [{"range": f"{rowcol_to_a1(r, 1)}:{rowcol_to_a1(r, width)}", "values": [v]}
+             for r, v in sorted(updates.items())],
+            value_input_option=ValueInputOption.raw,
+        )
+    if appends:
+        ws.append_rows(appends, value_input_option=ValueInputOption.raw, table_range="A1")
+
+
+def record_issues(ws: gspread.Worksheet, settings: Settings, current: list[Issue],
+                  checked_types: set[str], now: str) -> IssuesPlan:
+    """Log new issues, refresh ones still present, resolve ones that are gone."""
+    _assert_writable(ws, settings)
+    existing = ws.get_all_values(value_render_option=ValueRenderOption.unformatted)
+    plan = plan_issues(existing, current, checked_types, now)
+    _write_rows(ws, plan.updates, plan.appends, len(ISSUE_COLUMNS))
+    return plan
 
 
 def _column_letter(index: int) -> str:
@@ -88,7 +125,6 @@ def upsert_categorised(ws: gspread.Worksheet, settings: Settings, rows: list[Cat
     existing = ws.get_all_values(value_render_option=ValueRenderOption.unformatted)
     plan = plan_upsert(existing, rows)
 
-    last_col = len(CATEGORISED_COLUMNS)
     if plan.updates:
         key_col, reviewed_col = _column_letter(KEY_COLUMN), _column_letter(REVIEWED_COLUMN)
         keys, reviewed = ws.batch_get(
@@ -97,12 +133,5 @@ def upsert_categorised(ws: gspread.Worksheet, settings: Settings, rows: list[Cat
             value_render_option=ValueRenderOption.unformatted,
         )
         plan = drop_newly_reviewed(plan, keys[0] if keys else [], reviewed[0] if reviewed else [])
-    if plan.updates:
-        ws.batch_update(
-            [{"range": f"{rowcol_to_a1(r, 1)}:{rowcol_to_a1(r, last_col)}", "values": [v]}
-             for r, v in sorted(plan.updates.items())],
-            value_input_option=ValueInputOption.raw,
-        )
-    if plan.appends:
-        ws.append_rows(plan.appends, value_input_option=ValueInputOption.raw, table_range="A1")
+    _write_rows(ws, plan.updates, plan.appends, len(CATEGORISED_COLUMNS))
     return plan

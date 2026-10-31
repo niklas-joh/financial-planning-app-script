@@ -15,11 +15,17 @@ def test_refuses_to_write_anywhere_but_the_output_sheet(title):
         _assert_writable(SimpleNamespace(title=title), SETTINGS)
 
 
-def test_allows_the_output_sheet():
-    _assert_writable(SimpleNamespace(title="categorised"), SETTINGS)
+@pytest.mark.parametrize("title", ["categorised", "categoriser_issues"])
+def test_allows_the_output_and_issues_sheets(title):
+    _assert_writable(SimpleNamespace(title=title), SETTINGS)
 
 
-@pytest.mark.parametrize("name", ["transactions", " transactions "])
-def test_output_sheet_cannot_be_the_transactions_sheet(name):
+@pytest.mark.parametrize("field,name", [
+    ("output_sheet", "transactions"),
+    ("output_sheet", " transactions "),
+    ("issues_sheet", "transactions"),
+    ("issues_sheet", "categorised"),
+])
+def test_writable_sheets_cannot_collide(field, name):
     with pytest.raises(ValueError):
-        Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"), output_sheet=name)
+        Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"), **{field: name})
