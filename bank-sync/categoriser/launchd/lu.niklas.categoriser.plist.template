@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template. __CATEGORISER_DIR__ is replaced with the runtime folder (~/categoriser)
+  by scripts/install-schedule.sh. Daily at 06:15; RunAtLoad catches up after
+  login. launchd also runs a missed calendar slot once on wake from sleep.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>lu.niklas.categoriser</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__CATEGORISER_DIR__/run-scheduled.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__CATEGORISER_DIR__</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>15</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__CATEGORISER_DIR__/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__CATEGORISER_DIR__/logs/launchd.err.log</string>
+</dict>
+</plist>

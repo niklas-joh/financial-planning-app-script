@@ -2,6 +2,18 @@
 # Pre-commit checks for staged Apps Script changes. Installed by `npm install`
 # (scripts/install-hooks.mjs). Skip once with `git commit --no-verify`.
 
+# --- Data/secret guard (always runs; this repo is public) -------------------
+# Blocks CSVs, model dumps, .env files and credential files from being committed.
+BLOCKED=$(git diff --cached --name-only --diff-filter=ACMR | grep -iE \
+  '(\.csv$|\.joblib$|(^|/)credentials/|(^|/)\.env$|(^|/)\.env\.[^/]*$|service[-_]?account[^/]*\.json$|client_secret[^/]*\.json$|(^|/)credentials\.json$|(^|/)token\.json$|\.(pem|key|p12|pfx)$)' \
+  | grep -vE '(^|/)\.env\.example$')
+if [ -n "$BLOCKED" ]; then
+  echo "pre-commit: refusing to commit data or credential files (public repo):"
+  echo "$BLOCKED" | sed 's/^/  - /'
+  echo "Unstage them with: git restore --staged <file>"
+  exit 1
+fi
+
 STAGED_SRC=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^(src/|\.clasp\.json$|appsscript\.json$|\.claspignore$)')
 STAGED_JS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '\.(js|mjs)$')
 
