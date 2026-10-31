@@ -35,7 +35,7 @@ RCOL = {name: i for i, name in enumerate(RULE_COLUMNS)}
 MATCH_COLUMNS = ("account", "direction", "counterpartyContains", "descriptionContains", "textRegex",
                  "providerCategory", "amountMin", "amountMax")
 DIRECTIONS = ("in", "out", "any")
-SOURCES = ("manual", "mined")
+SOURCES = ("manual", "mined", "review")
 DEFAULT_PRIORITY = 100.0
 
 INVALID_RULE = "invalid_rule"
