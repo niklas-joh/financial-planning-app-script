@@ -78,6 +78,11 @@ test('owners: owners typed on the tab reach every row at the next sync, as slugs
   const second = r.run();
   assert.deepStrictEqual(ownerOf(r.rows(), 'Current Private'), ['niklas']);
   assert.deepStrictEqual(ownerOf(r.rows(), 'Savings Account'), ['marie-aude']);
+  // A name with no Latin letter or digit counts as no owner.
+  r.setOwner('Savings Account', '李');
+  assert.deepStrictEqual(r.run().owners.missing, ['BIL Savings Account']);
+  r.setOwner('Savings Account', ' Marie-Aude ');
+  r.run();
   assert.deepStrictEqual(second.results.map((x) => [x.transactions.added, x.transactions.updated]), [[0, 0]]);
   assert.deepStrictEqual(second.owners, { added: 0, missing: [] });
   assert.doesNotMatch(BS.SyncAll.summarize(second), /Account owners/);
@@ -106,6 +111,23 @@ test('owners: a new export of another account is appended below the rows already
   assert.deepStrictEqual(run.grid()[2].slice(0, 3), ['', 'BIL', 'Savings Account']);
   assert.strictEqual(run.grid()[2][7], '');
   assert.deepStrictEqual(ownerOf(run.rows(), 'Current Private'), ['niklas']);
+});
+
+test('owners: balances, holdings and daily values carry their account\'s owner', () => {
+  const written = {};
+  const writer = { writeTable: (tab, cols, rows) => { written[tab] = rows; assert.ok(cols.some((c) => c.key === 'owner'), tab); return rows.length; } };
+  const account = { provider: 'trading212', accountId: '42', bank: 'Trading 212', connection: 'trading212-niklas', accountName: 'Invest', currency: 'EUR', owner: 'niklas' };
+  const balance = (valueKind, amount) => ({ provider: 'trading212', accountId: '42', balanceType: valueKind, valueKind, amount, currency: 'EUR', fetchedAt: '2026-09-01T08:00:00Z' });
+  BS.RawSync.write(writer, {
+    accounts: [account],
+    balances: [balance('investments', 900), balance('total', 1000)],
+    holdings: [{ provider: 'trading212', accountId: '42', ticker: 'DEMO_EQ', amount: 900, currency: 'EUR' }],
+    holdingConnections: ['trading212-niklas']
+  }, ['trading212-niklas'], '2026-09-01');
+  assert.deepStrictEqual(written.raw_balances.map((b) => b.owner), ['niklas', 'niklas']);
+  assert.deepStrictEqual(written.holdings.map((h) => h.owner), ['niklas']);
+  assert.deepStrictEqual(written.daily_values.map((d) => [d.owner, d.total]), [['niklas', 1000]]);
+  assert.deepStrictEqual(written.raw_accounts.map((a) => a.owner), ['niklas']);
 });
 
 test('owners: a login or API key starts with its holder; a CSV folder with no owner', () => {

@@ -137,8 +137,10 @@ tab, one row per account (`owner`, `bank`, `accountName`, `ibanMasked`, `connect
   folder holds everyone's exports and only you can say whose a file is. The summary and *Show status* name the
   accounts without an owner.
 - Type the owner in the `owner` column, e.g. `Niklas`, `Common` or `Marie-Aude` (change a prefilled one the same
-  way, e.g. a shared account seen through your login). Any text works, so a new person needs no setting; it is
-  stored in the same lowercase, dash-separated form as connection keys (`niklas`, `common`, `marie-aude`).
+  way, e.g. a shared account seen through your login). Any name works, so a new person needs no setting; it is
+  stored in the same lowercase, dash-separated form as connection keys (`niklas`, `common`, `marie-aude`). Only
+  letters a-z (accents are dropped: `Åsa` gives `asa`) and digits are kept, so a name with neither (e.g. in another
+  script) counts as no owner.
 - The next sync puts the owner on every row of that account: the `owner` column, last on `transactions`,
   `investment_transactions`, `unclassified_transactions`, `raw_accounts`, `raw_balances`, `raw_transactions`,
   `holdings` and `daily_values`. Changing it later moves the account's stored rows to the new owner at its next

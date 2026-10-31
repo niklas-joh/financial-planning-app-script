@@ -6,7 +6,8 @@
  * Trading 212 key, and left empty for a CSV account (one folder holds everyone's exports, so only the owner
  * can say whose a file is). The owner is a label like the bank or account name (see `AccountLabels`): it is
  * stamped on every row of the account, so a changed owner reaches the stored rows at the account's next sync.
- * Owners are compared as slugs ('Marie-Aude' is stored as 'marie-aude'), the form connection keys use.
+ * Owners are compared as slugs ('Marie-Aude' is stored as 'marie-aude'), the form connection keys use; an owner with
+ * no Latin letter or digit slugs to '' and counts as no owner.
  */
 (function (ns) {
   /** Most accounts without an owner named in a summary or status line. */
@@ -35,6 +36,15 @@
    * @property {Array<string>} missing - Accounts read in this run that have no owner (bank and account name).
    * @property {string} [error] - Redacted message when the tab could not be read or written.
    */
+
+  /**
+   * @param {Object} row - Row read from the tab.
+   * @param {string} key - Column.
+   * @returns {string} The cell as text, '' when the column is missing.
+   */
+  function cell(row, key) {
+    return String(row[key] === undefined ? '' : row[key]).trim();
+  }
 
   /**
    * @param {import('./config.js').ConnectionConfig} connection - Connection an account was read through.
@@ -80,7 +90,7 @@
       byId = {};
       try {
         tab.load().forEach(function (r) {
-          const id = String(r.accountId === undefined ? '' : r.accountId).trim();
+          const id = cell(r, 'accountId');
           if (id && !byId[id]) byId[id] = r;
         });
       } catch (e) {
@@ -109,7 +119,7 @@
             rows[a.accountId] = row;
             added.push(row);
           }
-          const owner = ns.Connections.slug(row.owner === undefined ? '' : row.owner);
+          const owner = ns.Connections.slug(cell(row, 'owner'));
           seen[a.accountId] = { owner: owner, name: nameOf(row) };
           return Object.assign({}, a, { owner: owner });
         });
@@ -159,12 +169,12 @@
     const tabName = ns.Config.TABS.ACCOUNT_OWNERS;
     let rows;
     try {
-      rows = tab.load().filter(function (r) { return String(r.accountId === undefined ? '' : r.accountId).trim(); });
+      rows = tab.load().filter(function (r) { return cell(r, 'accountId'); });
     } catch (e) {
       return 'Account owners: ' + tabName + ' cannot be read (' + ns.Redact.text(e.name + ': ' + e.message) + ')';
     }
     if (!rows.length) return 'Account owners: none listed yet (the next sync lists every account on ' + tabName + ')';
-    const missing = rows.filter(function (r) { return !ns.Connections.slug(r.owner === undefined ? '' : r.owner); })
+    const missing = rows.filter(function (r) { return !ns.Connections.slug(cell(r, 'owner')); })
       .map(nameOf).sort();
     return 'Account owners: ' + rows.length + (rows.length === 1 ? ' account' : ' accounts') + ' on ' + tabName +
       (missing.length ? '; no owner yet: ' + listed(missing) : ', all with an owner');
