@@ -182,3 +182,75 @@ def test_appends_past_the_grid_add_rows_and_reapply_validations():
     append_rows(ws, SETTINGS, [["R2"], ["R3"]])
     assert ws.row_count == 4 and [r[0] for r in ws.values] == ["ruleId", "R1", "R2", "R3"]
     assert {r["setDataValidation"]["range"]["startColumnIndex"] for r in ss.requests} >= {RCOL["active"]}
+
+
+# --- review sheet ----------------------------------------------------------
+
+from categoriser.review import REVIEW_COLUMNS, VCOL  # noqa: E402
+from categoriser.sheets import ensure_review_sheet, write_review  # noqa: E402
+from builders import review_row  # noqa: E402
+
+
+def validations(ss):
+    return {r["setDataValidation"]["range"]["startColumnIndex"]: r["setDataValidation"]["rule"] for r in ss.requests}
+
+
+def review_ws(*rows):
+    ss = FakeSpreadsheet({"categoriser_review": FakeWorksheet("categoriser_review",
+                                                              [list(REVIEW_COLUMNS), *[list(r) for r in rows]])})
+    return ss, ss.sheets["categoriser_review"]
+
+
+def test_creates_review_sheet_with_checkboxes_and_owner_dropdown():
+    ss = FakeSpreadsheet()
+    ws = ensure_review_sheet(ss, SETTINGS)
+    assert ws.values == [list(REVIEW_COLUMNS)] and ws.frozen_rows == 1
+    rules = validations(ss)
+    assert rules[VCOL["accept"]]["condition"]["type"] == "BOOLEAN"
+    assert rules[VCOL["allLikeThis"]]["condition"]["type"] == "BOOLEAN"
+    assert rules[VCOL["owner"]]["condition"]["values"][0]["userEnteredValue"] == "='account_owners'!A2:A"
+
+
+def test_write_review_replaces_rows_and_blanks_leftovers():
+    ss, ws = review_ws(review_row("old1"), review_row("old2"), review_row("old3"))
+    new = review_row("x")
+    assert write_review(ws, SETTINGS, [new], set(), ["A › B › C"]) is True
+    assert ws.values[0] == list(REVIEW_COLUMNS) and ws.values[1] == new
+    assert ws.values[2] == ws.values[3] == [""] * len(REVIEW_COLUMNS) and len(ws.values) == 4
+
+
+def test_write_review_grows_the_grid_when_needed():
+    ss = FakeSpreadsheet({"categoriser_review": FakeWorksheet("categoriser_review", [list(REVIEW_COLUMNS)], row_count=2)})
+    ws = ss.sheets["categoriser_review"]
+    assert write_review(ws, SETTINGS, [review_row("a"), review_row("b")], set(), [])
+    assert [r[0] for r in ws.values] == ["transactionId", "a", "b"]
+
+
+def test_write_review_skips_when_a_row_was_ticked_meanwhile():
+    ss, ws = review_ws(review_row("a"))
+
+    def tick(sheet):
+        sheet.values[1][VCOL["accept"]] = True
+    ws.before_batch_get = tick
+    assert write_review(ws, SETTINGS, [review_row("x")], set(), ["A › B › C"]) is False
+    assert [r[0] for r in ws.values] == ["transactionId", "a"] and ws.values[1][VCOL["accept"]] is True
+
+
+def test_answer_dropdown_lists_answers_and_is_not_strict():
+    ss, ws = review_ws()
+    write_review(ws, SETTINGS, [review_row("x")], set(), ["A › B › C", "D › E › F"])
+    rule = validations(ss)[VCOL["answer"]]
+    assert rule["condition"]["type"] == "ONE_OF_LIST" and rule["strict"] is False
+    assert [v["userEnteredValue"] for v in rule["condition"]["values"]] == ["A › B › C", "D › E › F"]
+
+
+def test_write_review_refuses_other_sheets():
+    with pytest.raises(PermissionError):
+        write_review(FakeWorksheet("transactions"), SETTINGS, [], set(), [])
+
+
+def test_append_rows_reapplies_rule_dropdowns_with_review_source():
+    ss = FakeSpreadsheet({"categoriser_rules": FakeWorksheet("categoriser_rules", [list(RULE_COLUMNS)])})
+    append_rows(ss.sheets["categoriser_rules"], SETTINGS, [["r-1"] + [""] * (len(RULE_COLUMNS) - 1)])
+    values = [v["userEnteredValue"] for v in validations(ss)[RCOL["source"]]["condition"]["values"]]
+    assert values == ["manual", "mined", "review"]
