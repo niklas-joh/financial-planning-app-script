@@ -21,10 +21,11 @@ from pathlib import Path
 from .config import data_dir, load_settings, models_dir
 from .engine import REVIEW_DISAGREES, categorise, review_disagreements
 from .issues import DUPLICATE_ID, duplicate_issues
+from .merge import is_reviewed
 from .mine import reviewed_labels
 from .model import load as load_model
 from .model import review_check
-from .review import INVALID_REVIEW, REVIEW_CONFLICT, answer_text, apply_answers, plan_inbox, ticked
+from .review import INVALID_REVIEW, REVIEW_CONFLICT, Guess, answer_text, apply_answers, plan_inbox, ticked
 from .rules import INVALID_RULE, owner_slug, parse_rules
 from .sheets import (
     append_rows,
@@ -60,16 +61,33 @@ def _append_history(path: Path, entries: list[dict]) -> None:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def _labelled(categorised: list[list]) -> set[str]:
-    """transactionIds with a full type / category / subCategory on `categorised`."""
+def _after_write(categorised: list[list]) -> tuple[set[str], set[str]]:
+    """(ids with a full type / category / subCategory, ids of unreviewed `model` rows) on
+    `categorised` as written, so spot checks never pick a row the owner already answered."""
     col = {n: i for i, n in enumerate(CATEGORISED_COLUMNS)}
-    out = set()
+    labelled, by_model = set(), set()
     for row in categorised[1:]:
         row = list(row) + [""] * (len(CATEGORISED_COLUMNS) - len(row))
         tid = str(row[col["transactionId"]]).strip()
         if tid and all(str(row[col[n]]).strip() for n in ("type", "category", "subCategory")):
-            out.add(tid)
-    return out
+            labelled.add(tid)
+            if str(row[col["method"]]).strip() == Method.MODEL and not is_reviewed(row[col["reviewed"]]):
+                by_model.add(tid)
+    return labelled, by_model
+
+
+def _safe_guess(model) -> Guess | None:
+    """The model's guesses for the inbox; a failure only leaves the answers blank."""
+    if model is None:
+        return None
+
+    def guess(txns: list[dict]) -> list:
+        try:
+            return model.predict(txns)
+        except Exception:  # noqa: BLE001 - pre-filling the inbox must never stop the run
+            log.exception("model guess for the review inbox failed; leaving answers blank")
+            return [None] * len(txns)
+    return guess
 
 
 def main() -> None:
@@ -124,9 +142,8 @@ def main() -> None:
     stats_written = write_rule_stats(rules_ws, settings, result.stats)
     _append_history(data_dir() / HISTORY_FILE, answers.history)
 
-    inbox = plan_inbox(review_values, answers, transactions, _labelled(read_values(ws)),
-                       {r.transactionId for r in model_rows}, taxonomy,
-                       model.predict if model is not None else None,
+    labelled, by_model = _after_write(read_values(ws))
+    inbox = plan_inbox(review_values, answers, transactions, labelled, by_model, taxonomy, _safe_guess(model),
                        settings.review_size, settings.review_spot_checks, random.Random(today))
     review_written = write_review(review_ws, settings, inbox, ticked(review_values),
                                   [answer_text(t) for t in sorted(taxonomy.triples)])

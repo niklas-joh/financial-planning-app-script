@@ -133,3 +133,9 @@ def test_match_text_is_normalised():
     [rule] = p.new_rules
     assert rule[RCOL["counterpartyContains"]] == "corner cafe"
     assert rule[RCOL["ruleId"]] == review_rule_id("counterpartyContains", "corner cafe", "out")
+
+
+def test_reviewed_owner_is_compared_as_a_slug():
+    reviewed = ["a", "Bob", "Essentials", "Groceries", "Supermarket", "manual", "", "", True, ""]
+    p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True)), [txn("bob", tid="a")], [HEADER, reviewed])
+    assert p.issues == [] and p.processed == {"a"}

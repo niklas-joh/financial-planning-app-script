@@ -122,7 +122,9 @@ def _categorised_index(categorised: list[list]) -> tuple[dict[str, int], dict[st
             continue
         counts[tid] = counts.get(tid, 0) + 1
         if is_reviewed(row[_CCOL["reviewed"]]):
-            reviewed[tid] = tuple(str(row[_CCOL[f]]).strip() for f in _LABEL)
+            label = [str(row[_CCOL[f]]).strip() for f in _LABEL]
+            label[0] = owner_slug(label[0])  # a hand-typed "Bob" is the owner "bob"
+            reviewed[tid] = tuple(label)
     return counts, reviewed
 
 
@@ -279,11 +281,16 @@ def plan_inbox(previous: list[list], answers: AnswerPlan, transactions: list[dic
             kept.append(row)
             kept_ids.add(tid)
 
-    taken_keys = {merchant_key(by_id[tid]) for tid in kept_ids if tid in by_id}
-    groups: dict[tuple[str, str, str], list[dict]] = {}
+    def group_key(t: dict) -> tuple[str, ...]:
+        """A row with no usable merchant words is a group of its own, not one of many unrelated rows."""
+        key = merchant_key(t)
+        return key if key[1] else (*key, str(t.get("transactionId", "")).strip())
+
+    taken_keys = {group_key(by_id[tid]) for tid in kept_ids if tid in by_id}
+    groups: dict[tuple[str, ...], list[dict]] = {}
     for tid, t in by_id.items():
         if tid not in labelled and tid not in kept_ids:
-            key = merchant_key(t)
+            key = group_key(t)
             if key not in taken_keys:
                 groups.setdefault(key, []).append(t)
 
@@ -300,7 +307,7 @@ def plan_inbox(previous: list[list], answers: AnswerPlan, transactions: list[dic
         taken_keys.add(key)
 
     spot_pool = sorted(tid for tid in model_ids
-                       if tid in by_id and tid not in kept_ids and merchant_key(by_id[tid]) not in taken_keys)
+                       if tid in by_id and tid not in kept_ids and group_key(by_id[tid]) not in taken_keys)
     spots = rng.sample(spot_pool, min(spot_new, len(spot_pool)))
 
     new_txns = [t for t, *_ in chosen] + [by_id[tid] for tid in spots]

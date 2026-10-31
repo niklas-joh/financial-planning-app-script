@@ -125,3 +125,9 @@ def test_kept_and_new_rows_sort_by_similar():
     old = review_row("l")  # similar blank counts as 0
     txns = [txn(counterparty="Lone Shop", tid="l")] + [txn(counterparty="Acme Market", tid=f"a{i}") for i in range(2)]
     assert ids(inbox(txns, previous=review_sheet(old))) == ["a1", "l"]
+
+
+def test_rows_without_merchant_words_are_not_grouped_together():
+    txns = [txn(counterparty="123", description="", tid=f"x{i}") for i in range(3)]
+    rows = inbox(txns)
+    assert len(rows) == 3 and {r[VCOL["why"]] for r in rows} == {"1 row like this has no category"}

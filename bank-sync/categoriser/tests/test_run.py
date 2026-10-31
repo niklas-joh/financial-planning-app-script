@@ -227,3 +227,31 @@ def test_inbox_is_created_and_filled_on_the_first_run(monkeypatch):
     run_with(monkeypatch, ss)
     review = ss.sheets["categoriser_review"].values
     assert review[0] == list(REVIEW_COLUMNS) and sorted(inbox_ids(ss)) == ["a", "l"]
+
+
+def test_answered_spot_check_is_not_offered_again(monkeypatch, models):
+    trained(models)
+    monkeypatch.setattr(run, "load_settings", lambda: Settings("x", Path("/dev/null"), model_min_confidence=0.5))
+    review = review_sheet(review_row("s", answer=GROCERY, suggested=GROCERY, accept=True, kind="spot check"))
+    ss = spreadsheet([txn("bob", -25, counterparty="Acme Market", tid="s")], [HEADER], [list(RULE_COLUMNS)],
+                     TAXONOMY_ROWS, review)
+    monkeypatch.setattr(run, "open_spreadsheet", lambda _: ss)
+    run.main()
+    s = next(r for r in ss.sheets["categorised"].values[1:] if r[0] == "s")
+    assert s[5] == "manual" and inbox_ids(ss) == []
+
+
+def test_failing_guess_for_the_inbox_does_not_stop_the_run(monkeypatch, caplog):
+    class Broken:
+        def rows(self, *_):
+            return []
+
+        def predict(self, _):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(run, "load_model", lambda _: (Broken(), "loaded"))
+    ss = spreadsheet([txn(counterparty="Acme Market", tid="a")], [HEADER], [list(RULE_COLUMNS)], TAXONOMY_ROWS)
+    run_with(monkeypatch, ss)
+    [row] = [r for r in ss.sheets["categoriser_review"].values[1:] if r and r[0]]
+    assert row[0] == "a" and row[VCOL["answer"]] == ""
+    assert len(ss.sheets["categoriser_issues"].values) == 1   # the issues step still ran (header only)
