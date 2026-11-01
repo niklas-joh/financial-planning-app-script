@@ -98,3 +98,13 @@ def test_stale_model_rows_are_cleared_only_when_asked():
     plan = plan_upsert(existing, [], clear_stale_at="2026-10-31T00:00:00Z",
                        clear_methods=frozenset({Method.RULE, Method.MODEL}))
     assert sorted(plan.cleared) == ["m", "r"]
+
+
+def test_context_backfill_fills_only_blank_context_of_known_unique_rows():
+    from categoriser.merge import plan_context_backfill
+    from builders import txn
+    old = ["a", "joint", "Essentials", "X", "", "manual", "", "", True, "t"]           # reviewed, no context
+    done = ["b", "joint", "Essentials", "X", "", "rule", "", "R1", True, "t", "2026-01-01", "Kept", "", -1]
+    existing = [HEADER, old, done, ["dup"], ["dup"], ["unknown"]]
+    txns = [txn(tid="a", amount=-4.5, counterparty="Acme Market", day="2026-05-02"), txn(tid="b"), txn(tid="dup")]
+    assert plan_context_backfill(existing, txns) == {2: ["2026-05-02", "Acme Market", "", -4.5]}

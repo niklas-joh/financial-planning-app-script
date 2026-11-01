@@ -21,9 +21,10 @@ then a model for the rest, which labels a row only when it is confident. Everyth
 
   `method` is `rule`, `model` or `manual`; `reviewed` is a checkbox; `updatedAt` is ISO 8601 UTC;
   `confidence` is blank when not applicable. The last four columns are copied from `transactions` so that
-  filtering on `ruleId` shows what a rule caught; reviewed rows keep whatever they had. A sheet from before
-  these columns existed gets them added at the end on the next run (its rule and model rows are rewritten
-  once, so their `updatedAt` moves).
+  filtering on `ruleId` shows what a rule caught. A sheet from before these columns existed gets them added
+  at the end on the next run (its rule and model rows are rewritten once, so their `updatedAt` moves). Rows the
+  run doesn't rewrite (reviewed, manual) get only these four cells filled while they are all blank; their labels
+  and `updatedAt` are never touched (`context_filled` in the log).
 - Rows with `reviewed = TRUE` are never overwritten. Other existing rows are updated in place when something
   changed (so `updatedAt` is the last change); new IDs are appended below the last row with an ID.
 - A `rule` or `model` row that the run no longer produces (rule switched off or changed, model no longer

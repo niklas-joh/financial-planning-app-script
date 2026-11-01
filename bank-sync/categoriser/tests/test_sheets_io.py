@@ -234,3 +234,20 @@ def test_appends_past_the_grid_add_rows_and_reapply_validations():
     append_rows(ws, SETTINGS, [["R2"], ["R3"]])
     assert ws.row_count == 4 and [r[0] for r in ws.values] == ["ruleId", "R1", "R2", "R3"]
     assert {r["setDataValidation"]["range"]["startColumnIndex"] for r in ss.requests} >= {RCOL["active"]}
+
+
+def test_backfill_context_writes_only_the_context_cells_once():
+    from categoriser.sheets import backfill_context
+    from builders import txn
+    reviewed = ["a", "joint", "Essentials", "Mine", "", "manual", "", "", True, "2026-01-01T00:00:00Z"]
+    ws = FakeWorksheet("categorised", [HEADER, list(reviewed), ["b", "joint"]])
+    txns = [txn(tid="a", counterparty="Acme Market", day="2026-05-02", amount=-3), txn(tid="b")]
+    assert backfill_context(ws, SETTINGS, txns) == 2
+    assert ws.values[1] == [*reviewed, "2026-05-02", "Acme Market", "", -3]   # labels untouched
+    assert backfill_context(ws, SETTINGS, txns) == 0                           # nothing blank any more
+
+
+def test_backfill_context_refuses_other_sheets():
+    from categoriser.sheets import backfill_context
+    with pytest.raises(PermissionError):
+        backfill_context(FakeWorksheet("transactions"), SETTINGS, [])

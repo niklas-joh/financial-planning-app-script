@@ -16,9 +16,9 @@ from gspread.utils import Dimension, ValueInputOption, ValueRenderOption, rowcol
 from .config import Settings
 from .engine import RuleStats
 from .issues import ISSUE_COLUMNS, Issue, IssuesPlan, plan_issues
-from .merge import UpsertPlan, drop_newly_reviewed, plan_upsert
+from .merge import UpsertPlan, drop_newly_reviewed, plan_context_backfill, plan_upsert
 from .rules import DIRECTIONS, JOB_COLUMNS, RULE_COLUMNS, SOURCES, rule_columns
-from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
+from .schema import CATEGORISED_COLUMNS, CONTEXT_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
 from .taxonomy import TAXONOMY_COLUMNS
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
@@ -233,6 +233,7 @@ def write_rule_stats(ws: gspread.Worksheet, settings: Settings, stats: dict[str,
             continue
         n = rows[rid][0]
         row = values[n - 1]
+        # One single-cell range per changed cell: the job columns can be anywhere on the sheet.
         cells = [(name, getattr(st, name)) for name in JOB_COLUMNS]
         updates = [(name, v) for name, v in cells
                    if (str(row[col[name]]) if len(row) > col[name] else "") != str(v)]
@@ -304,3 +305,23 @@ def upsert_categorised(ws: gspread.Worksheet, settings: Settings, rows: list[Cat
         plan = drop_newly_reviewed(plan, keys[0] if keys else [], reviewed[0] if reviewed else [])
     _write_rows(ws, settings, plan.updates, plan.appends, len(CATEGORISED_COLUMNS))
     return plan
+
+
+def backfill_context(ws: gspread.Worksheet, settings: Settings, transactions: list[dict]) -> int:
+    """Fill blank context columns of `categorised` rows (see `merge.plan_context_backfill`);
+    writes only those cells. The key column is re-read just before writing, and a row
+    that no longer holds the same transactionId is skipped. Returns the rows filled."""
+    _assert_writable(ws, settings)
+    existing = ws.get_all_values(value_render_option=ValueRenderOption.unformatted)
+    plan = plan_context_backfill(existing, transactions)
+    if not plan:
+        return 0
+    keys = ws.col_values(KEY_COLUMN + 1, value_render_option=ValueRenderOption.unformatted)
+    first = CATEGORISED_COLUMNS.index(CONTEXT_COLUMNS[0]) + 1
+    last = first + len(CONTEXT_COLUMNS) - 1
+    data = [{"range": f"{rowcol_to_a1(n, first)}:{rowcol_to_a1(n, last)}", "values": [values]}
+            for n, values in sorted(plan.items())
+            if len(keys) >= n and str(keys[n - 1]).strip() == str(existing[n - 1][KEY_COLUMN]).strip()]
+    if data:
+        ws.batch_update(data, value_input_option=ValueInputOption.raw)
+    return len(data)

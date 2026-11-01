@@ -21,6 +21,7 @@ from .model import load as load_model
 from .model import review_check
 from .rules import INVALID_RULE, owner_slug, parse_rules
 from .sheets import (
+    backfill_context,
     ensure_categorised_sheet,
     ensure_issues_sheet,
     ensure_rules_sheet,
@@ -71,6 +72,7 @@ def main() -> None:
     reviewed_checked, reviewed_wrong = review_check(model_rows, reviewed_labels(before_upsert))
     plan = upsert_categorised(ws, settings, result.rows + model_rows, clear_stale_at=now,
                               clear_methods=clear_methods)
+    context_filled = backfill_context(ws, settings, transactions)
     stats_written = write_rule_stats(rules_ws, settings, result.stats)
 
     found = (parsed.issues + review_disagreements(before_upsert, result.rows, settings.output_sheet)
@@ -80,12 +82,12 @@ def main() -> None:
         "read=%d taxonomy=%d rules_active=%d rules_invalid=%d by_rule=%d by_transfer=%d uncovered=%d "
         "model=%s by_model=%d model_reviewed_checked=%d model_reviewed_wrong=%d "
         "updated=%d appended=%d cleared=%d skipped_reviewed=%d skipped_moved=%d skipped_duplicate=%d "
-        "rule_stats_written=%d issues_opened=%d issues_reopened=%d issues_resolved=%d",
+        "context_filled=%d rule_stats_written=%d issues_opened=%d issues_reopened=%d issues_resolved=%d",
         len(transactions), len(taxonomy), len(parsed.active), len(parsed.issues),
         result.by_rule, result.by_transfer, result.uncovered,
         model_status, len(model_rows), reviewed_checked, reviewed_wrong,
         len(plan.updates) - len(plan.cleared), len(plan.appends), len(plan.cleared),
-        len(plan.skipped_reviewed), len(plan.skipped_moved), len(plan.duplicates), stats_written,
+        len(plan.skipped_reviewed), len(plan.skipped_moved), len(plan.duplicates), context_filled, stats_written,
         issues.opened, issues.reopened, issues.resolved,
     )
 

@@ -30,6 +30,7 @@ CATEGORISED_COLUMNS: tuple[str, ...] = (
     "description",
     "amountEur",
 )
+CONTEXT_COLUMNS: tuple[str, ...] = ("bookingDate", "counterparty", "description", "amountEur")
 KEY_COLUMN = CATEGORISED_COLUMNS.index("transactionId")
 REVIEWED_COLUMN = CATEGORISED_COLUMNS.index("reviewed")
 
@@ -60,7 +61,7 @@ class CategorisedRow:
 
 
 def transaction_context(txn: dict) -> dict:
-    """The `context columns (`bookingDate` … `amountEur`) of a transaction, as keyword arguments for `CategorisedRow`.
+    """The context columns (`bookingDate` … `amountEur`) of a transaction, as keyword arguments for `CategorisedRow`.
     `amountEur` falls back to `amount` when blank (same as `rules.amount_eur`)."""
     amount = txn.get("amountEur", "")
     if amount in ("", None):

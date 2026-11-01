@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
+from .schema import (CATEGORISED_COLUMNS, CONTEXT_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method,
+                     transaction_context)
 
 
 def is_reviewed(value: object) -> bool:
@@ -129,3 +130,30 @@ def plan_upsert(existing: list[list], incoming: list[CategorisedRow], clear_stal
                 plan.updates[row_number] = cleared_values(key, clear_stale_at)
                 plan.cleared.append(key)
     return plan
+
+
+def plan_context_backfill(existing: list[list], transactions: list[dict]) -> dict[int, list]:
+    """1-based sheet row -> the context columns, for rows whose context cells are all blank.
+
+    Covers rows the upsert leaves alone: reviewed rows, manual rows and rows from before
+    the context columns existed. Only the context cells are filled, never the labels, so
+    a reviewed row's categorisation is untouched. Rows whose transactionId is on several
+    rows, or not on `transactions`, are skipped. `existing` is the sheet after the upsert.
+    """
+    by_id: dict[str, dict] = {}
+    for txn in transactions:
+        by_id.setdefault(str(txn.get("transactionId", "")).strip(), txn)
+    first = CATEGORISED_COLUMNS.index(CONTEXT_COLUMNS[0])
+    keys = [str(r[KEY_COLUMN]).strip() if len(r) > KEY_COLUMN else "" for r in existing[1:]]
+    out: dict[int, list] = {}
+    for row_number, (key, row) in enumerate(zip(keys, existing[1:]), start=2):
+        if not key or keys.count(key) > 1 or key not in by_id:
+            continue
+        current = [row[i] if len(row) > i else "" for i in range(first, first + len(CONTEXT_COLUMNS))]
+        if any(str(v).strip() for v in current):
+            continue
+        context = transaction_context(by_id[key])
+        values = [context[c] for c in CONTEXT_COLUMNS]
+        if any(str(v).strip() for v in values):
+            out[row_number] = values
+    return out
