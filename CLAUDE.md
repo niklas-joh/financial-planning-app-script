@@ -61,11 +61,12 @@ Details: `bank-sync/categoriser/README.md`.
   blocks CSVs, `.joblib`, `.env*` and credential files.
 - **Runs daily at 06:15** via launchd (`lu.niklas.categoriser`) from `~/categoriser/`,
   using the Docker image `categoriser:local`.
-- **Deploying = re-running `bank-sync/categoriser/scripts/install-schedule.sh`.** The image
-  is a snapshot: after changing `bank-sync/categoriser/src/**`, `pyproject.toml`,
-  `Dockerfile`, `scripts/run-scheduled.sh`, `deploy/*` or the plist template, nothing
-  changes in the scheduled job until that script is re-run (from the branch you want
-  live). Apps Script changes never need it.
+- **Deploying = merging to `main`.** Before each daily run, `run-scheduled.sh` fetches `main`
+  into `~/categoriser/repo` and rebuilds the image if `bank-sync/categoriser/` changed (fetch or
+  build failure keeps the current image). Only a changed plist template needs
+  `scripts/install-schedule.sh` re-run (the log warns). To test a branch on the schedule, set
+  `CATEGORISER_AUTO_UPDATE=0` in `~/categoriser/.env` and run `install-schedule.sh` from it.
+  Apps Script changes never touch it.
 - Tests: `pytest` in `bank-sync/categoriser/` (no network); CI runs them in the `Tests (categoriser)` job.
 
 ## Conventions

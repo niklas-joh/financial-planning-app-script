@@ -3,7 +3,10 @@
 # after code changes to rebuild the image.
 #  1. Creates ~/categoriser (outside Documents and iCloud) and MOVES .env,
 #     credentials/, data/, models/ there from the repo folder if present.
-#  2. Builds the categoriser:local image from the repo.
+#  2. Builds the categoriser:local image from the repo, labelled with the git tree of
+#     bank-sync/categoriser (or "local" if it has uncommitted changes). The daily run
+#     rebuilds from `main` whenever that tree differs, unless CATEGORISER_AUTO_UPDATE=0
+#     in ~/categoriser/.env, so a branch installed here only stays live with that set.
 #  3. Installs run-scheduled.sh, the runtime compose file and the launchd job.
 set -euo pipefail
 
@@ -28,8 +31,15 @@ done
 chmod 600 "$DEST/.env"
 find "$DEST/credentials" -type f -exec chmod 600 {} +
 
-echo "Building categoriser:local ..."
-docker compose -f "$SRC/docker-compose.yml" build
+TREE=local
+COMMIT=local
+if git -C "$SRC" rev-parse --git-dir >/dev/null 2>&1 && [ -z "$(git -C "$SRC" status --porcelain -- .)" ]; then
+  TREE=$(git -C "$SRC" rev-parse HEAD:bank-sync/categoriser)
+  COMMIT=$(git -C "$SRC" rev-parse HEAD)
+fi
+echo "Building categoriser:local ($COMMIT) ..."
+docker build --label "lu.niklas.categoriser.tree=$TREE" --label "lu.niklas.categoriser.commit=$COMMIT" \
+  -t categoriser:local "$SRC"
 
 cp "$SRC/scripts/run-scheduled.sh" "$DEST/run-scheduled.sh"
 chmod +x "$DEST/run-scheduled.sh"
