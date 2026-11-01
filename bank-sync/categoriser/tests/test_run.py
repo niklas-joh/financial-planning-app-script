@@ -89,7 +89,8 @@ def test_rules_and_transfers_reach_categorised_and_rule_stats(monkeypatch, caplo
     assert rules_ws.values[1][RCOL["hits"]:] == [1, "2026-05-02", 1, "Acme Market (1)"]
     assert rows["g"][10:] == ["2026-05-02", "Acme Market", "", -12]   # context copied from transactions
     issues = ss.sheets["categoriser_issues"].values
-    assert [r[COL["issueKey"]] for r in issues[1:]] == ["invalid_rule:R2"]
+    # "stale" is not on transactions, so it is also reported as orphaned
+    assert [r[COL["issueKey"]] for r in issues[1:]] == ["invalid_rule:R2", "orphaned_categorised_row:stale"]
     assert "by_rule=1 by_transfer=2 uncovered=1" in caplog.text and "cleared=1" in caplog.text
 
 
@@ -256,3 +257,23 @@ def test_failing_guess_for_the_inbox_does_not_stop_the_run(monkeypatch, caplog):
     [row] = [r for r in ss.sheets["categoriser_review"].values[1:] if r and r[0]]
     assert row[0] == "a" and row[VCOL["answer"]] == ""
     assert len(ss.sheets["categoriser_issues"].values) == 1   # the issues step still ran (header only)
+
+
+def test_categorised_grows_past_its_first_1000_rows_and_counts_coverage(monkeypatch, caplog):
+    """A new tab has 1000 rows whose unticked checkboxes read as FALSE; every labelled row must still land."""
+    caplog.set_level("INFO", logger="categoriser")
+    blank = [""] * len(CATEGORISED_COLUMNS)
+    blank[CATEGORISED_COLUMNS.index("reviewed")] = False
+    shops = [txn("alice", -5, counterparty="Acme Market", tid=f"s{i}") for i in range(1500)]
+    rules = [list(RULE_COLUMNS), rule_row("R1", counterpartyContains="acme market")]
+    ss = spreadsheet(shops + [txn("bob", -1, counterparty="Nobody", tid="n")],
+                     [HEADER, sheet_row("gone")] + [list(blank) for _ in range(998)], rules, TAXONOMY_ROWS)
+    run_with(monkeypatch, ss)
+
+    written = ss.sheets["categorised"].values
+    ids = {r[0] for r in written[1:] if r and r[0]}
+    assert {f"s{i}" for i in range(1500)} <= ids
+    assert ss.sheets["categorised"].row_count >= len(written)
+    issues = ss.sheets["categoriser_issues"].values[1:]
+    assert [(r[COL["type"]], r[COL["transactionId"]]) for r in issues] == [("orphaned_categorised_row", "gone")]
+    assert "transactions=1501 categorised=1500 uncategorised=1 orphaned=1 not_written=0" in caplog.text
