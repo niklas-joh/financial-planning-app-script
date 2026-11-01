@@ -2,7 +2,7 @@
 
 Hard rule: this module reads `transactions` but only ever writes to the sheets in
 `Settings.writable_sheets` (`categorised`, `categoriser_issues`, `categoriser_rules`,
-`categoriser_taxonomy`). `_assert_writable` enforces that at every write, and
+`categoriser_taxonomy`, `categoriser_review`). `_assert_writable` enforces that at every write, and
 `Settings` refuses sheet names that collide with the transactions sheet. The
 legacy sheet is only ever opened with a read-only scope (`open_readonly`).
 """
@@ -17,6 +17,7 @@ from .config import Settings
 from .engine import RuleStats
 from .issues import ISSUE_COLUMNS, Issue, IssuesPlan, plan_issues
 from .merge import UpsertPlan, drop_newly_reviewed, plan_context_backfill, plan_upsert
+from .review import OWNER_COLUMNS, REVIEW_COLUMNS, VCOL, owner_cells
 from .rules import DIRECTIONS, JOB_COLUMNS, RULE_COLUMNS, SOURCES, rule_columns
 from .schema import CATEGORISED_COLUMNS, CONTEXT_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
 from .taxonomy import TAXONOMY_COLUMNS
@@ -57,9 +58,9 @@ def read_transactions(ss: gspread.Spreadsheet, settings: Settings) -> list[dict]
 CHECKBOX = {"condition": {"type": "BOOLEAN"}, "strict": True}
 
 
-def _one_of_list(values: tuple[str, ...]) -> dict:
+def _one_of_list(values: tuple[str, ...], strict: bool = True) -> dict:
     return {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": v} for v in values]},
-            "showCustomUi": True, "strict": True}
+            "showCustomUi": True, "strict": strict}
 
 
 def _one_of_range(sheet: str, column: str) -> dict:
@@ -87,6 +88,9 @@ def _validations(settings: Settings, title: str, header: list) -> dict[int, dict
             col["category"]: _one_of_range(tax, "B"),
             col["subCategory"]: _one_of_range(tax, "C"),
         }
+    if title == settings.review_sheet:
+        return {VCOL["accept"]: CHECKBOX, VCOL["allLikeThis"]: CHECKBOX,
+                VCOL["owner"]: _one_of_range(settings.owners_sheet, "A")}
     return {}
 
 
@@ -132,6 +136,12 @@ def _missing_columns(header: list[str], columns: tuple[str, ...], by_name: bool)
     if header == list(columns[: len(header)]):
         return list(columns[len(header):])
     return None
+
+
+def ensure_review_sheet(ss: gspread.Spreadsheet, settings: Settings) -> gspread.Worksheet:
+    """Return the review inbox, creating it with checkboxes on `accept`/`allLikeThis` and an
+    owner dropdown if missing. The `answer` dropdown is set by `write_review`."""
+    return _ensure_sheet(ss, settings, settings.review_sheet, REVIEW_COLUMNS)
 
 
 def _ensure_sheet(ss: gspread.Spreadsheet, settings: Settings, title: str,
@@ -184,9 +194,10 @@ def _init_sheet(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settin
     _apply_validations(ss, ws, settings)
 
 
-def _apply_validations(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settings) -> None:
+def _apply_validations(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings: Settings,
+                       extra: dict[int, dict] | None = None) -> None:
     header = ws.row_values(1) if ws.title == settings.rules_sheet else []
-    validations = _validations(settings, ws.title, header)
+    validations = {**_validations(settings, ws.title, header), **(extra or {})}
     if not validations:
         return
     ss.batch_update({"requests": [{
@@ -204,9 +215,11 @@ def _apply_validations(ss: gspread.Spreadsheet, ws: gspread.Worksheet, settings:
 
 def append_rows(ws: gspread.Worksheet, settings: Settings, rows: list[list], key_column: int = 1) -> None:
     """Append rows below the last row with a value in `key_column` (1-based), e.g. the
-    rules sheet's `ruleId` column (mined rules) or column A (taxonomy seed)."""
+    rules sheet's `ruleId` column (mined and review rules) or column A (taxonomy seed),
+    then re-apply the sheet's checkboxes and dropdowns (e.g. a new `source` value)."""
     _assert_writable(ws, settings)
-    _write_rows(ws, settings, {}, rows, 0, key_column)
+    if not _write_rows(ws, settings, {}, rows, 0, key_column):
+        _apply_validations(ws.spreadsheet, ws, settings)
 
 
 def write_rule_stats(ws: gspread.Worksheet, settings: Settings, stats: dict[str, RuleStats]) -> int:
@@ -245,12 +258,14 @@ def write_rule_stats(ws: gspread.Worksheet, settings: Settings, stats: dict[str,
 
 
 def _write_rows(ws: gspread.Worksheet, settings: Settings, updates: dict[int, list], appends: list[list],
-                width: int, key_column: int = 1) -> None:
+                width: int, key_column: int = 1) -> bool:
     """One batch_update for changed rows; new rows go right below the last row with a key.
+    Returns True if the grid grew (its checkboxes and dropdowns were re-applied then).
 
     Not `append_rows`: an empty checkbox reads as FALSE, so Sheets' own append would
     treat a sheet of blank checkbox rows as full and write below row 1000.
     """
+    grew = False
     if updates:
         ws.batch_update(
             [{"range": f"{rowcol_to_a1(r, 1)}:{rowcol_to_a1(r, width)}", "values": [v]}
@@ -264,7 +279,9 @@ def _write_rows(ws: gspread.Worksheet, settings: Settings, updates: dict[int, li
         if end > ws.row_count:
             ws.add_rows(end - ws.row_count)
             _apply_validations(ws.spreadsheet, ws, settings)
+            grew = True
         ws.update(appends, rowcol_to_a1(start, 1), value_input_option=ValueInputOption.raw)
+    return grew
 
 
 def record_issues(ws: gspread.Worksheet, settings: Settings, current: list[Issue],
@@ -325,3 +342,37 @@ def backfill_context(ws: gspread.Worksheet, settings: Settings, transactions: li
     if data:
         ws.batch_update(data, value_input_option=ValueInputOption.raw)
     return len(data)
+
+
+def write_review(ws: gspread.Worksheet, settings: Settings, rows: list[list], read_at_start: list[list],
+                 answers: list[str]) -> bool:
+    """Rewrite the review inbox below its header; blank the rows left over from before.
+
+    The transactionId column and the columns the owner edits (answer, owner, accept,
+    allLikeThis, matchText) are read again first: if any of them changed since the run
+    read the tab (`read_at_start`), nothing is written and False is returned, so the
+    edit is picked up by the next run instead of being overwritten.
+    `answers` feed the `answer` dropdown (not strict; the job checks answers).
+    """
+    _assert_writable(ws, settings)
+    letters = [_column_letter(VCOL[name]) for name in OWNER_COLUMNS]
+    columns = ws.batch_get([f"{c}:{c}" for c in letters], major_dimension=Dimension.cols,
+                           value_render_option=ValueRenderOption.unformatted)
+    columns = [(col[0] if col else []) for col in columns]
+    width = len(REVIEW_COLUMNS)
+    fresh = [[""] * width for _ in range(max(map(len, columns), default=0))]  # incl. the header row
+    for name, col in zip(OWNER_COLUMNS, columns):
+        for i, value in enumerate(col):
+            fresh[i][VCOL[name]] = value
+    if owner_cells(fresh) != owner_cells(read_at_start):
+        return False
+
+    old_rows = len(read_values(ws))
+    values = [list(REVIEW_COLUMNS)] + [list(r) for r in rows]
+    values += [[""] * width for _ in range(max(0, old_rows - len(values)))]
+    if len(values) > ws.row_count:
+        ws.add_rows(len(values) - ws.row_count)
+    ws.update(values, "A1", value_input_option=ValueInputOption.raw)
+    extra = {VCOL["answer"]: _one_of_list(tuple(answers), strict=False)} if answers else None
+    _apply_validations(ws.spreadsheet, ws, settings, extra)
+    return True

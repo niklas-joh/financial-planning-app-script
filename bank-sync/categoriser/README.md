@@ -2,7 +2,8 @@
 
 Python job (inside `bank-sync/`) that reads the **Bank Sync** Google Sheet and writes categories to a
 separate `categorised` sheet: rules you keep in the `categoriser_rules` sheet, internal transfer pairing,
-then a model for the rest, which labels a row only when it is confident. Everything else is left blank.
+then a model for the rest, which labels a row only when it is confident. Everything else is left blank,
+and the rows that most need you are listed in a review inbox (`categoriser_review`) you answer in the sheet.
 
 > **This repo is public.** Keys, `.env`, CSVs, models and logs are git-ignored
 > and blocked by the pre-commit hook (`../../scripts/hooks/pre-commit`). Never use
@@ -12,7 +13,8 @@ then a model for the rest, which labels a row only when it is confident. Everyth
 
 - Reads `transactions`. **Never writes to it** (enforced in `sheets._assert_writable`).
 - Writes only to `categorised`, `categoriser_issues`, `categoriser_rules` (only `hits`, `wins`, `lastMatched`
-  and `sample`, and rows appended by `categoriser.mine`) and `categoriser_taxonomy` (created, and seeded once). This list is
+  and `sample`, and rows appended by `categoriser.mine` or made in the review inbox), `categoriser_taxonomy`
+  (created, and seeded once) and `categoriser_review` (the review inbox, rewritten each run). This list is
   `Settings.writable_sheets`. The legacy sheet is only opened with a read-only token.
 - `categorised` is keyed by `transactionId`:
 
@@ -46,7 +48,8 @@ Created automatically. One row per issue, never repeated:
 - Gone → `status` becomes `resolved` with `resolvedAt`. Comes back → reopened on the same row.
 - Issue types: `duplicate_transaction_id`; `invalid_rule` (an active rule that was skipped, keyed by
   ruleId); `rule_disagrees_with_review` (a reviewed row a rule would label differently, so the rule can be
-  fixed).
+  fixed); `invalid_review_answer` (a ticked inbox answer that can't be applied); `review_conflicts_with_reviewed`
+  (an inbox answer that differs from a row already reviewed on `categorised`).
 - Missing job sheet → created with headers, frozen header row, and its checkboxes/dropdowns.
   Existing sheet with different headers → the run fails before writing anything.
 
@@ -84,7 +87,7 @@ sets one.
 | `amountMin`, `amountMax` | on the EUR magnitude (`abs(amountEur)`) |
 | `owner` | blank = the account's owner |
 | `type`, `category`, `subCategory` | must be a row of `categoriser_taxonomy` |
-| `notes`, `source` | free text; `manual` or `mined` |
+| `notes`, `source` | free text; `manual`, `mined` or `review` (made with "all like this" in the review inbox) |
 | `hits` | written by the job: rows on `transactions` the rule matches **on its own**, ignoring other rules and `active` |
 | `lastMatched` | written by the job: the latest `bookingDate` among those rows |
 | `wins` | written by the job: rows the rule actually categorised (it was the first active rule to match) |
@@ -108,6 +111,40 @@ tried by `priority`, not by row.
 `type | category | subCategory`, one allowed combination per row. Seed it once from the legacy sheet's
 `Dropdowns` tab with `python -m categoriser.seed_taxonomy` (does nothing if it already has rows), then edit it
 there. The rules sheet's dropdowns read from it.
+
+### Review inbox (`categoriser_review`)
+
+Each daily run fills this tab with up to `REVIEW_SIZE` rows (default 25) that most need you: one row per
+merchant with no category, merchants with the most such rows first, plus `REVIEW_SPOT_CHECKS` (default 3) rows
+the model labelled, as spot checks of how often it is right. Card rows are included.
+
+| column | meaning |
+|---|---|
+| `transactionId` … `description` | the transaction (`account` is `bank / accountName`) |
+| `why`, `similar` | why it is here; how many rows of this merchant have no category |
+| `confidence` | the model's probability for the pre-filled `answer` (blank without a model) |
+| `answer` | one dropdown, `type › category › subCategory`; pre-filled with the model's best guess |
+| `owner` | pre-filled with the account's owner |
+| `accept` | tick when `answer` and `owner` are right |
+| `allLikeThis` | also tick to make a rule for every row of this merchant |
+| `matchText` | the words that rule matches (shorten them to widen it) |
+| `suggested`, `kind` | the model's first guess, and `merchant` or `spot check` (filled by the job) |
+
+The next run (answers are not picked up before then):
+
+- Each ticked row becomes a `categorised` row with `method` = `manual` and `reviewed` = TRUE, and leaves the inbox.
+- With `allLikeThis`, an **active** rule is added to `categoriser_rules`: `ruleId` `r-…`, priority 50 (ahead of
+  mined rules), `counterpartyContains` = `matchText` (or `descriptionContains` when the row has no counterparty),
+  the row's direction, any account, `source` = `review`. It applies in the same run.
+- An answer that can't be applied (not in the taxonomy, unknown owner, row gone, on several `categorised` rows,
+  different from an already reviewed row, or `allLikeThis` with a `matchText` shorter than 3 characters or not
+  made of whole words of the row's counterparty/description) stays ticked in the inbox with an issue until you
+  fix it.
+- Rows you have not ticked stay as they are, including an answer you typed; rows that got a label drop out.
+- If you tick or edit a row (`answer`, `owner`, `accept`, `allLikeThis`, `matchText`) while the job is running,
+  it leaves the inbox as it is that day (`review=skipped_busy` in the log), so the edit is not lost.
+- Each applied answer adds one line to `~/categoriser/data/review-history.jsonl` (what the model suggested and
+  your answer), used later to measure the model. It stays in the runtime folder.
 
 ### Mining and holdout accuracy (run by hand, never by the schedule)
 
@@ -157,6 +194,7 @@ bank-sync/categoriser/
                     rules.py (parse, validate, match)  transfers.py  engine.py (rules + transfers)
                     taxonomy.py  legacy.py (read + join)  mine.py  evaluate.py  seed_taxonomy.py
                     model.py (features, train, predict, save/load)  train.py
+                    review.py (review inbox: answers and refill, pure)
                     smoke.py   run.py (entry point)
   tests/            pytest, no network
   Dockerfile  docker-compose.yml (dev)  deploy/docker-compose.runtime.yml
