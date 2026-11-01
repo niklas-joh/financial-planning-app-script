@@ -21,7 +21,8 @@ def test_refuses_the_owners_tab_and_legacy_names(title):
         _assert_writable(SimpleNamespace(title=title), SETTINGS)
 
 
-@pytest.mark.parametrize("title", ["categorised", "categoriser_issues", "categoriser_rules", "categoriser_taxonomy"])
+@pytest.mark.parametrize("title", ["categorised", "categoriser_issues", "categoriser_rules", "categoriser_taxonomy",
+                                   "categoriser_review"])
 def test_allows_the_job_sheets(title):
     _assert_writable(SimpleNamespace(title=title), SETTINGS)
 
@@ -33,6 +34,8 @@ def test_allows_the_job_sheets(title):
     ("issues_sheet", "categorised"),
     ("rules_sheet", "transactions"),
     ("taxonomy_sheet", "categoriser_rules"),
+    ("review_sheet", "transactions"),
+    ("review_sheet", "categorised"),
 ])
 def test_writable_sheets_cannot_collide(field, name):
     with pytest.raises(ValueError):
@@ -43,3 +46,10 @@ def test_writable_sheets_cannot_collide(field, name):
 def test_model_min_confidence_must_be_a_probability(value):
     with pytest.raises(ValueError):
         Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"), model_min_confidence=value)
+
+
+@pytest.mark.parametrize("fields", [dict(review_size=0), dict(review_spot_checks=-1),
+                                    dict(review_size=3, review_spot_checks=4)])
+def test_review_size_and_spot_checks_must_fit(fields):
+    with pytest.raises(ValueError):
+        Settings(spreadsheet_id="x", credentials_path=Path("/dev/null"), **fields)

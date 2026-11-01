@@ -44,14 +44,16 @@ Current state, phases and deploy rules: `docs/BANK_SYNC_ROADMAP.md` (read it fir
 
 Python job that reads the Bank Sync sheet's `transactions` tab and writes only to the
 sheets in `Settings.writable_sheets`: `categorised`, its `categoriser_issues` log,
-`categoriser_rules` (columns matched by header name; job fills only `hits`/`wins`/`lastMatched`/`sample`;
-mining appends inactive rows)
-and `categoriser_taxonomy` (never to `transactions`; rows with `reviewed` = TRUE are
-never overwritten). The legacy "Financial Planning" sheet is read only, with a read-only
-token, and only by the hand-run `mine`/`evaluate`/`train`/`seed_taxonomy` commands. The model
-(`train`) is saved only to `~/categoriser/models/`; the daily run skips the model step if it is missing or broken. Problems such
-as duplicate `transactionId` rows or invalid rules are skipped and logged once in
-`categoriser_issues`, never allowed to stop the daily run. Not pushed with clasp.
+`categoriser_rules` (columns matched by header name; job fills only
+`hits`/`wins`/`lastMatched`/`sample`; mining appends inactive rows, review answers with
+"all like this" append active ones), `categoriser_taxonomy` and the `categoriser_review`
+inbox, whose ticked answers become reviewed `manual` rows (never to `transactions`; rows
+with `reviewed` = TRUE are never overwritten). The legacy "Financial Planning" sheet is
+read only, with a read-only token, and only by the hand-run
+`mine`/`evaluate`/`train`/`seed_taxonomy` commands. The model (`train`) is saved only to
+`~/categoriser/models/`; the daily run skips the model step if it is missing or broken.
+Problems such as duplicate `transactionId` rows or invalid rules are skipped and logged
+once in `categoriser_issues`, never allowed to stop the daily run. Not pushed with clasp.
 Details: `bank-sync/categoriser/README.md`.
 
 - Tests and fixtures use synthetic people, merchants and IBANs only (`tests/builders.py`);

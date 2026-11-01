@@ -48,3 +48,19 @@ def rule_row(rule_id="R1", active=True, priority="", output=("Essentials", "Groc
 
 def rules_sheet(*rows) -> list[list]:
     return [list(RULE_COLUMNS), *rows]
+
+
+def review_row(tid, answer="", owner="", accept=False, all_like_this=False, match_text="", suggested="",
+               kind="merchant", confidence="") -> list:
+    from categoriser.review import REVIEW_COLUMNS
+
+    values = {c: "" for c in REVIEW_COLUMNS}
+    values.update(transactionId=tid, answer=answer, owner=owner, accept=accept, allLikeThis=all_like_this,
+                  matchText=match_text, suggested=suggested, kind=kind, confidence=confidence)
+    return [values[c] for c in REVIEW_COLUMNS]
+
+
+def review_sheet(*rows) -> list[list]:
+    from categoriser.review import REVIEW_COLUMNS
+
+    return [list(REVIEW_COLUMNS), *rows]
