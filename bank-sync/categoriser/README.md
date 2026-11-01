@@ -171,7 +171,7 @@ must be in the taxonomy. Owner is the account's owner.
 - **Train** by hand, after reviewing rows or approving rules: from the runtime folder,
   `docker compose run --rm categoriser python -m categoriser.train`. Use the scheduled image: the model is saved
   with its scikit-learn version and the daily run skips a model from another version (`model=incompatible` in the
-  log). scikit-learn is pinned in `pyproject.toml`; after bumping it, re-run `install-schedule.sh` and retrain.
+  log). scikit-learn is pinned in `pyproject.toml`; after a bump reaches `main`, the next run rebuilds the image and skips the old model (`model=incompatible`) until you retrain with the new image.
 - Examples are the same as for mining: legacy rows, Bank Sync rows joined to them and rows you reviewed
   (these count three times). Labels with fewer than 2 examples are not learnt.
 - It first runs the holdout below, then trains on everything and writes `models/categoriser-model.joblib` and
