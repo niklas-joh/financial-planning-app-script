@@ -346,7 +346,8 @@ yet (see the roadmap).
    - **Network**: the call `.../lu/cards/<CARD ID>/transactions?limit=99` names the card id (e.g. `LUX000...`).
    - **Storage > Session Storage** for `consumers.pluxee.lu`: the key `oidc.user:https://connect.pluxee.app/op:...`
      holds JSON; copy only the value of `refresh_token`.
-   Then close the tab **without logging out** (logging out ends the login and the token with it).
+   Then close the tab straight away, **without logging out**: logging out ends the login, and a tab left open
+   renews itself with the token you copied, which makes PluxeeConnect cancel the login once the sync has used it.
 2. In the Apps Script editor, **Project Settings > Script Properties**, add one pair per card, holder in upper case:
    - `PLUXEE_CARD_<HOLDER>`: the card id, e.g. `PLUXEE_CARD_NIKLAS`
    - `PLUXEE_REFRESH_TOKEN_<HOLDER>`: the refresh token, e.g. `PLUXEE_REFRESH_TOKEN_NIKLAS`
@@ -363,6 +364,9 @@ What it writes:
   Declined payments are left out; a status other than approved is stored as pending. Amounts are in EUR.
 - Each sync reads the latest 99 transactions (what the portal asks for; the response has no paging). On a lunch card
   that is over a year of history, so the first sync loads that and later ones only need the last days.
+- The API also wants the portal's subscription key, a fixed value in the portal's script that every visitor's browser
+  sends. Each sync reads it from `consumers.pluxee.lu`, once per Pluxee connection (nothing to set up, nothing stored); if Pluxee changes its
+  portal so it cannot be found, the sync says so for that connection without using up the refresh token.
 - When PluxeeConnect refuses the refresh token, the sync reports "Pluxee login has expired" for that connection
   (the others still run): sign in again and paste the new refresh token into the same property.
 

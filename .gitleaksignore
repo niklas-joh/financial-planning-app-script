@@ -7,3 +7,6 @@ cbd9955e94943034ea3b3b652c593b5c29690bcc:src/services/salt-edge/salt-edge-client
 #   removed in the next commit of PR #101. History only: once the PR is squash-merged this commit is not on main, and
 #   the entry only keeps the PR branch's full-history scan green.
 c06c5a31151c7326e6e51179ef6bade3dc60aef6:bank-sync/test/account-owners.test.js:generic-api-key:113
+# - bank-sync/test/pluxee.test.js (2026-11-01): a made-up test key ('0123...cdef'), not a secret; replaced by a built
+#   value in the next commit of PR #122. History only: kept so the PR branch's full-history scan stays green.
+a476d11b0e5329f54ab10c5a9af982488f66f974:bank-sync/test/pluxee.test.js:generic-api-key:92

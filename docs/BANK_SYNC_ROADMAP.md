@@ -99,6 +99,14 @@ always set (`Pluxee` on top-ups), `description` is generic (`Purchase`, `Reloadi
 or `LOAD`, `type` `DEBIT` or `CREDIT`. `splitData[].availableBalanceAmount` did not match the card balance the portal
 shows, so no balance is taken from it.
 
+First live run (2026-11-01, after #120): the refresh grant worked from Apps Script (a new access and refresh token
+came back), but the API answered 401 "missing subscription key": the portal also sends `ocp-apim-subscription-key`
+(a fixed key in its script, the same for every visitor) and `authorization-version: 2`, which the phone inspector did
+not show. Both are now sent; the key is read from the portal's script each run rather than committed. The second
+run's refresh got `invalid_grant`, most likely because the portal tab was still open and renewed itself with the
+token the first run had already rotated (refresh-token reuse cancels the login). The README now says to close the tab
+right after copying the token.
+
 Deploy: from `bank-sync/`, `npm test`, `clasp push`; reload the sheet; add the two properties (README, "Pluxee
 meal-voucher card"); *Sync all*; check *Show status* and the `transactions` rows of `pluxee-<holder>`; run *Sync all*
 again (expect 0 added, 0 updated).
