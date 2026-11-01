@@ -50,6 +50,15 @@ Created automatically. One row per issue, never repeated:
   ruleId); `rule_disagrees_with_review` (a reviewed row a rule would label differently, so the rule can be
   fixed); `invalid_review_answer` (a ticked inbox answer that can't be applied); `review_conflicts_with_reviewed`
   (an inbox answer that differs from a row already reviewed on `categorised`).
+- After writing, each run checks `categorised` against `transactions` (`coverage.py`) and logs
+  `transactions`, `categorised` (rows with a full label), `uncategorised`, `orphaned`, `not_written` and
+  `ids_not_unique` counts. It opens: `orphaned_categorised_row` (a `categorised` row whose transactionId is no
+  longer on `transactions`; never deleted by the job, since it may hold your answer: delete it yourself);
+  `categorised_row_not_written` (a row the run labelled that is missing after the write); and
+  `transaction_id_not_unique` (one transactionId on several `transactions` rows, e.g. identical BIL CSV rows on
+  two accounts: only the first is categorised until bank-sync gives them different ids).
+- Rows of `categorised` below the data read as `reviewed` = FALSE (an unticked checkbox) and are not rows: the
+  sheet grows past its first 1000 rows on its own when more are appended.
 - Missing job sheet → created with headers, frozen header row, and its checkboxes/dropdowns.
   Existing sheet with different headers → the run fails before writing anything.
 
@@ -196,6 +205,7 @@ bank-sync/categoriser/
                     taxonomy.py  legacy.py (read + join)  mine.py  evaluate.py  seed_taxonomy.py
                     model.py (features, train, predict, save/load)  train.py
                     review.py (review inbox: answers and refill, pure)
+                    coverage.py (after-write check of categorised vs transactions, pure)
                     smoke.py   run.py (entry point)
   tests/            pytest, no network
   Dockerfile  docker-compose.yml (dev)  deploy/docker-compose.runtime.yml
