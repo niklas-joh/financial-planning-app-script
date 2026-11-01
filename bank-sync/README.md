@@ -152,6 +152,45 @@ tab, one row per account (`owner`, `bank`, `accountName`, `ibanMasked`, `connect
 - An account is recognised by its `accountId` (for CSV accounts: the source plus a hash of the account number,
   see "CSV import"), so it keeps its owner across files and syncs.
 
+## Data sources and coverage
+
+Where each account's data comes from, how often it should be updated, and how far it reaches, so a missing month
+shows up and the next manual export starts at the right date.
+
+**How an account is fetched** is kept on `account_owners`, in three columns you can edit like the owner:
+
+| Column | Meaning | A new account starts with |
+|---|---|---|
+| `source` | How its data arrives | `API (automatic)` for a bank login, Trading 212 or Pluxee; `CSV (manual upload)` for a CSV account. Free text, e.g. `Manual entry` |
+| `frequency` | How often it should be updated | `daily` for API accounts; `monthly` for CSV accounts, `quarterly` for Avanza |
+| `howTo` | What updating it takes | A short note per provider; change it to whose login, which menu, ... |
+
+`frequency` sets the status below: `daily`, `weekly`, `monthly`, `quarterly` or `yearly`; anything else (e.g.
+`ad hoc`) means no schedule. A tab from before these columns gets them added after its last column at the next sync
+that adds an account; until a cell is filled, the default above counts.
+
+**What is covered** is on the `data_coverage` tab, which every sync (daily, *Sync all*, *Import CSV files*) rewrites, so
+never type in it. One row per account on `account_owners`, then one per item on `manual_balances`:
+
+- `rows`, `firstDate`, `lastDate`: the account's rows on the three transaction tabs and their booking dates.
+- `upTo`: the date its data is complete up to. API account: the last day its connection was read without an error.
+  CSV account: the end of its newest export. A BIL export does not state its period, so files of one source uploaded
+  the same day count as one export that reaches the latest date in any of them; a savings account with no movement
+  since March, exported with a current account up to 31 August, is complete up to 31 August. Manual item: the date
+  of its latest row with an amount.
+- `exportFrom` (CSV accounts): the date to start the next export at. Export from it to today: rows already stored
+  have the same id and are skipped, so the overlap is harmless.
+- `status`: `OK` while `upTo` is at most one period (plus a day) old, `due` up to two periods, `overdue` after that;
+  `no data yet`, or `no schedule`. `nextStep` says what to do: the export to make, the row to add on
+  `manual_balances`, or (an API account not read for days) to check *Show status* for a lapsed consent or login.
+
+The sync summary and *Show status* end with the accounts to update, e.g. "to update: BIL Current Private (export
+2026-08-28 to today)".
+
+`manual_balances` is a tab you keep by hand (`date`, `bank`, `accountName`, `owner`, `amount`, ...). It is only read.
+Each `bank` + `accountName` is one item; its default frequency is `monthly`, or add a `frequency` column and fill it on
+the item's latest row.
+
 ## Transactions (Phase 2)
 
 *Bank Sync > Sync all* writes the `transactions` tab (one row per

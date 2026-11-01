@@ -109,7 +109,8 @@
         connection: c,
         folder: env.driveFolder(ns.CsvFolders.folderId(wired.props, c)),
         record: ns.CsvFolders.imports(wired.props, c),
-        nowMs: wired.nowMs
+        nowMs: wired.nowMs,
+        toLocalDate: env.toLocalDate
       });
     },
     consents: function () { return []; },

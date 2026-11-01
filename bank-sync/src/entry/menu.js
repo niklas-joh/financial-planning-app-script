@@ -242,7 +242,8 @@
       const s = ns.Container.services();
       const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
       showSummary('Bank Sync: Status', ns.ProviderRegistry.statusLines(s)
-        .concat([ns.AccountOwners.statusLine(ns.AccountOwnersTab.create(spreadsheet)), ns.TxnRouting.statusLine(spreadsheet)])
+        .concat([ns.AccountOwners.statusLine(ns.AccountOwnersTab.create(spreadsheet)), ns.TxnRouting.statusLine(spreadsheet),
+          ns.DataCoverage.statusLine(ns.DataCoverageTab.create(spreadsheet, ns.Gas.dateFormatter(ns.Config.TIMEZONE)))])
         .concat(ns.AutoSync.statusLines(ns.Gas.triggers().list(), ns.LastRun.create(s.props).load()))
         .join('\n'));
     });

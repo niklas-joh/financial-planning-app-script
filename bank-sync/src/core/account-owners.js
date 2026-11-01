@@ -22,6 +22,9 @@
    * @property {string} connection - Connection key the account was first read through.
    * @property {string} provider - Provider id.
    * @property {string} accountId - Account id (the key).
+   * @property {string} source - How its data is fetched, e.g. 'API (automatic)' (`DataCoverage.defaults`).
+   * @property {string} frequency - How often it is updated, e.g. 'daily' or 'monthly'.
+   * @property {string} howTo - What updating it takes.
    */
 
   /**
@@ -107,6 +110,7 @@
           let row = rows[a.accountId];
           if (!row) {
             const labels = ns.AccountLabels.lookup([a])(a.accountId);
+            const fetched = ns.DataCoverage.defaults(a);
             row = {
               owner: defaultOwner(connection),
               bank: labels.bank,
@@ -114,7 +118,10 @@
               ibanMasked: labels.ibanMasked,
               connection: labels.connection,
               provider: a.provider,
-              accountId: a.accountId
+              accountId: a.accountId,
+              source: fetched.source,
+              frequency: fetched.frequency,
+              howTo: fetched.howTo
             };
             rows[a.accountId] = row;
             added.push(row);

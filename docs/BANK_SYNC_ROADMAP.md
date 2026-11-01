@@ -6,7 +6,8 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-11-01 (Pluxee app sign-in: long-lived refresh token via the mobile app's OAuth client,
+Last updated: 2026-11-01 (C1 data sources and coverage: `source`/`frequency`/`howTo` on `account_owners`, `data_coverage` tab;
+before that: Pluxee app sign-in: long-lived refresh token via the mobile app's OAuth client,
 Connect/Finish Pluxee menu; before that: P1 Pluxee card provider; before that: categoriser phase 3a: review inbox, see
 `docs/superpowers/specs/2026-10-31-categoriser-phase-3-design.md`; before that: O1 account owners: one CSV folder for everyone, owner per account on `account_owners`;
 before that: account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
@@ -47,6 +48,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | M1 | Account numbers in full: `MASK_ACCOUNT_NUMBERS` (default off), one masking helper, *Re-process stored rows* | Merged (#91), live since 2026-10-30: re-processed twice, nothing left masked (see "Live state") |
 | O1 | Account owners: `account_owners` tab (owner per account, typed by the owner), `owner` label on every tab, one CSV folder for everyone's exports | Merged, not deployed yet (see "O1: account owners" for the deploy steps) |
 | P1 | Pluxee meal-voucher card (unofficial portal API): card as an account, approved payments and top-ups on `transactions` | Merged, not deployed yet (see "Pluxee" for the deploy steps and the open question) |
+| C1 | Data sources and coverage: how each account is fetched (`account_owners`), how far its data reaches and what is due (`data_coverage`) | Merged, not deployed yet (see "C1: data sources and coverage") |
 | B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged (#83, #88, #94), live since 2026-10-30 (see Live state) |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
@@ -61,7 +63,8 @@ quirks) goes into the next phase's PR.
 
 In this order; each item still gets its own PR and stops for review.
 
-1. Owner action: drop an Avanza "Sedan start" export in the CSV folder. (The Trading 212 report export is live and named
+1. Owner action: drop an Avanza "Sedan start" export in the CSV folder, and BIL exports from 2026-08-28 to today
+   (every BIL account stops at the end of August; see "C1: data sources and coverage"). (The Trading 212 report export is live and named
    795 of the 817 unclassified rows; see Live state. The 22 left are still to be looked at.)
 2. Bank balances in `daily_values` (tag the booked balance `cash`; BIL has no balance in its export) and Avanza cash from
    a "Sedan start" export (open decision "Daily values for banks").
@@ -299,7 +302,12 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   `consent-warnings` (which warnings are due, the email text, the sent record), `last-run` (outcome
   record for Show status), `auto-sync` (daily trigger on/off and the triggered run), `account-owners` (O1: owner per
   account, applied by Sync all after each connection's `listAccounts`).
-- `sheets/account-owners-tab.js`: the `account_owners` tab (read by header, rows only ever appended).
+- `sheets/account-owners-tab.js`: the `account_owners` tab (read by header, rows only ever appended; missing
+  columns added after the last header cell).
+- `core/data-coverage.js` (C1, pure): defaults for how a new account is fetched, the coverage row per account and
+  manual item, status against the frequency, the last good read per API account (`BS_ACCOUNTS_READ`); run at the end
+  of Sync all. `sheets/data-coverage-tab.js`: writes `data_coverage` (from the top, leftover rows cleared) and reads
+  the hand-kept `manual_balances`. The CSV import record keeps each account's export end (`CsvImportProvider.exportEnds`).
 - `lib/`: `jwt`, `http` (retry/backoff, carries the API error code), `hash` (FNV-1a),
   `flatten` (API object to dotted keys, account numbers masked), `gas-adapters` (the only
   place touching Apps Script services directly, including ScriptApp triggers, MailApp and Session).
@@ -828,6 +836,51 @@ CSV accounts with no owner) and names the CSV accounts without one. Type their o
 
 Phase 8 is simpler with this: a partner's own login is a new connection whose holder becomes the owner, and a shared
 account seen through either login is set to `common` on the tab.
+
+## C1: data sources and coverage (owner, 2026-11-01)
+
+Owner request: record per account how its data is fetched (API, automatic CSV, manual CSV upload, ...) and how often,
+and from when to when data exists, so a new manual CSV export is easy to get right. Chosen (owner): typed facts on
+`account_owners`, computed coverage on its own tab rewritten by every sync, so the sync never overwrites typed cells.
+Defaults agreed: BIL monthly, Avanza quarterly, `manual_balances` items monthly.
+
+Review of every account before C1 (2026-11-01, from the sheet):
+
+| Account | Source | Data |
+|---|---|---|
+| Danske Konto | API, daily (Enable Banking; consent to 2027-01-23) | ~late Jul 2026 (90-day start) to 2026-10-30 |
+| Revolut EUR, SEK | API, daily (Enable Banking; consent to 2027-01-22) | almost none (one card check; SEK dormant) |
+| Trading 212 EUR | API, daily, plus the monthly report CSV (automatic) | 2024-08-12 to 2026-10-27 on `transactions` |
+| Pluxee Lunch | API, daily (unofficial; login can lapse) | 2025-05-13 to 2026-10-25 |
+| BIL Current Private, Current Common, Private Current account | CSV, manual, no fixed schedule | 2025-04-05 / 2025-03-07 / 2025-03-14 to 2026-08-28 / 08-30 / 08-31 |
+| BIL Savings Plus (own, Marie-Aude's, child's) | CSV, manual | few rows; last 2026-03-20 / 2026-05-10 / 2026-03-24 |
+| Avanza Investerarsparkonto, Pensionssparande | CSV, manual (one file for both) | 2025-10-27 to 2026-10-22 (one year, not "Sedan start") |
+| Avanza values, BIL loans, flat, house | Manual entry on `manual_balances` | 2026-11-01; Marie-Aude's BIL balances and both properties still empty |
+
+So every BIL account is missing September and October 2026.
+
+As built (see `bank-sync/README.md`, "Data sources and coverage"):
+
+- `account_owners` gains `source`, `frequency`, `howTo` (`DataCoverage.defaults` fills them for a new account; a tab
+  without them gets the columns added after its last header cell when an account is appended; nothing typed is
+  rewritten). Empty cells count as the default.
+- `data_coverage`: written by Sync all after the owners (`deps.coverage`, so the daily sync, *Import CSV files* and
+  *Re-process stored rows* all update it): `owner`, `bank`, `accountName`, `source`, `frequency`, `rows`,
+  `firstDate`, `lastDate`, `upTo`, `exportFrom`, `status`, `nextStep`, `accountId`. A failure is reported in the
+  summary and never stops the sync.
+- `upTo`: API accounts from `BS_ACCOUNTS_READ` (accountId to the last day its connection was read OK); CSV accounts
+  from the import record (`accounts`: per account the latest date of the files of its source uploaded the same day as
+  its newest file; Drive's created date in the Bank Sync time zone), never earlier than its own last row; manual items
+  from their latest row with an amount.
+- Status: `OK` up to one period plus a day old, `due` up to two periods, `overdue` after; `no data yet`, `no schedule`.
+  The summary and *Show status* list what needs doing.
+- No new OAuth scope (`getDateCreated` is covered by `drive`); the web app is unchanged, so no `clasp deploy`.
+
+Deploy: `npm run check` (repo root) and `npm test` (`bank-sync/`), `clasp push` from `bank-sync/`, reload the sheet,
+*Sync all*. Expected: `data_coverage` appears with one row per account and manual item; BIL accounts `overdue` with
+`exportFrom` 2026-08-28 to 2026-08-31 (savings accounts take their export's end, if they were uploaded the same day);
+API accounts `OK`. A second *Sync all* changes nothing else (0 added, 0 updated). Record what was seen here in the next
+PR.
 
 ## Phase 8: second holder at the same bank (last)
 
