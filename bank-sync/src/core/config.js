@@ -69,6 +69,9 @@
    *   names, so it stays far below the 9 KB Script Property limit.
    * @property {{MAX_LISTED: number}} REPROCESS - *Re-process stored rows*: how many rows still holding a masked value
    *   its summary names (the rest are counted).
+   * @property {Object} COVERAGE - The `data_coverage` tab: days per update frequency (the words typed in the
+   *   `frequency` columns), the default frequency of a CSV account per source (the prefix of its account id) and
+   *   otherwise, the default of a `manual_balances` item, and how many due accounts a summary or status line names.
    * @property {{WARN_DAYS: Array<number>}} CONSENT - Days before a consent lapses on which a warning
    *   email is sent (each once per consent); one more is sent once it has lapsed.
    */
@@ -108,6 +111,7 @@
       CSV_FOLDER_PREFIX: 'CSV_FOLDER_',
       CSV_IMPORTS_PREFIX: 'CSV_IMPORTS_',
       LAST_RUN: 'BS_LAST_RUN',
+      ACCOUNTS_READ: 'BS_ACCOUNTS_READ',
       CONSENT_WARNED_PREFIX: 'BS_CONSENT_WARNED_'
     }),
     TABS: Object.freeze({
@@ -120,7 +124,9 @@
       RATES: 'rates',
       HOLDINGS: 'holdings',
       DAILY_VALUES: 'daily_values',
-      ACCOUNT_OWNERS: 'account_owners'
+      ACCOUNT_OWNERS: 'account_owners',
+      DATA_COVERAGE: 'data_coverage',
+      MANUAL_BALANCES: 'manual_balances'
     }),
     ROUTING: Object.freeze({
       INVESTMENT_PROVIDERS: Object.freeze({
@@ -197,6 +203,13 @@
     }),
     REPROCESS: Object.freeze({
       MAX_LISTED: 25
+    }),
+    COVERAGE: Object.freeze({
+      FREQUENCY_DAYS: Object.freeze({ daily: 1, weekly: 7, monthly: 31, quarterly: 92, yearly: 366 }),
+      CSV_FREQUENCY: Object.freeze({ avanza: 'quarterly' }),
+      DEFAULT_CSV_FREQUENCY: 'monthly',
+      DEFAULT_MANUAL_FREQUENCY: 'monthly',
+      MAX_LISTED: 10
     }),
     CONSENT: Object.freeze({
       WARN_DAYS: Object.freeze([30, 14, 7, 1])

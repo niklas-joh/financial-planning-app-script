@@ -53,7 +53,7 @@ test('menu status: the summary opens in a modeless window, escaped, height cappe
   const events = fakeApps();
   const restore = stub({
     Container: { services: () => ({ props: props() }) },
-    Gas: { triggers: () => ({ list: () => [] }) },
+    Gas: { triggers: () => ({ list: () => [] }), dateFormatter: () => (d) => d.toISOString().slice(0, 10) },
     ProviderRegistry: { statusLines: () => ['A <b> & "c"'].concat(Array.from({ length: 60 }, (_, i) => 'line ' + i)) }
   });
   try {

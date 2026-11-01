@@ -26,6 +26,8 @@
    * @property {{assign: function(Array<Object>, import('./config.js').ConnectionConfig): Array<Object>,
    *   save: function(): import('./account-owners.js').OwnersOutcome}} [owners] - Account owners for this run
    *   (`AccountOwners.create`); without it rows keep the owner they have.
+   * @property {{update: function(Array<Object>): import('./data-coverage.js').CoverageOutcome}} [coverage] - The
+   *   `data_coverage` tab (`DataCoverage.create`), rewritten at the end of the run; without it the tab is left as it is.
    */
 
   /**
@@ -94,17 +96,20 @@
    * Runs the sync for all connections.
    * @param {SyncAllDeps} deps - Injected services.
    * @returns {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome,
-   *   moved: ?Object<string,number>, owners: ?import('./account-owners.js').OwnersOutcome}} Per-connection outcome,
+   *   moved: ?Object<string,number>, owners: ?import('./account-owners.js').OwnersOutcome,
+   *   coverage: ?import('./data-coverage.js').CoverageOutcome}} Per-connection outcome,
    *   the row counts from `RawSync.write` (null if no connection could be read), the details applied (null if none
    *   were read), the EUR conversion counts (null without `deps.fx`), the rows moved into each tab (null for a store
-   *   that does not route) and the accounts added to or missing an owner (null without `deps.owners`). No
-   *   transaction content.
+   *   that does not route), the accounts added to or missing an owner (null without `deps.owners`) and the
+   *   accounts whose data needs updating (null without `deps.coverage`). No transaction content.
    */
   function run(deps) {
     const cfg = ns.Config.TRANSACTIONS;
     const startedAt = deps.nowMs();
     const collected = { accounts: [], balances: [], transactions: [], holdings: [], holdingConnections: [] };
     const refreshed = [];
+    /** Accounts of connections whose transactions were read to today (for `deps.coverage`). */
+    let readToToday = [];
     let enrichments = [];
 
     const results = deps.connections.map(function (connection) {
@@ -128,6 +133,7 @@
           result.transactions = Object.assign({}, done.transactions);
           delete result.transactions.rawRows;
           refreshed.push(connection.key);
+          if (done.transactions.complete) readToToday = readToToday.concat(done.data.accounts);
         } catch (e) {
           if (e.name === 'TimeBudget') {
             result.status = 'skipped: time budget';
@@ -168,7 +174,8 @@
     }
     const moved = typeof deps.store.moved === 'function' ? deps.store.moved() : null;
     const owners = deps.owners ? deps.owners.save() : null;
-    return { results: results, raw: raw, details: details, fx: fx, moved: moved, owners: owners };
+    const coverage = deps.coverage ? deps.coverage.update(readToToday) : null;
+    return { results: results, raw: raw, details: details, fx: fx, moved: moved, owners: owners, coverage: coverage };
   }
 
   /**
@@ -188,7 +195,8 @@
   /**
    * Turns a run into the text shown to the user. Counts and account names only, no transaction content.
    * @param {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome,
-   *   moved: (?Object<string,number>|undefined), owners: (?import('./account-owners.js').OwnersOutcome|undefined)}} outcome
+   *   moved: (?Object<string,number>|undefined), owners: (?import('./account-owners.js').OwnersOutcome|undefined),
+   *   coverage: (?import('./data-coverage.js').CoverageOutcome|undefined)}} outcome
    *   - From `run`.
    * @returns {string} Multi-line summary.
    */
@@ -225,6 +233,8 @@
     if (moved) lines.push('Moved between tabs: ' + moved + '.');
     const owners = ns.AccountOwners.summaryLine(outcome.owners || null);
     if (owners) lines.push(owners);
+    const coverage = ns.DataCoverage.summaryLine(outcome.coverage || null);
+    if (coverage) lines.push(coverage);
     return lines.join('\n');
   }
 

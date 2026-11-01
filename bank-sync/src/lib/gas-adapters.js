@@ -85,6 +85,7 @@
             out.push({
               name: file.getName(),
               size: file.getSize(),
+              created: file.getDateCreated().toISOString(),
               text: function (charset) { return file.getBlob().getDataAsString(charset); }
             });
           }
