@@ -6,7 +6,8 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-11-01 (P1: Pluxee card provider; before that: categoriser phase 3a: review inbox, see
+Last updated: 2026-11-01 (Pluxee app sign-in: long-lived refresh token via the mobile app's OAuth client,
+Connect/Finish Pluxee menu; before that: P1 Pluxee card provider; before that: categoriser phase 3a: review inbox, see
 `docs/superpowers/specs/2026-10-31-categoriser-phase-3-design.md`; before that: O1 account owners: one CSV folder for everyone, owner per account on `account_owners`;
 before that: account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
 rows*, live and re-processed; Trading 212 report export live (#83, #88, #94); 6b Avanza CSV import live;
@@ -116,6 +117,38 @@ refresh token survives to the next daily run.
 Deploy: from `bank-sync/`, `npm test`, `clasp push`; reload the sheet; add the two properties (README, "Pluxee
 meal-voucher card"); *Sync all*; check *Show status* and the `transactions` rows of `pluxee-<holder>`; run *Sync all*
 again (expect 0 added, 0 updated).
+
+### App sign-in to replace the short-lived portal token (owner, 2026-11-01)
+
+Problem found in use: the portal's refresh token lapses within ~30 minutes, so a run more than a few minutes after
+the browser sign-in failed with `AuthError` and needed a fresh token every time. Checked against PluxeeConnect's
+own login server: the **portal** web client (`e8adfb42-…`) is refused the `offline_access` scope
+(`invalid_scope`), so its refresh token is tied to the browser session and dies with it — nothing on our side can
+extend it.
+
+The **Pluxee iOS app** uses a different OAuth client, captured from the app's sign-in (client
+`61277322-715e-43ff-bf04-e4ee340715b8`, a public native client, PKCE S256, redirect
+`app.pluxee.consumers.eva://home/`, scope `openid profile email phone …/payment/scopes/user-app`, three
+`resource` audiences). Native app clients of this kind are granted long-lived refresh tokens; the login's session
+cookie was seen set six months ahead, so the app stays signed in for months. The app calls the same
+`api.pluxee.app/gl/eva/bff` server we read, so its token should work on the transactions endpoint.
+
+As built (this PR): Pluxee now signs in through the app client. Two menu steps, no developer tools:
+**Connect Pluxee** builds a PKCE authorization URL (verifier kept in the script cache between steps) and shows
+it; **Finish Pluxee connection** takes the address the browser lands on, exchanges the `code` for tokens
+(`PluxeeConnect` module, no-retry client so a resend cannot trip reuse detection), and saves the refresh token.
+`Config.PLUXEE.CLIENT_ID` is now the app client, so the existing refresh grant renews app-issued tokens. The
+subscription-key read from the portal script is unchanged. Only the card id is still set by hand.
+
+Open questions, to confirm on the first live sign-in (needs the owner's real login — cannot be scripted):
+- **Does the refresh grant for this client need a `resource` parameter?** It has three audiences; the refresh
+  currently sends none (as the portal path did). If PluxeeConnect refuses the refresh without one, add the eva/bff
+  audience to the refresh form.
+- **How long the refresh token actually lives.** Expected months from the session cookie; *Show status* and the
+  daily summary show when it lapses. Re-connecting is now two menu taps, and each sync reads the latest 99 rows,
+  so nothing is lost between sign-ins.
+- The sign-in omits the app's `prompt=select_account` so a plain browser with no Pluxee session goes straight to
+  login; revisit if the authorization step misbehaves.
 
 ## Account numbers (owner, 2026-10-30)
 

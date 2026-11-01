@@ -38,6 +38,17 @@
       return Utilities.base64Encode(text, Utilities.Charset.UTF_8);
     },
 
+    /**
+     * SHA-256 of a string as URL-safe Base64 without padding, for the PKCE `code_challenge`
+     * (the Pluxee app sign-in). Not used for anything secret.
+     * @param {string} text - Text (the PKCE code verifier).
+     * @returns {string} base64url(SHA-256(text)).
+     */
+    sha256Base64Url: function (text) {
+      const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, text, Utilities.Charset.UTF_8);
+      return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '');
+    },
+
     /** @returns {Object} Script Properties service. */
     props: function () {
       return PropertiesService.getScriptProperties();

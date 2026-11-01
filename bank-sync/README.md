@@ -332,27 +332,27 @@ uploaded yourself (see "CSV import").
 
 ## Pluxee meal-voucher card
 
-The Pluxee Luxembourg lunch card (formerly Sodexo) is read through the consumer portal's own API
-(`consumers.pluxee.lu`). Pluxee offers no public API and the card is not a bank account, so no open-banking
-provider serves it; this is unofficial and may break when Pluxee changes its portal. Read only.
+The Pluxee Luxembourg lunch card (formerly Sodexo) is read through the Pluxee consumer API
+(`api.pluxee.app`), signing in the way the Pluxee mobile app does. Pluxee offers no public API and the card is
+not a bank account, so no open-banking provider serves it; this is unofficial and may break when Pluxee changes
+its login or API. Read only.
 
-Signing in to the portal takes an emailed code (and the login page is protected by a captcha), so a script
-cannot sign in. Instead you sign in once in a browser and copy the portal's **refresh token**; each sync
-uses it to get a fresh access token from PluxeeConnect, the way the portal itself does, and saves the new
-refresh token PluxeeConnect hands back. How long a refresh token stays valid without a new sign-in is not known
-yet (see the roadmap).
+Signing in takes a captcha and an emailed code, so a script cannot sign in. Instead you sign in once in a
+browser and hand Bank Sync the **refresh token** the sign-in produces; each sync uses it to get a fresh access
+token from PluxeeConnect and saves the new refresh token PluxeeConnect hands back. The sign-in uses the mobile
+app's OAuth client, which (unlike the portal's web login) is granted long-lived refresh tokens, so you should
+rarely need to sign in again. How long one lives without a new sign-in is still being confirmed (see the roadmap).
 
-1. Sign in at https://consumers.pluxee.lu and open the card. With the browser's developer tools:
-   - **Network**: the call `.../lu/cards/<CARD ID>/transactions?limit=99` names the card id (e.g. `LUX000...`).
-   - **Storage > Session Storage** for `consumers.pluxee.lu`: the key `oidc.user:https://connect.pluxee.app/op:...`
-     holds JSON; copy only the value of `refresh_token`.
-   Then close the tab straight away, **without logging out**: logging out ends the login, and a tab left open
-   renews itself with the token you copied, which makes PluxeeConnect cancel the login once the sync has used it.
-2. In the Apps Script editor, **Project Settings > Script Properties**, add one pair per card, holder in upper case:
-   - `PLUXEE_CARD_<HOLDER>`: the card id, e.g. `PLUXEE_CARD_NIKLAS`
-   - `PLUXEE_REFRESH_TOKEN_<HOLDER>`: the refresh token, e.g. `PLUXEE_REFRESH_TOKEN_NIKLAS`
-3. *Show status* lists both as `set`/`MISSING` (never the values). *Sync all* (and the daily sync) includes every
-   complete pair as connection `pluxee-<holder>`; its card starts with the holder as owner.
+1. The card id (e.g. `LUX000...`) is in the app's **Settings > Debug** screen as `CardIDs`, or in the portal's
+   card URL. In the Apps Script editor, **Project Settings > Script Properties**, add it once per card, holder in
+   upper case: `PLUXEE_CARD_<HOLDER>`, e.g. `PLUXEE_CARD_NIKLAS`.
+2. Reload the Sheet. In the **Bank Sync** menu, **Connect Pluxee...**: type the holder name (e.g. `niklas`), then
+   open the link it shows and sign in. Your browser will try to open an address starting
+   `app.pluxee.consumers.eva://` and fail to — that is expected. Copy that whole address from the address bar.
+3. **Bank Sync > Finish Pluxee connection...**: paste that address. Bank Sync exchanges it for the refresh token
+   and stores it in `PLUXEE_REFRESH_TOKEN_<HOLDER>` for you (never shown). The sign-in link lasts ~30 minutes.
+4. *Show status* lists both properties as `set`/`MISSING` (never the values). *Sync all* (and the daily sync)
+   includes every complete pair as connection `pluxee-<holder>`; its card starts with the holder as owner.
 
 What it writes:
 
@@ -370,7 +370,8 @@ What it writes:
   sends. Each sync reads it from `consumers.pluxee.lu`, once per Pluxee connection (nothing to set up, nothing stored); if Pluxee changes its
   portal so it cannot be found, the sync says so for that connection without using up the refresh token.
 - When PluxeeConnect refuses the refresh token, the sync reports "Pluxee login has expired" for that connection
-  (the others still run): sign in again and paste the new refresh token into the same property.
+  (the others still run): run **Connect Pluxee** and **Finish Pluxee connection** again (step 2-3). Each sync reads
+  the latest 99 transactions, so nothing is lost between sign-ins even if they are weeks apart.
 
 ## CSV import (Phase 6)
 

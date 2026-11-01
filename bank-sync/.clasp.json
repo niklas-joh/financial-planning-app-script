@@ -40,6 +40,7 @@
     "src/providers/pluxee/pluxee-credentials.js",
     "src/providers/pluxee/pluxee-normalize.js",
     "src/providers/pluxee/pluxee-client.js",
+    "src/providers/pluxee/pluxee-connect.js",
     "src/providers/pluxee/pluxee-provider.js",
     "src/providers/csv/csv-parse.js",
     "src/providers/csv/formats/bil.js",

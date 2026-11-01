@@ -60,6 +60,27 @@
   }
 
   /**
+   * Property names for a holder chosen at connect time, deriving the suffix the same way (upper case) so the
+   * Connect Pluxee flow writes exactly the names the reader later scans for.
+   * @param {string} holder - Holder, e.g. 'niklas'.
+   * @returns {{card: string, token: string}} The card and refresh-token property names.
+   */
+  function namesForHolder(holder) {
+    const suffix = String(holder).toUpperCase();
+    return { card: KEYS.PLUXEE_CARD_PREFIX + suffix, token: KEYS.PLUXEE_REFRESH_TOKEN_PREFIX + suffix };
+  }
+
+  /**
+   * Saves a holder's refresh token (the Connect Pluxee flow). The value is a secret: never log or show it.
+   * @param {{setProperty: function(string, string): void}} props - Script Properties.
+   * @param {string} holder - Holder, e.g. 'niklas'.
+   * @param {string} token - The refresh token from PluxeeConnect.
+   */
+  function saveToken(props, holder, token) {
+    props.setProperty(namesForHolder(holder).token, token);
+  }
+
+  /**
    * @param {{getProperty: function(string): ?string}} props - Script Properties.
    * @param {import('../../core/config.js').ConnectionConfig} connection - Pluxee connection.
    * @returns {boolean} True when both the card id and the refresh token are set.
@@ -119,6 +140,7 @@
   }
 
   ns.PluxeeCredentials = {
-    connections: connections, isComplete: isComplete, cardId: cardId, tokenStore: tokenStore, statusLines: statusLines
+    connections: connections, isComplete: isComplete, cardId: cardId, tokenStore: tokenStore, statusLines: statusLines,
+    namesForHolder: namesForHolder, saveToken: saveToken
   };
 })(globalThis.BankSync);

@@ -212,3 +212,120 @@ test('pluxee registry: connections, readiness and status lines come from Script 
   assert.match(status, /PLUXEE_CARD_ALEX: set; PLUXEE_REFRESH_TOKEN_ALEX: set/);
   assert.ok(!status.includes('rt-secret'));
 });
+
+// --- Pluxee connect (app sign-in): PKCE, authorization URL, redirect parsing, code exchange ---
+
+const fakeCache = (init) => {
+  const map = Object.assign({}, init);
+  return { map, put: (k, v) => { map[k] = v; }, get: (k) => (k in map ? map[k] : null), remove: (k) => { delete map[k]; } };
+};
+const seqUuid = () => { let i = 0; return () => 'id' + (++i); };
+const REDIRECT = 'app.pluxee.consumers.eva://home/?code=auth-code-xyz&state=STATE1&iss=https%3A%2F%2Fconnect.pluxee.app%2Fop';
+
+test('pluxee connect: verifier is 64 unreserved characters and the auth URL carries the app client and PKCE', () => {
+  assert.strictEqual(BS.PluxeeConnect.verifierFrom(seqUuid()), 'id1id2'); // two uuids, dashes removed
+  assert.match(BS.PluxeeConnect.verifierFrom(() => '7f3c9d2e-1a4b-4c6d-8e9f-0a1b2c3d4e5f'), /^[A-Za-z0-9]{64}$/);
+  const url = BS.PluxeeConnect.authUrl('CHALLENGE', 'STATE1', 'NONCE1');
+  assert.ok(url.startsWith(PLUXEE.ISSUER + '/oidc/auth?'));
+  assert.match(url, new RegExp('client_id=' + PLUXEE.CLIENT_ID));
+  assert.match(url, /code_challenge=CHALLENGE&/);
+  assert.match(url, /code_challenge_method=S256/);
+  assert.match(url, /state=STATE1/);
+  assert.ok(url.includes('redirect_uri=' + encodeURIComponent(PLUXEE.REDIRECT_URI)));
+  assert.ok(url.includes('scope=' + encodeURIComponent(PLUXEE.SCOPE)));
+  assert.ok(url.includes('resource=' + encodeURIComponent(PLUXEE.RESOURCE)));
+});
+
+test('pluxee connect: queryParam reads code/state/error from a pasted custom-scheme address', () => {
+  assert.strictEqual(BS.PluxeeConnect.queryParam(REDIRECT, 'code'), 'auth-code-xyz');
+  assert.strictEqual(BS.PluxeeConnect.queryParam(REDIRECT, 'state'), 'STATE1');
+  assert.strictEqual(BS.PluxeeConnect.queryParam(REDIRECT, 'error'), '');
+  assert.strictEqual(BS.PluxeeConnect.queryParam('app://home/?error=access_denied', 'error'), 'access_denied');
+});
+
+const connectDeps = (over) => {
+  const o = over || {};
+  const tokenCalls = [];
+  return {
+    tokenCalls,
+    saved: o.saved || [],
+    deps: {
+      http: fakeHttp(),
+      tokenHttp: { request: (req) => { tokenCalls.push(req); if (o.tokenError) throw o.tokenError; return o.tokenResponse || { access_token: 'at', refresh_token: 'rt-new' }; } },
+      cache: o.cache || fakeCache(),
+      uuid: seqUuid(),
+      sha256: (t) => 'CH:' + t,
+      saveToken: (h, t) => { (o.saved || []).push([h, t]); }
+    }
+  };
+};
+
+test('pluxee connect: start normalizes the holder, keeps a pending verifier and returns the sign-in URL', () => {
+  const cache = fakeCache();
+  const { deps } = connectDeps({ cache });
+  const out = BS.PluxeeConnect.create(deps).start('  Niklas  ');
+  assert.strictEqual(out.holder, 'niklas');
+  const pending = JSON.parse(Object.values(cache.map)[0]);
+  assert.strictEqual(pending.holder, 'niklas');
+  assert.ok(pending.verifier && pending.state, 'verifier and state kept');
+  assert.ok(out.url.includes('code_challenge=CH%3A' + pending.verifier), 'challenge is sha256 of the kept verifier');
+  assert.ok(out.url.includes('state=' + pending.state));
+  assert.throws(() => BS.PluxeeConnect.create(deps).start('   '), /short name/);
+});
+
+test('pluxee connect: finish exchanges the code with the kept verifier and saves the refresh token', () => {
+  const saved = [];
+  const cache = fakeCache({ pluxee_connect_pending: JSON.stringify({ holder: 'niklas', verifier: 'ver-1', state: 'STATE1' }) });
+  const h = connectDeps({ cache, saved });
+  const out = BS.PluxeeConnect.create(h.deps).finish(REDIRECT);
+  assert.strictEqual(out.holder, 'niklas');
+  assert.strictEqual(h.tokenCalls.length, 1);
+  assert.deepStrictEqual(h.tokenCalls[0].form, {
+    grant_type: 'authorization_code', code: 'auth-code-xyz', redirect_uri: PLUXEE.REDIRECT_URI,
+    client_id: PLUXEE.CLIENT_ID, code_verifier: 'ver-1'
+  });
+  assert.deepStrictEqual(saved, [['niklas', 'rt-new']]);
+  assert.strictEqual(cache.get('pluxee_connect_pending'), null, 'pending cleared after use');
+});
+
+test('pluxee connect: finish rejects a missing session, a refused sign-in, no code, a wrong state and a missing token', () => {
+  assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: fakeCache() }).deps).finish(REDIRECT), /in progress|expired/);
+
+  const pending = () => fakeCache({ pluxee_connect_pending: JSON.stringify({ holder: 'niklas', verifier: 'ver-1', state: 'STATE1' }) });
+  assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: pending() }).deps).finish('app://home/?error=access_denied'), /refused/);
+  assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: pending() }).deps).finish('nonsense'), /no sign-in code/);
+  assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: pending() }).deps).finish('app://home/?code=c&state=OTHER'), /different sign-in/);
+  assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: pending() }).deps).finish('app://home/?code=c'), /incomplete/); // state is required
+
+  const cache = pending();
+  assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache, tokenResponse: { access_token: 'at' } }).deps).finish(REDIRECT), /no refresh token/);
+  assert.strictEqual(cache.get('pluxee_connect_pending'), null, 'pending cleared even when the exchange yields no token');
+});
+
+test('pluxee credentials: a holder maps to the upper-case property names, and saveToken writes the token', () => {
+  assert.deepStrictEqual(BS.PluxeeCredentials.namesForHolder('niklas'),
+    { card: 'PLUXEE_CARD_NIKLAS', token: 'PLUXEE_REFRESH_TOKEN_NIKLAS' });
+  const props = fakeProps({});
+  BS.PluxeeCredentials.saveToken(props, 'niklas', 'rt-new');
+  assert.strictEqual(props.map.PLUXEE_REFRESH_TOKEN_NIKLAS, 'rt-new');
+});
+
+test('gas sha256Base64Url: matches the RFC 7636 PKCE test vector', () => {
+  const crypto = require('node:crypto');
+  const saved = global.Utilities;
+  global.Utilities = {
+    DigestAlgorithm: { SHA_256: 'SHA_256' },
+    Charset: { UTF_8: 'UTF_8' },
+    computeDigest: (_algo, text) => crypto.createHash('sha256').update(text, 'utf8').digest(),
+    base64EncodeWebSafe: (bytes) => Buffer.from(bytes).toString('base64url') // GAS pads; the adapter strips '='
+  };
+  try {
+    delete require.cache[require.resolve('../src/lib/gas-adapters.js')];
+    require('../src/lib/gas-adapters.js');
+    assert.strictEqual(
+      BS.Gas.sha256Base64Url('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'),
+      'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+  } finally {
+    if (saved === undefined) delete global.Utilities; else global.Utilities = saved;
+  }
+});
