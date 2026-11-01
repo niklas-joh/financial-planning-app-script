@@ -1,5 +1,5 @@
-# Installed as ~/categoriser/docker-compose.yml by scripts/install-schedule.sh.
-# Uses the prebuilt image only, so the scheduled job never reads the repo.
+# Installed as ~/categoriser/docker-compose.yml by scripts/install-schedule.sh and refreshed
+# from `main` by the daily run. Uses the prebuilt image only; the container never reads the repo.
 services:
   categoriser:
     image: categoriser:local

@@ -171,7 +171,8 @@ must be in the taxonomy. Owner is the account's owner.
 - **Train** by hand, after reviewing rows or approving rules: from the runtime folder,
   `docker compose run --rm categoriser python -m categoriser.train`. Use the scheduled image: the model is saved
   with its scikit-learn version and the daily run skips a model from another version (`model=incompatible` in the
-  log). scikit-learn is pinned in `pyproject.toml`; after bumping it, re-run `install-schedule.sh` and retrain.
+  log). scikit-learn is pinned in `pyproject.toml`; after a bump reaches `main`, the next run rebuilds the
+  image and skips the old model (`model=incompatible`) until you retrain with the new image.
 - Examples are the same as for mining: legacy rows, Bank Sync rows joined to them and rows you reviewed
   (these count three times). Labels with fewer than 2 examples are not learnt.
 - It first runs the holdout below, then trains on everything and writes `models/categoriser-model.joblib` and
@@ -247,10 +248,11 @@ pytest                                   # in the venv
 ## 4. Scheduling (launchd, macOS)
 
 Daily at 06:15 with `RunAtLoad`. launchd runs a missed calendar slot once after wake. If the Mac
-was off, `RunAtLoad` runs it at login. `run-scheduled.sh` starts Docker Desktop if needed and skips if
-today's run already succeeded. It uses the prebuilt `categoriser:local` image and never reads the repo.
+was off, `RunAtLoad` runs it at login. `run-scheduled.sh` starts Docker Desktop if needed, skips if
+today's run already succeeded, updates itself from `main` (below) and runs the `categoriser:local` image.
+It never reads your checkout in `~/Documents`.
 
-Install or update (from Terminal or SSH, re-run after code changes to rebuild the image):
+Install once (from Terminal or SSH):
 ```bash
 bank-sync/categoriser/scripts/install-schedule.sh
 ```
@@ -266,21 +268,35 @@ launchctl kickstart gui/$(id -u)/lu.niklas.categoriser   # run now (skips if it 
 ```
 Uninstall: `launchctl bootout gui/$(id -u)/lu.niklas.categoriser`.
 
-## 5. After you change something: what to re-run
+## 5. After you change something: auto-update from `main`
 
-The scheduled job runs the Docker image `categoriser:local`, a **snapshot of the categoriser code**
-taken the last time `scripts/install-schedule.sh` ran. Pull or edit all you like; the job keeps
-running the old snapshot until you re-run the script. Run it from a checkout of the branch you
-want live (normally `main`).
+Merging to `main` is the deploy. Before each daily run, `run-scheduled.sh` fetches `main` of this (public)
+repo into `~/categoriser/repo` (only `bank-sync/categoriser/`). If that folder's git tree differs from the
+one the image was built from (an image label), it rebuilds `categoriser:local` and refreshes
+`docker-compose.yml`, `README.md` and `run-scheduled.sh` itself (used from the next run). So a change
+merged today goes live at the next 06:15 run. The log line `run start (<commit>)` says which commit ran.
 
-| You changed | Re-run `install-schedule.sh`? |
+- **Only green commits deploy.** A new `main` commit is used once GitHub shows its `Tests (categoriser)` check
+  passed (CI runs on every push to `main`). Pending, red or unreachable: the current image runs and the log says
+  `check has not passed`; the next run tries again. A merge just before 06:15 may therefore go live a day later.
+- Offline, fetch or build failure: the current image runs as before (`auto-update did not complete` in the log).
+- Dependencies are capped below their next major version in `pyproject.toml`, so a rebuild picks up bug fixes but
+  not a breaking release CI never saw.
+- Changes elsewhere in the repo don't trigger a rebuild.
+- A changed `launchd/*.plist.template` (e.g. the schedule time) is only reported (`WARNING: the launchd schedule
+  changed`): re-run `install-schedule.sh` for that.
+- To run a branch instead (testing): set `CATEGORISER_AUTO_UPDATE=0` in `~/categoriser/.env`, run
+  `install-schedule.sh` from that branch, and remove the line again when done. Without it, the next run goes
+  back to `main`.
+- To go live now instead of tomorrow: `rm -f ~/categoriser/logs/.last-success && launchctl kickstart gui/$(id -u)/lu.niklas.categoriser`.
+
+| You changed | Goes live |
 |---|---|
-| `bank-sync/categoriser/src/**`, `pyproject.toml`, `Dockerfile` | **Yes** (rebuilds the image) |
-| `scripts/run-scheduled.sh`, `deploy/*`, `launchd/*.plist.template` | **Yes** (re-copies them to `~/categoriser`) |
-| `bank-sync/categoriser/tests/**`, this README | No |
-| `~/categoriser/.env`, or the key in `~/categoriser/credentials/` | No (read on every run) |
-| The model in `~/categoriser/models/` (after `categoriser.train`) | No (loaded on every run) |
-| Apps Script code (`src/`, `bank-sync/src/`) or anything else in the repo | No (not part of the categoriser; deploy with clasp as usual) |
-| Column names in the `transactions` sheet | Check the code still matches, then yes if you changed it |
+| `bank-sync/categoriser/**` merged to `main` (code, `Dockerfile`, `deploy/*`, `run-scheduled.sh`) | Next daily run |
+| `launchd/*.plist.template` | After re-running `install-schedule.sh` |
+| `~/categoriser/.env`, or the key in `~/categoriser/credentials/` | Next run (read on every run) |
+| The model in `~/categoriser/models/` (after `categoriser.train`) | Next run (loaded on every run) |
+| Apps Script code (`src/`, `bank-sync/src/`) | Never via this job; deploy with clasp as usual |
+| Column names in the `transactions` sheet | Check the code still matches |
 
 Re-running is safe: it never overwrites `.env`, keys, data or models already in `~/categoriser`.
