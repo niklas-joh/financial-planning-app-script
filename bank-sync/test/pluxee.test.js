@@ -132,7 +132,7 @@ test('pluxee client: refreshes once, saves a rotated refresh token, sends the be
   assert.strictEqual(get.headers.Authorization, 'Bearer at-1');
   assert.strictEqual(get.headers['ocp-apim-subscription-key'], FAKE_KEY);
   assert.strictEqual(get.headers['authorization-version'], PLUXEE.AUTHORIZATION_VERSION);
-  assert.strictEqual(http.calls.filter((c) => c.url.startsWith(PLUXEE.PORTAL_ORIGIN)).length, 2, 'portal key read once per run');
+  assert.strictEqual(http.calls.filter((c) => c.url.startsWith(PLUXEE.PORTAL_ORIGIN)).length, 2, 'portal key read once per client, however many calls');
 });
 
 test('pluxee client: the subscription key comes from the portal script (runtime config or build env)', () => {

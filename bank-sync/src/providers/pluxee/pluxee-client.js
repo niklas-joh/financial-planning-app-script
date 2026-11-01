@@ -8,7 +8,8 @@
  *
  * The API also wants the portal's subscription key (`ocp-apim-subscription-key`), a fixed value
  * built into the portal's script and sent by every visitor's browser. It is read from that script
- * once per run, so a key Pluxee rotates is picked up without a code change.
+ * once per connection in each run (two page reads; one card connection is expected), so a key Pluxee
+ * rotates is picked up without a code change.
  */
 (function (ns) {
   const PLUXEE = ns.Config.PLUXEE;
@@ -59,7 +60,7 @@
     let accessToken = '';
     let apiKey = '';
 
-    /** @returns {string} The portal's API subscription key, read once per run. */
+    /** @returns {string} The portal's API subscription key, read once by this client (one client per connection and run). */
     function portalKey() {
       if (!apiKey) {
         const getText = function (url) { return http.request({ method: 'GET', url: url, text: true }); };

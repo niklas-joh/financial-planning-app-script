@@ -365,7 +365,7 @@ What it writes:
 - Each sync reads the latest 99 transactions (what the portal asks for; the response has no paging). On a lunch card
   that is over a year of history, so the first sync loads that and later ones only need the last days.
 - The API also wants the portal's subscription key, a fixed value in the portal's script that every visitor's browser
-  sends. Each sync reads it from `consumers.pluxee.lu` (nothing to set up, nothing stored); if Pluxee changes its
+  sends. Each sync reads it from `consumers.pluxee.lu`, once per Pluxee connection (nothing to set up, nothing stored); if Pluxee changes its
   portal so it cannot be found, the sync says so for that connection without using up the refresh token.
 - When PluxeeConnect refuses the refresh token, the sync reports "Pluxee login has expired" for that connection
   (the others still run): sign in again and paste the new refresh token into the same property.
