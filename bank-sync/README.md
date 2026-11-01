@@ -33,7 +33,8 @@ tested locally: `npm test` (Node 20+).
 
 ## Secrets
 
-The application ID and private key, and the Trading 212 API keys and secrets, live only in Script Properties. Never put
+The application ID and private key, the Trading 212 API keys and secrets, and the Pluxee refresh tokens live only in
+Script Properties. Never put
 them in the repo, logs, sheets or chat. `.gitignore` excludes `*.pem`, `*.key`,
 `.env`, `client_secret*.json` and `.clasprc.json`. Tests and docs use fake data.
 
@@ -328,6 +329,40 @@ uploaded yourself (see "CSV import").
   the app's export (instrument, shares, price, withholding tax, ATM fee); only the ones in "CSV import" are used. Its
   dividend rows have no `ID` and are skipped (dividends come from the API). If a report ever had other columns, the
   CSV import would skip it and name it in *Show status*.
+
+## Pluxee meal-voucher card
+
+The Pluxee Luxembourg lunch card (formerly Sodexo) is read through the consumer portal's own API
+(`consumers.pluxee.lu`). Pluxee offers no public API and the card is not a bank account, so no open-banking
+provider serves it; this is unofficial and may break when Pluxee changes its portal. Read only.
+
+Signing in to the portal takes an emailed code (and the login page is protected by a captcha), so a script
+cannot sign in. Instead you sign in once in a browser and copy the portal's **refresh token**; each sync
+uses it to get a fresh access token from PluxeeConnect, the way the portal itself does, and saves the new
+refresh token PluxeeConnect hands back. How long a refresh token stays valid without a new sign-in is not known
+yet (see the roadmap).
+
+1. Sign in at https://consumers.pluxee.lu and open the card. With the browser's developer tools:
+   - **Network**: the call `.../lu/cards/<CARD ID>/transactions?limit=99` names the card id (e.g. `LUX000...`).
+   - **Storage > Session Storage** for `consumers.pluxee.lu`: the key `oidc.user:https://connect.pluxee.app/op:...`
+     holds JSON; copy only the value of `refresh_token`.
+   Then close the tab **without logging out** (logging out ends the login and the token with it).
+2. In the Apps Script editor, **Project Settings > Script Properties**, add one pair per card, holder in upper case:
+   - `PLUXEE_CARD_<HOLDER>`: the card id, e.g. `PLUXEE_CARD_NIKLAS`
+   - `PLUXEE_REFRESH_TOKEN_<HOLDER>`: the refresh token, e.g. `PLUXEE_REFRESH_TOKEN_NIKLAS`
+3. *Show status* lists both as `set`/`MISSING` (never the values). *Sync all* (and the daily sync) includes every
+   complete pair as connection `pluxee-<holder>`; its card starts with the holder as owner.
+
+What it writes:
+
+- The card is one account (`bank` Pluxee, `accountName` the product, e.g. "Pluxee Lunch", `ibanMasked` the card's
+  masked number as Pluxee shows it). No balances yet.
+- `transactions`: every approved payment (negative) and top-up (positive) of the card, `counterparty` the merchant,
+  `description` Pluxee's short name, `category` Pluxee's type (`DEBIT`, `CREDIT`), `classification` = `card`.
+  Declined payments are left out; a status other than approved is stored as pending. Amounts are in EUR.
+- Each sync reads the latest 99 transactions (what the portal asks for), which covers far more than a day.
+- When PluxeeConnect refuses the refresh token, the sync reports "Pluxee login has expired" for that connection
+  (the others still run): sign in again and paste the new refresh token into the same property.
 
 ## CSV import (Phase 6)
 

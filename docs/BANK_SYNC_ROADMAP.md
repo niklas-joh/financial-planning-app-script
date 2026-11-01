@@ -6,7 +6,7 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-31 (categoriser phase 3a: review inbox, see
+Last updated: 2026-11-01 (P1: Pluxee card provider; before that: categoriser phase 3a: review inbox, see
 `docs/superpowers/specs/2026-10-31-categoriser-phase-3-design.md`; before that: O1 account owners: one CSV folder for everyone, owner per account on `account_owners`;
 before that: account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
 rows*, live and re-processed; Trading 212 report export live (#83, #88, #94); 6b Avanza CSV import live;
@@ -45,6 +45,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
 | M1 | Account numbers in full: `MASK_ACCOUNT_NUMBERS` (default off), one masking helper, *Re-process stored rows* | Merged (#91), live since 2026-10-30: re-processed twice, nothing left masked (see "Live state") |
 | O1 | Account owners: `account_owners` tab (owner per account, typed by the owner), `owner` label on every tab, one CSV folder for everyone's exports | Merged, not deployed yet (see "O1: account owners" for the deploy steps) |
+| P1 | Pluxee meal-voucher card (unofficial portal API): card as an account, approved payments and top-ups on `transactions` | Merged, not deployed yet (see "Pluxee" for the deploy steps and the open question) |
 | B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged (#83, #88, #94), live since 2026-10-30 (see Live state) |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
@@ -70,6 +71,35 @@ In this order; each item still gets its own PR and stops for review.
 4. Analysis on the classified data, toward one sheet (open decision "One sheet").
 5. When convenient: Phase 8 (partner), B4 (Drive scope), retiring Plaid/SaltEdge, the old portfolio sheet and the
    one-time migration code. Phase 9 (Avanza API) stays unplanned.
+
+## Pluxee (owner, 2026-11-01)
+
+The Pluxee Luxembourg lunch card is read through the consumer portal's own API, since no open-banking provider
+serves it and Pluxee publishes no API. Found by inspecting the portal (2026-11-01):
+
+- The portal (`consumers.pluxee.lu`) signs in through PluxeeConnect (`connect.pluxee.app/op`, OpenID Connect) with
+  an emailed six-digit code; the login page carries hCAPTCHA. The portal keeps an access token (about 30 minutes)
+  and a **refresh token** in session storage (scope `openid profile email`, no `offline_access`).
+- Transactions: `GET https://api.pluxee.app/gl/eva/bff/v2/lu/cards/<cardId>/transactions?limit=99` with the
+  bearer token returns `{card, transactions}`; amounts are `{value, exponent, currency}` in minor units; statuses
+  seen: `APPROVED`, `DECLINED`; dates are local times without a zone.
+
+As built: one connection per `PLUXEE_CARD_<HOLDER>` / `PLUXEE_REFRESH_TOKEN_<HOLDER>` pair in Script Properties.
+Each sync renews the access token with the `refresh_token` grant (token endpoint from the discovery document,
+the portal's public client id) and saves a rotated refresh token before anything else. A refused refresh is an
+AuthError asking for a new sign-in. Rows are `classification` = `card`; declined ones are dropped.
+
+Open question: **how long the refresh token lives** without a new sign-in (likely tied to the PluxeeConnect
+session, so days rather than months), and whether the token endpoint and the API accept calls from Apps Script
+as they do from the portal. The first deploy answers the second; *Show status* and the daily summary show when
+the login lapses. If it lapses within hours, keep CSV exports instead.
+
+Field names on the transactions (`amount`, `merchantName`) were read from a cut-off screenshot: check them against
+the first live sync (`raw_transactions`) and fix `pluxee-normalize.js` if a column stays empty.
+
+Deploy: from `bank-sync/`, `npm test`, `clasp push`; reload the sheet; add the two properties (README, "Pluxee
+meal-voucher card"); *Sync all*; check *Show status* and the `transactions` rows of `pluxee-<holder>`; run *Sync all*
+again (expect 0 added, 0 updated).
 
 ## Account numbers (owner, 2026-10-30)
 

@@ -12,8 +12,8 @@
    *   (for Trading 212: name 'Trading 212', no country).
    * @property {string} [provider] - Provider id serving the connection; missing means 'enablebanking'
    *   (stored Enable Banking connections predate the field).
-   * @property {string} [propertySuffix] - Trading 212 only: the holder part of the Script Property names
-   *   (e.g. 'NIKLAS' in `T212_API_KEY_NIKLAS`). Never the secret itself.
+   * @property {string} [propertySuffix] - Trading 212 and Pluxee: the holder part of the Script Property names
+   *   (e.g. 'NIKLAS' in `T212_API_KEY_NIKLAS` or `PLUXEE_CARD_NIKLAS`). Never the secret itself.
    */
 
   /**
@@ -57,6 +57,10 @@
    *   back before the last one's end, the
    *   time after an export run starts during which a rate-limited call may still wait for its reset (ms; it
    *   bounds those waits, not the run), and how many redirects a report download follows.
+   * @property {Object} PLUXEE - Pluxee Luxembourg meal-voucher card (unofficial: the consumer portal's own API):
+   *   provider id, display name, the PluxeeConnect OpenID issuer (its discovery document names the token endpoint),
+   *   the portal's public OAuth client id (from the portal's sign-in, not a secret), the API origin and the card
+   *   transactions path, and how many transactions one call asks for (the portal's own value).
    * @property {Object} CSV - CSV import: provider id, display name of its connections (one Drive folder per
    *   holder), the largest file read, and how many skipped files (and characters each) the last-read record
    *   names, so it stays far below the 9 KB Script Property limit.
@@ -96,6 +100,8 @@
       T212_HISTORY_PREFIX: 'T212_HISTORY_',
       T212_EXPORT_PREFIX: 'T212_EXPORT_',
       T212_EXPORT_FOLDER_PREFIX: 'CSV_FOLDER_T212_',
+      PLUXEE_REFRESH_TOKEN_PREFIX: 'PLUXEE_REFRESH_TOKEN_',
+      PLUXEE_CARD_PREFIX: 'PLUXEE_CARD_',
       CSV_FOLDER_PREFIX: 'CSV_FOLDER_',
       CSV_IMPORTS_PREFIX: 'CSV_IMPORTS_',
       LAST_RUN: 'BS_LAST_RUN',
@@ -164,6 +170,15 @@
       EXPORT_OVERLAP_DAYS: 7,
       EXPORT_BUDGET_MS: 240000,
       MAX_REDIRECTS: 3
+    }),
+    PLUXEE: Object.freeze({
+      PROVIDER_ID: 'pluxee',
+      BANK_NAME: 'Pluxee',
+      ISSUER: 'https://connect.pluxee.app/op',
+      CLIENT_ID: 'e8adfb42-286e-4d45-8a31-7ecfd5f182c0',
+      API_ORIGIN: 'https://api.pluxee.app',
+      TRANSACTIONS_PATH: '/gl/eva/bff/v2/lu/cards/',
+      PAGE_LIMIT: 99
     }),
     CSV: Object.freeze({
       PROVIDER_ID: 'csv',

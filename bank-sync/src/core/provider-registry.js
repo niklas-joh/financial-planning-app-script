@@ -82,6 +82,23 @@
     }
   };
 
+  /** @type {ProviderEntry} Pluxee meal-voucher card: card id and refresh token in Script Properties. */
+  const pluxee = {
+    id: ns.Config.PLUXEE.PROVIDER_ID,
+    connections: function (wired) { return ns.PluxeeCredentials.connections(wired.props); },
+    isConnected: function (c, wired) { return ns.PluxeeCredentials.isComplete(wired.props, c); },
+    create: function (c, wired, env) {
+      return ns.PluxeeProvider.create({
+        connection: c,
+        cardId: ns.PluxeeCredentials.cardId(wired.props, c),
+        client: ns.PluxeeClient.create(env.http(), ns.PluxeeCredentials.tokenStore(wired.props, c)),
+        toLocalDate: env.toLocalDate
+      });
+    },
+    consents: function () { return []; },
+    statusLines: function (wired) { return ns.PluxeeCredentials.statusLines(wired.props); }
+  };
+
   /** @type {ProviderEntry} CSV exports in Drive folders (one is enough for everyone); read by every Sync all. */
   const csv = {
     id: ns.Config.CSV.PROVIDER_ID,
@@ -99,7 +116,7 @@
     statusLines: function (wired) { return ns.CsvFolders.statusLines(wired.props); }
   };
 
-  const ENTRIES = [enableBanking, trading212, csv];
+  const ENTRIES = [enableBanking, trading212, pluxee, csv];
 
   /**
    * @param {import('./config.js').ConnectionConfig} connection - Connection.
@@ -140,7 +157,7 @@
     /**
      * @param {import('./config.js').ConnectionConfig} c - Connection.
      * @param {Object} wired - Services.
-     * @param {ProviderEnv} [env] - Apps Script helpers (needed by Trading 212 and CSV import).
+     * @param {ProviderEnv} [env] - Apps Script helpers (needed by Trading 212, Pluxee and CSV import).
      * @returns {import('../providers/bank-provider.js').BankProvider} Provider.
      */
     create: function (c, wired, env) { return entryFor(c).create(c, wired, env); }
