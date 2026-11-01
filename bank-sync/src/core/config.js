@@ -60,7 +60,9 @@
    * @property {Object} PLUXEE - Pluxee Luxembourg meal-voucher card (unofficial: the consumer portal's own API):
    *   provider id, display name, the PluxeeConnect OpenID issuer (its discovery document names the token endpoint),
    *   the portal's public OAuth client id (from the portal's sign-in, not a secret), the API origin and the card
-   *   transactions path, and how many transactions one call asks for (the portal's own value).
+   *   transactions path, the portal origin (its script carries the API subscription key every visitor's browser
+   *   sends; it is read from there each run, never stored), the `authorization-version` header the portal sends,
+   *   and how many transactions one call asks for (the portal's own value).
    * @property {Object} CSV - CSV import: provider id, display name of its connections (one Drive folder per
    *   holder), the largest file read, and how many skipped files (and characters each) the last-read record
    *   names, so it stays far below the 9 KB Script Property limit.
@@ -177,6 +179,8 @@
       ISSUER: 'https://connect.pluxee.app/op',
       CLIENT_ID: 'e8adfb42-286e-4d45-8a31-7ecfd5f182c0',
       API_ORIGIN: 'https://api.pluxee.app',
+      PORTAL_ORIGIN: 'https://consumers.pluxee.lu',
+      AUTHORIZATION_VERSION: '2',
       TRANSACTIONS_PATH: '/gl/eva/bff/v2/lu/cards/',
       PAGE_LIMIT: 99
     }),

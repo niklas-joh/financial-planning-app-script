@@ -89,7 +89,11 @@ test('pluxee normalize: the card number goes through the account-number masking 
   assert.strictEqual(withMasking(BS, false, () => BS.PluxeeNormalize.account(card, 'x', CONN).ibanMasked), '4000 0000 0000 1234');
 });
 
-/** HTTP fake: discovery, token endpoint and transactions, recording every request. */
+const FAKE_KEY = '0123456789abcdef0123456789abcdef';
+const PORTAL_PAGE = '<script type="module" crossorigin src="/assets/index-Ab1-x.js"></script>';
+const PORTAL_SCRIPT = 'x={backendEndpointUrl:`https://api.example/`,backendAPIMKey:`' + FAKE_KEY + '`,other:1}';
+
+/** HTTP fake: portal page and script, discovery, token endpoint and transactions, recording every request. */
 function fakeHttp(over) {
   const o = over || {};
   const calls = [];
@@ -97,6 +101,8 @@ function fakeHttp(over) {
     calls,
     request: (req) => {
       calls.push(req);
+      if (req.url === PLUXEE.PORTAL_ORIGIN + '/') return o.page === undefined ? PORTAL_PAGE : o.page;
+      if (req.url === PLUXEE.PORTAL_ORIGIN + '/assets/index-Ab1-x.js') return o.script === undefined ? PORTAL_SCRIPT : o.script;
       if (req.url.endsWith('/.well-known/openid-configuration')) {
         return { token_endpoint: o.tokenEndpoint || PLUXEE.ISSUER + '/token' };
       }
@@ -124,6 +130,25 @@ test('pluxee client: refreshes once, saves a rotated refresh token, sends the be
   const get = http.calls.filter((c) => c.url.includes('/transactions'))[0];
   assert.strictEqual(get.url, PLUXEE.API_ORIGIN + PLUXEE.TRANSACTIONS_PATH + 'LUX1/transactions?limit=' + PLUXEE.PAGE_LIMIT);
   assert.strictEqual(get.headers.Authorization, 'Bearer at-1');
+  assert.strictEqual(get.headers['ocp-apim-subscription-key'], FAKE_KEY);
+  assert.strictEqual(get.headers['authorization-version'], PLUXEE.AUTHORIZATION_VERSION);
+  assert.strictEqual(http.calls.filter((c) => c.url.startsWith(PLUXEE.PORTAL_ORIGIN)).length, 2, 'portal key read once per run');
+});
+
+test('pluxee client: the subscription key comes from the portal script (runtime config or build env)', () => {
+  const getText = (script) => () => script;
+  assert.strictEqual(BS.PluxeeClient.subscriptionKey(PORTAL_PAGE, getText(PORTAL_SCRIPT)), FAKE_KEY);
+  assert.strictEqual(BS.PluxeeClient.subscriptionKey(PORTAL_PAGE, getText("{VITE_BACKEND_APIM_KEY:'" + FAKE_KEY + "'}")), FAKE_KEY);
+  assert.throws(() => BS.PluxeeClient.subscriptionKey('<html></html>', getText(PORTAL_SCRIPT)), /names no main script/);
+  assert.throws(() => BS.PluxeeClient.subscriptionKey(PORTAL_PAGE, getText('no key here')), /no API subscription key/);
+});
+
+test('pluxee client: a portal without a key fails before the refresh token is used', () => {
+  const props = fakeProps({ PLUXEE_REFRESH_TOKEN_ALEX: 'rt-1' });
+  const http = fakeHttp({ script: 'changed' });
+  assert.throws(() => BS.PluxeeClient.create(http, tokenStore(props)).transactions('LUX1'), /no API subscription key/);
+  assert.ok(!http.calls.some((c) => c.method === 'POST'));
+  assert.strictEqual(props.map.PLUXEE_REFRESH_TOKEN_ALEX, 'rt-1');
 });
 
 test('pluxee client: keeps the stored token when none is returned; a refused refresh asks for a new login', () => {

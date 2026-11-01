@@ -5,6 +5,10 @@
  * grant against PluxeeConnect, as the portal does) and reads the card's transactions. When the
  * token endpoint returns a new refresh token, it is saved before anything else is called, so a
  * rotated token is never lost. Tokens never leave this module.
+ *
+ * The API also wants the portal's subscription key (`ocp-apim-subscription-key`), a fixed value
+ * built into the portal's script and sent by every visitor's browser. It is read from that script
+ * once per run, so a key Pluxee rotates is picked up without a code change.
  */
 (function (ns) {
   const PLUXEE = ns.Config.PLUXEE;
@@ -20,6 +24,26 @@
     return e.apiCode === 'invalid_grant' || e.status === 401;
   }
 
+  /** The key in the portal's script: `backendAPIMKey:` (runtime config) or `VITE_BACKEND_APIM_KEY:` (build env). */
+  const KEY_PATTERN = /(?:backendAPIMKey|VITE_BACKEND_APIM_KEY)\s*:\s*[`'"]([0-9a-fA-F]{32})[`'"]/;
+  /** The portal's main script in its page, e.g. `/assets/index-DatvBM8E.js`. */
+  const SCRIPT_PATTERN = /src="(\/assets\/index-[\w-]+\.js)"/;
+
+  /**
+   * Finds the API subscription key in the portal's page and script.
+   * @param {string} page - HTML of the portal's start page.
+   * @param {function(string): string} getText - Reads a URL as text.
+   * @returns {string} The key.
+   * @throws {Error} DataError when the page names no script or the script holds no key.
+   */
+  function subscriptionKey(page, getText) {
+    const script = SCRIPT_PATTERN.exec(String(page || ''));
+    if (!script) throw ns.Errors.create('DataError', 'Pluxee portal page names no main script (the portal changed)');
+    const key = KEY_PATTERN.exec(String(getText(PLUXEE.PORTAL_ORIGIN + script[1]) || ''));
+    if (!key) throw ns.Errors.create('DataError', 'Pluxee portal script holds no API subscription key (the portal changed)');
+    return key[1];
+  }
+
   /**
    * Creates a client.
    * @param {{request: function(Object): *}} http - JSON HTTP client.
@@ -33,6 +57,16 @@
   function create(http, tokens, tokenHttp) {
     const tokenClient = tokenHttp || http;
     let accessToken = '';
+    let apiKey = '';
+
+    /** @returns {string} The portal's API subscription key, read once per run. */
+    function portalKey() {
+      if (!apiKey) {
+        const getText = function (url) { return http.request({ method: 'GET', url: url, text: true }); };
+        apiKey = subscriptionKey(getText(PLUXEE.PORTAL_ORIGIN + '/'), getText);
+      }
+      return apiKey;
+    }
 
     /**
      * @returns {string} The token endpoint from PluxeeConnect's discovery document.
@@ -80,10 +114,20 @@
        */
       transactions: function (cardId) {
         const url = PLUXEE.API_ORIGIN + PLUXEE.TRANSACTIONS_PATH + encodeURIComponent(cardId) + '/transactions?limit=' + PLUXEE.PAGE_LIMIT;
-        return http.request({ method: 'GET', url: url, headers: { Authorization: 'Bearer ' + access(), Accept: 'application/json' } }) || {};
+        const key = portalKey(); // before the refresh: a changed portal must not use up a refresh token
+        return http.request({
+          method: 'GET',
+          url: url,
+          headers: {
+            Authorization: 'Bearer ' + access(),
+            'authorization-version': PLUXEE.AUTHORIZATION_VERSION,
+            'ocp-apim-subscription-key': key,
+            Accept: 'application/json'
+          }
+        }) || {};
       }
     };
   }
 
-  ns.PluxeeClient = { create: create };
+  ns.PluxeeClient = { create: create, subscriptionKey: subscriptionKey };
 })(globalThis.BankSync);
