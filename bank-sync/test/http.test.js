@@ -53,3 +53,16 @@ test('a retryDelayMs hook decides the wait from the headers, and null gives up',
   assert.deepStrictEqual(sleeps, [1234]);
   assert.strictEqual(calls, 2);
 });
+
+test('sends form fields URL-encoded with the form content type (OAuth token requests)', () => {
+  let params = null;
+  const http = Http.create({ fetch: (url, p) => { params = p; return reply(200, { ok: 1 }); }, sleep: () => {} });
+  http.request({ method: 'POST', url: 'u', form: { grant_type: 'refresh_token', refresh_token: 'a b&c=' } });
+  assert.strictEqual(params.contentType, 'application/x-www-form-urlencoded');
+  assert.strictEqual(params.payload, 'grant_type=refresh_token&refresh_token=a%20b%26c%3D');
+});
+
+test('an OAuth error body becomes the error code (e.g. invalid_grant)', () => {
+  const { http } = client([reply(400, { error: 'invalid_grant', error_description: 'grant request is invalid' })]);
+  assert.throws(() => http.request({ method: 'POST', url: 'u', form: {} }), (e) => e.status === 400 && e.apiCode === 'invalid_grant');
+});

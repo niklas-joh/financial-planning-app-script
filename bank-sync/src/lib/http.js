@@ -11,6 +11,8 @@
    * @property {string} url - Absolute URL.
    * @property {Object<string,string>} [headers] - Request headers.
    * @property {Object} [body] - JSON-serializable body.
+   * @property {Object<string,string>} [form] - Form fields, sent as `application/x-www-form-urlencoded` (OAuth token
+   *   requests); not combined with `body`.
    * @property {boolean} [text] - Return a successful body as text instead of parsed JSON (e.g. a CSV file).
    * @property {boolean} [followRedirects] - false: a redirect is not followed but returned as `{redirect: <Location>}`,
    *   so the caller decides where its headers may go (UrlFetchApp follows redirects with the same headers otherwise).
@@ -42,6 +44,16 @@
    */
   function backoffMs(attempt) {
     return RETRY_BASE_MS * Math.pow(2, attempt);
+  }
+
+  /**
+   * @param {Object<string,string>} fields - Form fields.
+   * @returns {string} `a=1&b=2`, each name and value URL-encoded.
+   */
+  function formEncode(fields) {
+    return Object.keys(fields).map(function (k) {
+      return encodeURIComponent(k) + '=' + encodeURIComponent(fields[k]);
+    }).join('&');
   }
 
   /**
@@ -98,6 +110,9 @@
       if (req.body !== undefined) {
         params.contentType = 'application/json';
         params.payload = JSON.stringify(req.body);
+      } else if (req.form !== undefined) {
+        params.contentType = 'application/x-www-form-urlencoded';
+        params.payload = formEncode(req.form);
       }
       for (let attempt = 0; ; attempt++) {
         const response = deps.fetch(req.url, params);
