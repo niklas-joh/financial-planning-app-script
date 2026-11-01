@@ -58,7 +58,8 @@ const ownerOf = (rows, accountName) => rows.filter((t) => t.accountName === acco
 test('owners: a first sync lists each CSV account on account_owners with no owner, and says so', () => {
   const r = folderRun(FILES);
   const outcome = r.run();
-  assert.deepStrictEqual(r.grid()[0], ['owner', 'bank', 'accountName', 'ibanMasked', 'connection', 'provider', 'accountId']);
+  assert.deepStrictEqual(r.grid()[0], ['owner', 'bank', 'accountName', 'ibanMasked', 'connection', 'provider', 'accountId',
+    'source', 'frequency', 'howTo']);
   assert.deepStrictEqual(r.grid().slice(1).map((row) => row.slice(0, 6)), [
     ['', 'BIL', 'Current Private', 'LU120000000000001234', 'csv-niklas', 'csv'],
     ['', 'BIL', 'Savings Account', 'LU450000000000009876', 'csv-niklas', 'csv']
@@ -106,10 +107,11 @@ test('owners: a new export of another account is appended below the rows already
   run.book.sheets[TAB] = r.book.sheets[TAB];
   const outcome = run.run();
   assert.deepStrictEqual(outcome.owners, { added: 1, missing: ['BIL Savings Account'] });
+  const notes = run.grid()[0].indexOf('notes');
   assert.deepStrictEqual(run.grid()[1].slice(0, 3), ['Niklas', 'BIL', 'Current Private']);
-  assert.strictEqual(run.grid()[1][7], 'my main account');
+  assert.strictEqual(run.grid()[1][notes], 'my main account');
   assert.deepStrictEqual(run.grid()[2].slice(0, 3), ['', 'BIL', 'Savings Account']);
-  assert.strictEqual(run.grid()[2][7], '');
+  assert.strictEqual(run.grid()[2][notes], '');
   assert.deepStrictEqual(ownerOf(run.rows(), 'Current Private'), ['niklas']);
 });
 

@@ -5,7 +5,10 @@
  * have the same id and count once. Details files (e.g. the Trading 212 report) add no rows: their
  * details are handed to Sync all through `getEnrichments` and applied to the rows they name. A
  * file that matches no format, or cannot be read, is skipped and named in the last-read record
- * (the first few, so the record fits one Script Property); the other files still import.
+ * (the first few, so the record fits one Script Property); the other files still import. The record also keeps, per
+ * account, the end of its newest export (for `DataCoverage`): files of one source uploaded the same day count as
+ * one export, which reaches the latest date in any of them, so a quiet account exported with busy ones is not
+ * taken as older than it is.
  */
 (function (ns) {
   const CSV = ns.Config.CSV;
@@ -15,6 +18,7 @@
    * @property {string} name - File name.
    * @property {number} size - Size in bytes.
    * @property {function(string): string} text - Content decoded with the given charset.
+   * @property {string} [created] - ISO date-time the file was added to Drive.
    */
 
   /**
@@ -23,7 +27,34 @@
    * @property {{files: function(): Array<CsvFile>}} folder - The connection's Drive folder.
    * @property {{save: function(Object): void}} record - Last-read record (`CsvFolders.imports`).
    * @property {function(): number} nowMs - Clock.
+   * @property {function(string): string} [toLocalDate] - ISO date-time to YYYY-MM-DD in the Bank Sync time zone
+   *   (without it, the UTC date).
    */
+
+  /**
+   * End of each account's newest export: per file, the latest date of every file of the same source uploaded the
+   * same day; per account, that date for the newest such upload holding it.
+   * @param {Array<{source: string, day: string, last: string, accountIds: Array<string>}>} files - Files read.
+   * @returns {Object<string, string>} Per account id, YYYY-MM-DD.
+   */
+  function exportEnds(files) {
+    const batchEnd = {};
+    files.forEach(function (f) {
+      const key = f.source + '|' + f.day;
+      if (f.last > (batchEnd[key] || '')) batchEnd[key] = f.last;
+    });
+    const newest = {};
+    files.forEach(function (f) {
+      const end = batchEnd[f.source + '|' + f.day] || '';
+      f.accountIds.forEach(function (id) {
+        const seen = newest[id];
+        if (!seen || f.day > seen.day || (f.day === seen.day && end > seen.end)) newest[id] = { day: f.day, end: end };
+      });
+    });
+    const out = {};
+    Object.keys(newest).sort().forEach(function (id) { if (newest[id].end) out[id] = newest[id].end; });
+    return out;
+  }
 
   /**
    * Adds one file's new rows or details to the per-source counts.
@@ -69,7 +100,9 @@
     const accounts = {};
     const byKey = {};
     const detailsByKey = {};
-    const record = { at: new Date(deps.nowMs()).toISOString(), sources: {}, skipped: [], skippedMore: 0 };
+    const record = { at: new Date(deps.nowMs()).toISOString(), sources: {}, skipped: [], skippedMore: 0, accounts: {} };
+    const read = [];
+    const localDate = deps.toLocalDate || function (iso) { return iso.slice(0, 10); };
     deps.folder.files()
       .filter(function (f) { return /\.csv$/i.test(f.name); })
       .sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; })
@@ -87,6 +120,12 @@
           const fresh = unseen(out.transactions, byKey, function (t) { return t.accountId + '|' + t.transactionId; });
           out.accounts.forEach(function (a) { accounts[a.accountId] = a; });
           count(record.sources, found.format.id, fresh.map(function (t) { return t.bookingDate; }));
+          read.push({
+            source: found.format.id,
+            day: f.created ? localDate(f.created) : '',
+            last: out.transactions.reduce(function (m, t) { return t.bookingDate > m ? t.bookingDate : m; }, ''),
+            accountIds: out.accounts.map(function (a) { return a.accountId; })
+          });
         } catch (e) {
           if (record.skipped.length < CSV.MAX_SKIPPED_LISTED) {
             record.skipped.push(ns.Redact.text(f.name + ' (' + e.message + ')').slice(0, CSV.MAX_SKIPPED_CHARS));
@@ -95,6 +134,7 @@
           }
         }
       });
+    record.accounts = exportEnds(read);
     return {
       accounts: Object.keys(accounts).sort().map(function (id) { return accounts[id]; }),
       transactions: Object.keys(byKey).map(function (key) { return byKey[key]; }),
@@ -134,5 +174,5 @@
     });
   }
 
-  ns.CsvImportProvider = { create: create };
+  ns.CsvImportProvider = { create: create, exportEnds: exportEnds };
 })(globalThis.BankSync);

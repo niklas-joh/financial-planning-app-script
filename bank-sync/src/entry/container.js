@@ -101,16 +101,25 @@
     const todayIso = function () { return formatDate(new Date()); };
     const startedAt = wired.nowMs();
     const env = providerEnv(function () { return startedAt + ns.Config.TRANSACTIONS.TIME_BUDGET_MS - wired.nowMs(); });
+    const store = transactionsStore(spreadsheet, formatDate);
     return {
       connections: ns.ProviderRegistry.connections(wired),
       isConnected: function (c) { return ns.ProviderRegistry.isConnected(c, wired); },
       providerFor: function (c) { return providerFor(c, wired, env); },
-      store: transactionsStore(spreadsheet, formatDate),
+      store: store,
       rawWriter: ns.RawWriter.create(spreadsheet),
       nowMs: wired.nowMs,
       todayIso: todayIso,
       fx: fxService(spreadsheet, formatDate, todayIso),
-      owners: ns.AccountOwners.create(ns.AccountOwnersTab.create(spreadsheet))
+      owners: ns.AccountOwners.create(ns.AccountOwnersTab.create(spreadsheet)),
+      coverage: ns.DataCoverage.create({
+        tab: ns.DataCoverageTab.create(spreadsheet, formatDate),
+        owners: ns.AccountOwnersTab.create(spreadsheet),
+        store: store,
+        read: ns.DataCoverage.readStore(wired.props),
+        csvCoverage: function () { return ns.CsvFolders.exportEnds(wired.props); },
+        todayIso: todayIso
+      })
     };
   }
 
