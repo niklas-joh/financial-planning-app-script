@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const BS = require('./load.js');
+const { withMasking } = require('./masking.js');
 
 const PLUXEE = BS.Config.PLUXEE;
 const toLocalDate = (iso) => new Date(iso).toISOString().slice(0, 10);
@@ -82,6 +83,12 @@ test('pluxee normalize: the card becomes one account named after the product', (
   assert.strictEqual(BS.PluxeeNormalize.account(null, 'LUXcfg', CONN).accountId, 'LUXcfg');
 });
 
+test('pluxee normalize: the card number goes through the account-number masking setting', () => {
+  const card = Object.assign({}, CARD, { maskedPan: '4000 0000 0000 1234' });
+  assert.strictEqual(withMasking(BS, true, () => BS.PluxeeNormalize.account(card, 'x', CONN).ibanMasked), '****1234');
+  assert.strictEqual(withMasking(BS, false, () => BS.PluxeeNormalize.account(card, 'x', CONN).ibanMasked), '4000 0000 0000 1234');
+});
+
 /** HTTP fake: discovery, token endpoint and transactions, recording every request. */
 function fakeHttp(over) {
   const o = over || {};
@@ -130,6 +137,19 @@ test('pluxee client: keeps the stored token when none is returned; a refused ref
   const down = BS.Errors.http(503, 'unavailable');
   assert.throws(() => BS.PluxeeClient.create(fakeHttp({ tokenError: down }), tokenStore(props)).transactions('LUX1'),
     (e) => e.name === 'HttpError');
+  // A 400 without invalid_grant (e.g. Pluxee changed its parameters) is not a lapsed login: a new token would not help.
+  const malformed = BS.Errors.http(400, 'unsupported grant type', 'unsupported_grant_type');
+  assert.throws(() => BS.PluxeeClient.create(fakeHttp({ tokenError: malformed }), tokenStore(props)).transactions('LUX1'),
+    (e) => e.name === 'HttpError' && e.status === 400);
+});
+
+test('pluxee client: the token request goes through its own client (built without retries)', () => {
+  const props = fakeProps({ PLUXEE_REFRESH_TOKEN_ALEX: 'rt-1' });
+  const http = fakeHttp();
+  const tokenHttp = fakeHttp();
+  BS.PluxeeClient.create(http, tokenStore(props), tokenHttp).transactions('LUX1');
+  assert.ok(!http.calls.some((c) => c.method === 'POST'));
+  assert.strictEqual(tokenHttp.calls.filter((c) => c.method === 'POST').length, 1);
 });
 
 test('pluxee client: a token endpoint off the PluxeeConnect host is refused (the token is never sent there)', () => {
@@ -158,7 +178,9 @@ test('pluxee registry: connections, readiness and status lines come from Script 
   const c = BS.ProviderRegistry.connections(wired).filter((x) => x.provider === 'pluxee')[0];
   assert.strictEqual(c.key, 'pluxee-alex');
   assert.ok(BS.ProviderRegistry.isConnected(c, wired));
-  const p = BS.ProviderRegistry.create(c, wired, { http: () => fakeHttp(), toLocalDate });
+  const httpOptions = [];
+  const p = BS.ProviderRegistry.create(c, wired, { http: (o) => { httpOptions.push(o); return fakeHttp(); }, toLocalDate });
+  assert.ok(httpOptions.some((o) => o && o.maxRetries === 0), 'token client without retries');
   assert.strictEqual(p.listAccounts()[0].accountName, 'Demo Lunch');
   const status = BS.ProviderRegistry.statusLines(wired).join('\n');
   assert.match(status, /PLUXEE_CARD_ALEX: set; PLUXEE_REFRESH_TOKEN_ALEX: set/);

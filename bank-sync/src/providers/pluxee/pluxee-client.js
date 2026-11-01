@@ -10,12 +10,14 @@
   const PLUXEE = ns.Config.PLUXEE;
 
   /**
-   * Whether a token-endpoint failure means the login itself is over (the owner must sign in again).
+   * Whether a token-endpoint failure means the login itself is over (the owner must sign in again). Other
+   * refusals (e.g. a 400 because Pluxee changed its client id or parameters) stay HttpErrors with the status,
+   * since a new refresh token would not fix them.
    * @param {Error} e - Error from the token request.
-   * @returns {boolean} True for OAuth `invalid_grant` and HTTP 400/401.
+   * @returns {boolean} True for OAuth `invalid_grant` and HTTP 401.
    */
   function isLoginExpired(e) {
-    return e.apiCode === 'invalid_grant' || e.status === 400 || e.status === 401;
+    return e.apiCode === 'invalid_grant' || e.status === 401;
   }
 
   /**
@@ -23,9 +25,13 @@
    * @param {{request: function(Object): *}} http - JSON HTTP client.
    * @param {{name: string, load: function(): string, save: function(string): void}} tokens - Refresh token store
    *   (`PluxeeCredentials.tokenStore`); `name` is the Script Property named in the re-login message.
+   * @param {{request: function(Object): *}} [tokenHttp] - Client for the token request, built without retries:
+   *   a retry after a 5xx that came once PluxeeConnect had already rotated the token would send the used one
+   *   (and could revoke the login). Defaults to `http` (tests).
    * @returns {{transactions: function(string): Object}} Client.
    */
-  function create(http, tokens) {
+  function create(http, tokens, tokenHttp) {
+    const tokenClient = tokenHttp || http;
     let accessToken = '';
 
     /**
@@ -48,7 +54,7 @@
       if (accessToken) return accessToken;
       let out;
       try {
-        out = http.request({
+        out = tokenClient.request({
           method: 'POST',
           url: tokenEndpoint(),
           headers: { Accept: 'application/json' },

@@ -91,7 +91,7 @@
       return ns.PluxeeProvider.create({
         connection: c,
         cardId: ns.PluxeeCredentials.cardId(wired.props, c),
-        client: ns.PluxeeClient.create(env.http(), ns.PluxeeCredentials.tokenStore(wired.props, c)),
+        client: ns.PluxeeClient.create(env.http(), ns.PluxeeCredentials.tokenStore(wired.props, c), env.http({ maxRetries: 0 })),
         toLocalDate: env.toLocalDate
       });
     },
