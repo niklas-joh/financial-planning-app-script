@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 from .issues import Issue
 from .merge import is_reviewed
-from .rules import RCOL, RULE_COLUMNS, account_label, amount_eur, normalise, owner_slug
+from .rules import RCOL, RULE_COLUMNS, account_label, amount_eur, contains_words, normalise, owner_slug
 from .schema import CATEGORISED_COLUMNS, CategorisedRow, Method
 from .taxonomy import Taxonomy, Triple
 
@@ -33,6 +33,8 @@ VCOL = {name: i for i, name in enumerate(REVIEW_COLUMNS)}
 ANSWER_SEP = " › "  # not "/": "Wants/Pleasure" holds a slash
 KIND_MERCHANT, KIND_SPOT_CHECK = "merchant", "spot check"
 REVIEW_RULE_PRIORITY = 50  # ahead of mined rules (default 100)
+MIN_MATCH_TEXT = 3  # shorter "all like this" text would match far too much
+RULE_FIELDS = {"counterpartyContains": "counterparty", "descriptionContains": "description"}
 INVALID_REVIEW = "invalid_review_answer"
 REVIEW_CONFLICT = "review_conflicts_with_reviewed"
 
@@ -68,7 +70,8 @@ def direction(txn: dict) -> str:
 def merchant_key(txn: dict) -> tuple[str, str, str]:
     """(rule field, words, direction) shared by rows of the same merchant. The words are
     the counterparty's longest run of words without numbers, else the description's, so
-    a rule built from them always matches the row."""
+    a rule built from them always matches the row (`apply_answers` checks an edited
+    `matchText` still does)."""
     words = _longest_plain_run(txn.get("counterparty", ""))
     if words:
         return "counterpartyContains", words, direction(txn)
@@ -84,10 +87,30 @@ def _cell(row: list, name: str) -> object:
     return row[i] if len(row) > i else ""
 
 
-def ticked(review: list[list]) -> set[str]:
-    """transactionIds of inbox rows with `accept` ticked (`review` incl. header)."""
-    return {str(_cell(r, "transactionId")).strip() for r in review[1:]
-            if is_reviewed(_cell(r, "accept")) and str(_cell(r, "transactionId")).strip()}
+OWNER_COLUMNS = ("transactionId", "answer", "owner", "accept", "allLikeThis", "matchText")
+_CHECKBOXES = ("accept", "allLikeThis")
+
+
+def owner_cells(review: list[list]) -> list[tuple]:
+    """Per inbox row (`review` incl. header): the transactionId and the cells the owner
+    edits, ticks as booleans and text stripped, without trailing blank rows. Two reads
+    differ exactly when the owner changed something in between."""
+    cells = [tuple(is_reviewed(_cell(r, n)) if n in _CHECKBOXES else str(_cell(r, n)).strip()
+                   for n in OWNER_COLUMNS) for r in review[1:]]
+    blank = tuple(False if n in _CHECKBOXES else "" for n in OWNER_COLUMNS)
+    while cells and cells[-1] == blank:
+        cells.pop()
+    return cells
+
+
+def transactions_by_id(transactions: list[dict]) -> dict[str, dict]:
+    """Transactions by transactionId; the first row wins for a duplicated id (logged elsewhere)."""
+    by_id: dict[str, dict] = {}
+    for t in transactions:
+        tid = str(t.get("transactionId", "")).strip()
+        if tid:
+            by_id.setdefault(tid, t)
+    return by_id
 
 
 def _text(row: list, name: str) -> str:
@@ -199,9 +222,14 @@ def apply_answers(review: list[list], transactions: dict[str, dict], taxonomy: T
             continue
 
         rule_id = ""
-        words = normalise(_cell(row, "matchText"))
-        if is_reviewed(_cell(row, "allLikeThis")) and words:
+        if is_reviewed(_cell(row, "allLikeThis")):
             field_name, _key_words, way = merchant_key(txn)
+            words = normalise(_cell(row, "matchText"))
+            if len(words) < MIN_MATCH_TEXT or not contains_words(txn.get(RULE_FIELDS[field_name]), words):
+                problem(row, tid, INVALID_REVIEW,
+                        f"matchText must be at least {MIN_MATCH_TEXT} characters and whole words of this row's "
+                        f"{RULE_FIELDS[field_name]}; fix it or untick allLikeThis.")
+                continue
             rule_id = review_rule_id(field_name, words, way)
             if rule_id not in rule_ids and rule_id not in added_rules:
                 added_rules.add(rule_id)
@@ -241,7 +269,8 @@ def _new_row(txn: dict, why: str, similar: object, kind: str) -> list:
     values[VCOL["why"]] = why
     values[VCOL["similar"]] = similar
     values[VCOL["owner"]] = owner_slug(txn.get("owner", ""))
-    values[VCOL["accept"]] = values[VCOL["allLikeThis"]] = False
+    for checkbox in _CHECKBOXES:
+        values[VCOL[checkbox]] = False
     values[VCOL["matchText"]] = merchant_key(txn)[1]
     values[VCOL["kind"]] = kind
     return values
@@ -252,22 +281,16 @@ def _similar(row: list) -> int:
     return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else 0
 
 
-def plan_inbox(previous: list[list], answers: AnswerPlan, transactions: list[dict], labelled: set[str],
+def plan_inbox(previous: list[list], answers: AnswerPlan, by_id: dict[str, dict], labelled: set[str],
                model_ids: set[str], taxonomy: Taxonomy, guess: Guess | None, size: int, spot_checks: int,
                rng: random.Random) -> list[list]:
     """The inbox rows for this run (no header).
 
-    `previous` is the review tab as read at the start of the run, `labelled` the ids
-    with a label on `categorised` after this run's write, `model_ids` the ids the model
-    labelled this run. Rows the owner may still be working on are kept unchanged and
+    `previous` is the review tab as read at the start of the run, `by_id` the
+    transactions (`transactions_by_id`), `labelled` the ids with a label on
+    `categorised` after this run's write, `model_ids` the ids the model labelled this run. Rows the owner may still be working on are kept unchanged and
     never dropped; new rows fill up to `size`, the last `spot_checks` of them spot checks.
     """
-    by_id: dict[str, dict] = {}
-    for t in transactions:
-        tid = str(t.get("transactionId", "")).strip()
-        if tid and tid not in by_id:
-            by_id[tid] = t
-
     kept: list[list] = [_padded(r) for r in answers.keep]
     kept_ids = {_text(r, "transactionId") for r in kept}
     for row in previous[1:]:

@@ -84,10 +84,40 @@ def test_existing_rule_id_is_not_added_again():
     assert p.new_rules == [] and p.manual_rows[0].ruleId == rid
 
 
-def test_all_like_this_without_match_text_adds_no_rule():
-    p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True, all_like_this=True, match_text=" ")),
+@pytest.mark.parametrize("match_text", [
+    " ",            # empty
+    "ac",           # too short
+    "shop",         # not in the row
+    "acm",          # not whole words of the row
+    "acme marker",  # a typo
+])
+def test_all_like_this_with_bad_match_text_stays_with_an_issue(match_text):
+    row = review_row("a", answer=GROCERY, accept=True, all_like_this=True, match_text=match_text)
+    p = plan(review_sheet(row), [txn(counterparty="Acme Market", tid="a")])
+    assert p.new_rules == [] and p.manual_rows == [] and p.keep == [row] and p.processed == set()
+    assert [(i.type, i.transactionId) for i in p.issues] == [("invalid_review_answer", "a")]
+
+
+def test_shortened_match_text_that_is_in_the_row_adds_a_rule():
+    p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True, all_like_this=True, match_text="acme")),
+             [txn(counterparty="Acme Market 77", tid="a")])
+    assert p.issues == [] and p.new_rules[0][RCOL["counterpartyContains"]] == "acme"
+
+
+def test_match_text_is_checked_against_the_description_when_there_is_no_counterparty():
+    t = txn(counterparty="", description="Card payment Corner Cafe 1234", tid="a")
+    def answer(match_text):
+        return plan(review_sheet(review_row("a", answer=CAFE, accept=True, all_like_this=True, match_text=match_text)),
+                    [t])
+    ok, bad = answer("corner cafe"), answer("bakery")
+    assert ok.new_rules[0][RCOL["descriptionContains"]] == "corner cafe" and ok.issues == []
+    assert bad.new_rules == [] and [i.type for i in bad.issues] == ["invalid_review_answer"]
+
+
+def test_bad_match_text_is_ignored_without_all_like_this():
+    p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True, match_text="shop")),
              [txn(counterparty="Acme Market", tid="a")])
-    assert p.new_rules == [] and p.manual_rows[0].ruleId == ""
+    assert p.issues == [] and p.new_rules == [] and p.manual_rows[0].ruleId == ""
 
 
 def test_rule_keeps_an_owner_other_than_the_accounts():

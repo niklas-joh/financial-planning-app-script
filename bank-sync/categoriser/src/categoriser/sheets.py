@@ -17,7 +17,7 @@ from .config import Settings
 from .engine import RuleStats
 from .issues import ISSUE_COLUMNS, Issue, IssuesPlan, plan_issues
 from .merge import UpsertPlan, drop_newly_reviewed, plan_upsert
-from .review import REVIEW_COLUMNS, VCOL, ticked
+from .review import OWNER_COLUMNS, REVIEW_COLUMNS, VCOL, owner_cells
 from .rules import DIRECTIONS, RCOL, RULE_COLUMNS, SOURCES
 from .schema import CATEGORISED_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
 from .taxonomy import TAXONOMY_COLUMNS
@@ -265,27 +265,27 @@ def upsert_categorised(ws: gspread.Worksheet, settings: Settings, rows: list[Cat
     return plan
 
 
-def write_review(ws: gspread.Worksheet, settings: Settings, rows: list[list], ticked_at_read: set[str],
+def write_review(ws: gspread.Worksheet, settings: Settings, rows: list[list], read_at_start: list[list],
                  answers: list[str]) -> bool:
     """Rewrite the review inbox below its header; blank the rows left over from before.
 
-    The transactionId and accept columns are read again first: if a row was ticked
-    (or unticked) since the run read the tab, nothing is written and False is
-    returned, so the tick is picked up by the next run instead of being lost.
+    The transactionId column and the columns the owner edits (answer, owner, accept,
+    allLikeThis, matchText) are read again first: if any of them changed since the run
+    read the tab (`read_at_start`), nothing is written and False is returned, so the
+    edit is picked up by the next run instead of being overwritten.
     `answers` feed the `answer` dropdown (not strict; the job checks answers).
     """
     _assert_writable(ws, settings)
-    key_col, accept_col = _column_letter(VCOL["transactionId"]), _column_letter(VCOL["accept"])
-    keys, accepts = ws.batch_get([f"{key_col}:{key_col}", f"{accept_col}:{accept_col}"],
-                                 major_dimension=Dimension.cols, value_render_option=ValueRenderOption.unformatted)
-    keys, accepts = (keys[0] if keys else []), (accepts[0] if accepts else [])
+    letters = [_column_letter(VCOL[name]) for name in OWNER_COLUMNS]
+    columns = ws.batch_get([f"{c}:{c}" for c in letters], major_dimension=Dimension.cols,
+                           value_render_option=ValueRenderOption.unformatted)
+    columns = [(col[0] if col else []) for col in columns]
     width = len(REVIEW_COLUMNS)
-    fresh = [[""] * width for _ in range(max(len(keys), len(accepts)))]
-    for i, k in enumerate(keys):
-        fresh[i][VCOL["transactionId"]] = k
-    for i, a in enumerate(accepts):
-        fresh[i][VCOL["accept"]] = a
-    if ticked(fresh) != ticked_at_read:
+    fresh = [[""] * width for _ in range(max(map(len, columns), default=0))]  # incl. the header row
+    for name, col in zip(OWNER_COLUMNS, columns):
+        for i, value in enumerate(col):
+            fresh[i][VCOL[name]] = value
+    if owner_cells(fresh) != owner_cells(read_at_start):
         return False
 
     old_rows = len(read_values(ws))

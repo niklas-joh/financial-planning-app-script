@@ -47,11 +47,12 @@ sheets in `Settings.writable_sheets`: `categorised`, its `categoriser_issues` lo
 `categoriser_rules` (job fills only `hits`/`lastMatched`; mining appends inactive rows,
 review answers with "all like this" append active ones), `categoriser_taxonomy` and the
 `categoriser_review` inbox, whose ticked answers become reviewed `manual` rows (never to
-`transactions`; rows with `reviewed` = TRUE are never overwritten). The legacy "Financial Planning" sheet is read only, with a read-only
-token, and only by the hand-run `mine`/`evaluate`/`train`/`seed_taxonomy` commands. The model
-(`train`) is saved only to `~/categoriser/models/`; the daily run skips the model step if it is missing or broken. Problems such
-as duplicate `transactionId` rows or invalid rules are skipped and logged once in
-`categoriser_issues`, never allowed to stop the daily run. Not pushed with clasp.
+`transactions`; rows with `reviewed` = TRUE are never overwritten). The legacy "Financial
+Planning" sheet is read only, with a read-only token, and only by the hand-run
+`mine`/`evaluate`/`train`/`seed_taxonomy` commands. The model (`train`) is saved only to
+`~/categoriser/models/`; the daily run skips the model step if it is missing or broken.
+Problems such as duplicate `transactionId` rows or invalid rules are skipped and logged
+once in `categoriser_issues`, never allowed to stop the daily run. Not pushed with clasp.
 Details: `bank-sync/categoriser/README.md`.
 
 - Tests and fixtures use synthetic people, merchants and IBANs only (`tests/builders.py`);

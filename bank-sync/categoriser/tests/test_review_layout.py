@@ -1,4 +1,4 @@
-from categoriser.review import answer_text, merchant_key, parse_answer, review_rule_id, ticked
+from categoriser.review import answer_text, merchant_key, owner_cells, parse_answer, review_rule_id
 from categoriser.rules import contains_words
 from builders import review_row, review_sheet, txn
 
@@ -33,6 +33,17 @@ def test_review_rule_id_is_stable_and_normalised():
     assert a != review_rule_id("counterpartyContains", "corner cafe", "in")
 
 
-def test_ticked_reads_checkboxes_and_text():
-    sheet = review_sheet(review_row("a", accept=True), review_row("b", accept="TRUE"), review_row("c"))
-    assert ticked(sheet) == {"a", "b"} and ticked([]) == set()
+def test_owner_cells_read_ticks_as_booleans_and_ignore_trailing_blank_rows():
+    as_read = review_sheet(review_row("a", accept=True, answer=" A › B › C"), review_row("b", accept="FALSE"))
+    fresh = review_sheet(review_row("a", accept="TRUE", answer="A › B › C"), review_row("b", accept=""), [""] * 3)
+    assert owner_cells(as_read) == owner_cells(fresh) and owner_cells([]) == []
+    assert owner_cells(as_read)[0] == ("a", "A › B › C", "", True, False, "")
+
+
+def test_owner_cells_see_each_owner_column_and_the_job_columns_do_not_count():
+    base = review_sheet(review_row("a", match_text="acme"))
+    for edit in (dict(answer="A › B › C"), dict(owner="bob"), dict(accept=True), dict(all_like_this=True),
+                 dict(match_text="acme market"), dict(tid="b")):
+        fields = dict(tid="a", match_text="acme") | edit
+        assert owner_cells(review_sheet(review_row(**fields))) != owner_cells(base), edit
+    assert owner_cells(review_sheet(review_row("a", match_text="acme", suggested="X › Y › Z"))) == owner_cells(base)

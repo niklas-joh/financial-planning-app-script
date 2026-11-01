@@ -1,14 +1,14 @@
 import random
 
-from categoriser.review import REVIEW_COLUMNS, VCOL, AnswerPlan, plan_inbox
+from categoriser.review import REVIEW_COLUMNS, VCOL, AnswerPlan, plan_inbox, transactions_by_id
 from builders import TAXONOMY, review_row, review_sheet, txn
 
 GROCERY = ("Essentials", "Groceries", "Supermarket")
 
 
 def inbox(txns, previous=None, answers=None, labelled=(), model_ids=(), guess=None, size=25, spot=0):
-    return plan_inbox(previous or review_sheet(), answers or AnswerPlan(), txns, set(labelled), set(model_ids),
-                      TAXONOMY, guess, size, spot, random.Random(1))
+    return plan_inbox(previous or review_sheet(), answers or AnswerPlan(), transactions_by_id(txns), set(labelled),
+                      set(model_ids), TAXONOMY, guess, size, spot, random.Random(1))
 
 
 def ids(rows):

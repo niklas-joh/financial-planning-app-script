@@ -214,7 +214,7 @@ def test_creates_review_sheet_with_checkboxes_and_owner_dropdown():
 def test_write_review_replaces_rows_and_blanks_leftovers():
     ss, ws = review_ws(review_row("old1"), review_row("old2"), review_row("old3"))
     new = review_row("x")
-    assert write_review(ws, SETTINGS, [new], set(), ["A › B › C"]) is True
+    assert write_review(ws, SETTINGS, [new], list(ws.values), ["A › B › C"]) is True
     assert ws.values[0] == list(REVIEW_COLUMNS) and ws.values[1] == new
     assert ws.values[2] == ws.values[3] == [""] * len(REVIEW_COLUMNS) and len(ws.values) == 4
 
@@ -222,23 +222,33 @@ def test_write_review_replaces_rows_and_blanks_leftovers():
 def test_write_review_grows_the_grid_when_needed():
     ss = FakeSpreadsheet({"categoriser_review": FakeWorksheet("categoriser_review", [list(REVIEW_COLUMNS)], row_count=2)})
     ws = ss.sheets["categoriser_review"]
-    assert write_review(ws, SETTINGS, [review_row("a"), review_row("b")], set(), [])
+    assert write_review(ws, SETTINGS, [review_row("a"), review_row("b")], [list(REVIEW_COLUMNS)], [])
     assert [r[0] for r in ws.values] == ["transactionId", "a", "b"]
 
 
-def test_write_review_skips_when_a_row_was_ticked_meanwhile():
+@pytest.mark.parametrize("column,value", [("accept", True), ("answer", "A › B › C"), ("owner", "alice"),
+                                          ("allLikeThis", True), ("matchText", "acme"), ("transactionId", "b")])
+def test_write_review_skips_when_the_owner_edited_a_row_meanwhile(column, value):
     ss, ws = review_ws(review_row("a"))
+    read_at_start = [list(r) for r in ws.values]
 
-    def tick(sheet):
-        sheet.values[1][VCOL["accept"]] = True
-    ws.before_batch_get = tick
-    assert write_review(ws, SETTINGS, [review_row("x")], set(), ["A › B › C"]) is False
-    assert [r[0] for r in ws.values] == ["transactionId", "a"] and ws.values[1][VCOL["accept"]] is True
+    def edit(sheet):
+        sheet.values[1][VCOL[column]] = value
+    ws.before_batch_get = edit
+    assert write_review(ws, SETTINGS, [review_row("x")], read_at_start, ["A › B › C"]) is False
+    assert ws.values[1][VCOL[column]] == value and "update" not in ws.calls
+
+
+def test_write_review_ignores_changes_to_job_columns_and_trailing_blank_rows():
+    ss, ws = review_ws(review_row("a"), [""] * len(REVIEW_COLUMNS))
+    read_at_start = [list(r) for r in ws.values[:2]]
+    ws.values[1][VCOL["suggested"]] = "A › B › C"
+    assert write_review(ws, SETTINGS, [review_row("x")], read_at_start, []) is True
 
 
 def test_answer_dropdown_lists_answers_and_is_not_strict():
     ss, ws = review_ws()
-    write_review(ws, SETTINGS, [review_row("x")], set(), ["A › B › C", "D › E › F"])
+    write_review(ws, SETTINGS, [review_row("x")], list(ws.values), ["A › B › C", "D › E › F"])
     rule = validations(ss)[VCOL["answer"]]
     assert rule["condition"]["type"] == "ONE_OF_LIST" and rule["strict"] is False
     assert [v["userEnteredValue"] for v in rule["condition"]["values"]] == ["A › B › C", "D › E › F"]
@@ -246,7 +256,7 @@ def test_answer_dropdown_lists_answers_and_is_not_strict():
 
 def test_write_review_refuses_other_sheets():
     with pytest.raises(PermissionError):
-        write_review(FakeWorksheet("transactions"), SETTINGS, [], set(), [])
+        write_review(FakeWorksheet("transactions"), SETTINGS, [], [], [])
 
 
 def test_append_rows_reapplies_rule_dropdowns_with_review_source():

@@ -120,10 +120,12 @@ The next run (answers are not picked up before then):
   mined rules), `counterpartyContains` = `matchText` (or `descriptionContains` when the row has no counterparty),
   the row's direction, any account, `source` = `review`. It applies in the same run.
 - An answer that can't be applied (not in the taxonomy, unknown owner, row gone, on several `categorised` rows,
-  or different from an already reviewed row) stays ticked in the inbox with an issue until you fix it.
+  different from an already reviewed row, or `allLikeThis` with a `matchText` shorter than 3 characters or not
+  made of whole words of the row's counterparty/description) stays ticked in the inbox with an issue until you
+  fix it.
 - Rows you have not ticked stay as they are, including an answer you typed; rows that got a label drop out.
-- If you tick a row while the job is running, it leaves the inbox as it is that day (`review=skipped_busy` in
-  the log), so the tick is not lost.
+- If you tick or edit a row (`answer`, `owner`, `accept`, `allLikeThis`, `matchText`) while the job is running,
+  it leaves the inbox as it is that day (`review=skipped_busy` in the log), so the edit is not lost.
 - Each applied answer adds one line to `~/categoriser/data/review-history.jsonl` (what the model suggested and
   your answer), used later to measure the model. It stays in the runtime folder.
 

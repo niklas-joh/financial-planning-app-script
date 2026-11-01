@@ -25,7 +25,16 @@ from .merge import is_reviewed
 from .mine import reviewed_labels
 from .model import load as load_model
 from .model import review_check
-from .review import INVALID_REVIEW, REVIEW_CONFLICT, Guess, answer_text, apply_answers, plan_inbox, ticked
+from .review import (
+    INVALID_REVIEW,
+    REVIEW_CONFLICT,
+    AnswerPlan,
+    Guess,
+    answer_text,
+    apply_answers,
+    plan_inbox,
+    transactions_by_id,
+)
 from .rules import INVALID_RULE, owner_slug, parse_rules
 from .sheets import (
     append_rows,
@@ -43,7 +52,7 @@ from .sheets import (
     write_rule_stats,
 )
 from .schema import CATEGORISED_COLUMNS, Method
-from .taxonomy import parse_taxonomy
+from .taxonomy import Taxonomy, parse_taxonomy
 
 log = logging.getLogger("categoriser")
 
@@ -90,6 +99,21 @@ def _safe_guess(model) -> Guess | None:
     return guess
 
 
+def _rule_ids(rules_values: list[list]) -> set[str]:
+    return {str(r[0]).strip() for r in rules_values[1:] if r and str(r[0]).strip()}
+
+
+def _refill_inbox(review_ws, settings, review_values: list[list], answers: AnswerPlan, by_id: dict[str, dict],
+                  categorised: list[list], taxonomy: Taxonomy, model, today: str) -> tuple[list[list], bool]:
+    """Plan the inbox from `categorised` as written and write it: (rows, written)."""
+    labelled, by_model = _after_write(categorised)
+    inbox = plan_inbox(review_values, answers, by_id, labelled, by_model, taxonomy, _safe_guess(model),
+                       settings.review_size, settings.review_spot_checks, random.Random(today))
+    written = write_review(review_ws, settings, inbox, review_values,
+                           [answer_text(t) for t in sorted(taxonomy.triples)])
+    return inbox, written
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     settings = load_settings()
@@ -111,12 +135,9 @@ def main() -> None:
     rules_values = read_values(rules_ws)
 
     # Answers first, so a rule made with "all like this" already applies in this run.
-    by_id: dict[str, dict] = {}
-    for t in transactions:
-        by_id.setdefault(str(t.get("transactionId", "")).strip(), t)
-    rule_ids = {str(r[0]).strip() for r in rules_values[1:] if r and str(r[0]).strip()}
-    answers = apply_answers(review_values, by_id, taxonomy, owners, before_upsert, rule_ids, today, now,
-                            settings.review_sheet)
+    by_id = transactions_by_id(transactions)
+    answers = apply_answers(review_values, by_id, taxonomy, owners, before_upsert, _rule_ids(rules_values),
+                            today, now, settings.review_sheet)
     if answers.new_rules:
         append_rows(rules_ws, settings, answers.new_rules)
         rules_values = read_values(rules_ws)
@@ -142,11 +163,8 @@ def main() -> None:
     stats_written = write_rule_stats(rules_ws, settings, result.stats)
     _append_history(data_dir() / HISTORY_FILE, answers.history)
 
-    labelled, by_model = _after_write(read_values(ws))
-    inbox = plan_inbox(review_values, answers, transactions, labelled, by_model, taxonomy, _safe_guess(model),
-                       settings.review_size, settings.review_spot_checks, random.Random(today))
-    review_written = write_review(review_ws, settings, inbox, ticked(review_values),
-                                  [answer_text(t) for t in sorted(taxonomy.triples)])
+    inbox, review_written = _refill_inbox(review_ws, settings, review_values, answers, by_id,
+                                          read_values(ws), taxonomy, model, today)
 
     found = (parsed.issues + review_disagreements(before_upsert, result.rows, settings.output_sheet)
              + duplicate_issues(plan.duplicates, settings.output_sheet) + answers.issues)
