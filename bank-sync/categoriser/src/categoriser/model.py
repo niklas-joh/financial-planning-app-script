@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .rules import amount_eur, owner_slug
-from .schema import CategorisedRow, Method
+from .schema import CategorisedRow, Method, transaction_context
 from .taxonomy import Taxonomy, Triple
 
 MODEL_FILE = "categoriser-model.joblib"
@@ -99,7 +99,8 @@ class Model:
         for txn, (triple, confidence) in zip(txns, self.predict(txns)):
             if confidence >= min_confidence and triple in taxonomy:
                 out.append(CategorisedRow(str(txn.get("transactionId", "")).strip(), owner_slug(txn.get("owner", "")),
-                                          *triple, Method.MODEL, round(confidence, 2), "", False, now))
+                                          *triple, Method.MODEL, round(confidence, 2), "", False, now,
+                                          **transaction_context(txn)))
         return out
 
 

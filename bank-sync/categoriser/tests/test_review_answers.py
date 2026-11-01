@@ -1,19 +1,19 @@
 import pytest
 
 from categoriser.review import apply_answers, review_rule_id
-from categoriser.rules import RCOL, parse_rules
+from categoriser.rules import RCOL, RULE_COLUMNS, parse_rules
 from categoriser.schema import CATEGORISED_COLUMNS, Method
-from builders import OWNERS, TAXONOMY, review_row, review_sheet, rules_sheet, txn
+from builders import OWNERS, TAXONOMY, review_row, review_sheet, rule_row, rules_sheet, txn
 
 HEADER = list(CATEGORISED_COLUMNS)
 GROCERY = "Essentials › Groceries › Supermarket"
 CAFE = "Wants/Pleasure › Eating out › Cafe"
 
 
-def plan(review, txns, categorised=None, rule_ids=frozenset()):
-    return apply_answers(review, {t["transactionId"]: t for t in txns}, TAXONOMY, OWNERS,
-                         categorised or [HEADER], set(rule_ids), "2026-11-01", "2026-11-01T06:15:00Z",
-                         "categoriser_review")
+def plan(review, txns, categorised=None, rule_ids=(), rules=None):
+    return apply_answers(review, {t["transactionId"]: t for t in txns}, TAXONOMY, OWNERS, categorised or [HEADER],
+                         rules or rules_sheet(*[rule_row(r) for r in rule_ids]), "2026-11-01",
+                         "2026-11-01T06:15:00Z", "categoriser_review")
 
 
 def test_accepted_answer_becomes_a_reviewed_manual_row():
@@ -118,6 +118,23 @@ def test_bad_match_text_is_ignored_without_all_like_this():
     p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True, match_text="shop")),
              [txn(counterparty="Acme Market", tid="a")])
     assert p.issues == [] and p.new_rules == [] and p.manual_rows[0].ruleId == ""
+
+
+def test_rule_follows_the_rules_sheet_column_order():
+    header = list(reversed(RULE_COLUMNS)) + ["myNotes"]
+    p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True, all_like_this=True, match_text="acme market")),
+             [txn("bob", counterparty="Acme Market", tid="a")], rules=[header])
+    [values] = p.new_rules
+    parsed = parse_rules([header, values], TAXONOMY, OWNERS, "categoriser_rules")
+    assert parsed.issues == [] and parsed.active[0].counterpartyContains == "acme market"
+    assert values[header.index("ruleId")] == p.manual_rows[0].ruleId
+
+
+def test_manual_row_carries_the_transaction_context():
+    p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True)),
+             [txn(tid="a", counterparty="Acme Market", day="2026-05-02", amount=-3)])
+    row = p.manual_rows[0]
+    assert (row.bookingDate, row.counterparty, row.amountEur) == ("2026-05-02", "Acme Market", -3)
 
 
 def test_rule_keeps_an_owner_other_than_the_accounts():

@@ -38,6 +38,14 @@ def test_fills_header_of_an_empty_existing_sheet():
     assert ensure_categorised_sheet(ss, SETTINGS).values == [HEADER]
 
 
+def test_sheet_from_before_the_context_columns_gets_them_added_at_the_end():
+    old = HEADER[: HEADER.index("updatedAt") + 1]
+    row = sheet_row("a")
+    ws = FakeWorksheet("categorised", [old, row], col_count=len(old))
+    ensure_categorised_sheet(FakeSpreadsheet({"categorised": ws}), SETTINGS)
+    assert ws.values == [HEADER, row] and ws.col_count == len(HEADER)
+
+
 def test_existing_sheet_with_other_headers_is_left_alone():
     ws = FakeWorksheet("categorised", [["id", "notes"]])
     with pytest.raises(ValueError):
@@ -119,13 +127,57 @@ def test_creates_rules_sheet_with_checkbox_and_dropdowns():
     ss = FakeSpreadsheet()
     ws = ensure_rules_sheet(ss, SETTINGS)
     assert ws.values == [list(RULE_COLUMNS)] and ws.frozen_rows == 1
-    rules = {r["setDataValidation"]["range"]["startColumnIndex"]: r["setDataValidation"]["rule"] for r in ss.requests}
+    rules = {r["setDataValidation"]["range"]["startColumnIndex"]: r["setDataValidation"]["rule"]
+             for r in ss.requests if "setDataValidation" in r}
     assert rules[RCOL["active"]]["condition"]["type"] == "BOOLEAN"
     assert [v["userEnteredValue"] for v in rules[RCOL["direction"]]["condition"]["values"]] == ["in", "out", "any"]
     assert rules[RCOL["type"]]["condition"]["values"][0]["userEnteredValue"] == "='categoriser_taxonomy'!A2:A"
     assert rules[RCOL["subCategory"]]["condition"]["values"][0]["userEnteredValue"] == "='categoriser_taxonomy'!C2:C"
     assert rules[RCOL["owner"]]["condition"]["values"][0]["userEnteredValue"] == "='account_owners'!A2:A"
     assert rules[RCOL["owner"]]["strict"] is False
+    assert {"setBasicFilter": {"filter": {"range": {"sheetId": ws.id}}}} in ss.requests  # sortable
+
+
+def test_rules_sheet_filter_is_added_once_and_an_existing_one_is_kept():
+    ss = FakeSpreadsheet({"categoriser_rules": FakeWorksheet("categoriser_rules", rules_values("R1"))})
+    ensure_rules_sheet(ss, SETTINGS)
+    ensure_rules_sheet(ss, SETTINGS)
+    assert sum("setBasicFilter" in r for r in ss.requests) == 1
+
+
+def test_rules_sheet_columns_can_be_reordered_and_missing_job_columns_are_added():
+    header = ["type", "category", "subCategory", "ruleId", "active", "priority", "account", "direction",
+              "counterpartyContains", "descriptionContains", "textRegex", "providerCategory", "amountMin",
+              "amountMax", "owner", "notes", "source", "my own column", "hits", "lastMatched"]
+    ss = FakeSpreadsheet({"categoriser_rules": FakeWorksheet("categoriser_rules", [header], col_count=len(header))})
+    ws = ensure_rules_sheet(ss, SETTINGS)
+    assert ws.values[0] == [*header, "wins", "sample"] and ws.col_count == len(header) + 2
+
+
+def test_rules_sheet_with_a_repeated_column_stops_the_run():
+    header = [*RULE_COLUMNS, "hits"]
+    ss = FakeSpreadsheet({"categoriser_rules": FakeWorksheet("categoriser_rules", [header])})
+    with pytest.raises(ValueError, match="unexpected headers"):
+        ensure_rules_sheet(ss, SETTINGS)
+
+
+def test_reordered_rules_sheet_gets_validations_and_stats_by_column_name():
+    header = list(reversed(RULE_COLUMNS))
+    col = {n: i for i, n in enumerate(header)}
+    row = [""] * len(header)
+    row[col["ruleId"]], row[col["notes"]] = "R1", "keep me"
+    ss = FakeSpreadsheet({"categoriser_rules": FakeWorksheet("categoriser_rules", [header, row], row_count=2)})
+    ws = ss.sheets["categoriser_rules"]
+    write_rule_stats(ws, SETTINGS, {"R1": RuleStats(5, 2, "2026-10-01", "Acme Market (5)")})
+    got = {n: ws.values[1][col[n]] for n in ("ruleId", "notes", "hits", "wins", "lastMatched", "sample")}
+    assert got == {"ruleId": "R1", "notes": "keep me", "hits": 5, "wins": 2, "lastMatched": "2026-10-01",
+                   "sample": "Acme Market (5)"}
+    new = [""] * len(header)
+    new[col["ruleId"]] = "R2"
+    append_rows(ws, SETTINGS, [new], key_column=col["ruleId"] + 1)   # grows the grid, re-applies dropdowns
+    checkbox = [r["setDataValidation"]["range"]["startColumnIndex"] for r in ss.requests
+                if r["setDataValidation"]["rule"]["condition"]["type"] == "BOOLEAN"]
+    assert checkbox == [col["active"]] and ws.values[2][col["ruleId"]] == "R2"
 
 
 def test_creates_taxonomy_sheet_and_appends_rows():
@@ -149,15 +201,15 @@ def rules_values(*ids):
     return rows
 
 
-def test_rule_stats_find_rows_by_id_and_touch_only_two_columns():
+def test_rule_stats_find_rows_by_id_and_touch_only_the_job_columns():
     ws = FakeWorksheet("categoriser_rules", rules_values("R1", "R2", "dup", "dup"))
-    ws.values[2][RCOL["hits"]], ws.values[2][RCOL["lastMatched"]] = 4, "2026-01-01"
+    ws.values[2][RCOL["hits"]:] = [4, "2026-01-01", 4, "Acme (4)"]
     changed = write_rule_stats(ws, SETTINGS, {
-        "R1": RuleStats(3, "2026-10-01"), "R2": RuleStats(4, "2026-01-01"), "dup": RuleStats(1, "x"),
-        "gone": RuleStats(9, "y"),
+        "R1": RuleStats(3, 2, "2026-10-01", "Acme (3)"), "R2": RuleStats(4, 4, "2026-01-01", "Acme (4)"),
+        "dup": RuleStats(1, 1, "x", ""), "gone": RuleStats(9, 9, "y", ""),
     })
     assert changed == 1                                     # R2 unchanged, dup ambiguous, gone missing
-    assert ws.values[1][RCOL["hits"]:] == [3, "2026-10-01"]
+    assert ws.values[1][RCOL["hits"]:] == [3, "2026-10-01", 2, "Acme (3)"]
     assert ws.values[1][RCOL["notes"]] == "note R1"
     assert ws.values[3][RCOL["hits"]] == "" and ws.calls.count("batch_update") == 1
 
@@ -182,6 +234,23 @@ def test_appends_past_the_grid_add_rows_and_reapply_validations():
     append_rows(ws, SETTINGS, [["R2"], ["R3"]])
     assert ws.row_count == 4 and [r[0] for r in ws.values] == ["ruleId", "R1", "R2", "R3"]
     assert {r["setDataValidation"]["range"]["startColumnIndex"] for r in ss.requests} >= {RCOL["active"]}
+
+
+def test_backfill_context_writes_only_the_context_cells_once():
+    from categoriser.sheets import backfill_context
+    from builders import txn
+    reviewed = ["a", "joint", "Essentials", "Mine", "", "manual", "", "", True, "2026-01-01T00:00:00Z"]
+    ws = FakeWorksheet("categorised", [HEADER, list(reviewed), ["b", "joint"]])
+    txns = [txn(tid="a", counterparty="Acme Market", day="2026-05-02", amount=-3), txn(tid="b")]
+    assert backfill_context(ws, SETTINGS, txns) == 2
+    assert ws.values[1] == [*reviewed, "2026-05-02", "Acme Market", "", -3]   # labels untouched
+    assert backfill_context(ws, SETTINGS, txns) == 0                           # nothing blank any more
+
+
+def test_backfill_context_refuses_other_sheets():
+    from categoriser.sheets import backfill_context
+    with pytest.raises(PermissionError):
+        backfill_context(FakeWorksheet("transactions"), SETTINGS, [])
 
 
 # --- review sheet ----------------------------------------------------------

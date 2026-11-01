@@ -16,8 +16,8 @@ from dataclasses import dataclass, field
 
 from .issues import Issue
 from .merge import is_reviewed
-from .rules import RCOL, RULE_COLUMNS, account_label, amount_eur, contains_words, normalise, owner_slug
-from .schema import CATEGORISED_COLUMNS, CategorisedRow, Method
+from .rules import RCOL, account_label, amount_eur, contains_words, normalise, owner_slug, rule_columns
+from .schema import CATEGORISED_COLUMNS, CategorisedRow, Method, transaction_context
 from .taxonomy import Taxonomy, Triple
 
 REVIEW_COLUMNS: tuple[str, ...] = (
@@ -158,30 +158,33 @@ def _number(value: object) -> float | None:
         return None
 
 
-def _rule_values(rule_id: str, field_name: str, words: str, way: str, owner: str, triple: Triple,
-                 today: str) -> list:
-    values = [""] * len(RULE_COLUMNS)
-    values[RCOL["ruleId"]] = rule_id
-    values[RCOL["active"]] = True
-    values[RCOL["priority"]] = REVIEW_RULE_PRIORITY
-    values[RCOL["direction"]] = way
-    values[RCOL[field_name]] = words
-    values[RCOL["owner"]] = owner
-    values[RCOL["type"]], values[RCOL["category"]], values[RCOL["subCategory"]] = triple
-    values[RCOL["notes"]] = f"from review {today}"
-    values[RCOL["source"]] = "review"
+def _rule_values(col: dict[str, int], rule_id: str, field_name: str, words: str, way: str, owner: str,
+                 triple: Triple, today: str) -> list:
+    """A row for the rules sheet, in the column order `col` (`rules.rule_columns`)."""
+    values = [""] * (max(col.values()) + 1)
+    named = {
+        "ruleId": rule_id, "active": True, "priority": REVIEW_RULE_PRIORITY, "direction": way,
+        field_name: words, "owner": owner, "type": triple[0], "category": triple[1], "subCategory": triple[2],
+        "notes": f"from review {today}", "source": "review",
+    }
+    for name, value in named.items():
+        values[col[name]] = value
     return values
 
 
 def apply_answers(review: list[list], transactions: dict[str, dict], taxonomy: Taxonomy, owners: set[str],
-                  categorised: list[list], rule_ids: set[str], today: str, now: str, sheet: str) -> AnswerPlan:
+                  categorised: list[list], rules: list[list], today: str, now: str, sheet: str) -> AnswerPlan:
     """Turn ticked inbox rows into reviewed manual rows (and rules for "all like this").
 
-    `review` and `categorised` are whole sheets incl. header; `rule_ids` are the
-    ruleIds already on the rules sheet. An answer that cannot be applied stays in
-    the inbox (`keep`) with an issue; nothing here raises on a bad answer.
+    `review`, `categorised` and `rules` are whole sheets incl. header; new rules
+    follow the rules sheet's column order and skip ruleIds already on it. An answer
+    that cannot be applied stays in the inbox (`keep`) with an issue; nothing here
+    raises on a bad answer.
     """
     plan = AnswerPlan()
+    rule_col = rule_columns(rules[0]) if rules else RCOL
+    id_col = rule_col["ruleId"]
+    rule_ids = {str(r[id_col]).strip() for r in rules[1:] if len(r) > id_col and str(r[id_col]).strip()}
     counts, reviewed = _categorised_index(categorised)
     added_rules: set[str] = set()
     handled: set[str] = set()
@@ -234,10 +237,11 @@ def apply_answers(review: list[list], transactions: dict[str, dict], taxonomy: T
             if rule_id not in rule_ids and rule_id not in added_rules:
                 added_rules.add(rule_id)
                 account_owner = owner_slug(txn.get("owner", ""))
-                plan.new_rules.append(_rule_values(rule_id, field_name, words, way,
+                plan.new_rules.append(_rule_values(rule_col, rule_id, field_name, words, way,
                                                    "" if owner == account_owner else owner, triple, today))
 
-        plan.manual_rows.append(CategorisedRow(tid, owner, *triple, Method.MANUAL, None, rule_id, True, now))
+        plan.manual_rows.append(CategorisedRow(tid, owner, *triple, Method.MANUAL, None, rule_id, True, now,
+                                               **transaction_context(txn)))
         plan.processed.add(tid)
         answer, suggested = answer_text(triple), _text(row, "suggested")
         spot = _text(row, "kind") == KIND_SPOT_CHECK

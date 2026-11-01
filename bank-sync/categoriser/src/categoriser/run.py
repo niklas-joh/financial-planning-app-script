@@ -4,10 +4,10 @@ Applies the answers ticked in the review inbox (reviewed `manual` rows, and rule
 for "all like this"), reads transactions, the taxonomy and the rules, categorises
 with the active rules and internal-transfer pairing, then lets the model (if one
 is trained) label the confident rest. Writes `categorised`, refreshes the rules'
-`hits`/`lastMatched`, fills the review inbox again and logs problems in
-`categoriser_issues`. Logs counts only, never transaction contents. A job sheet
-with renamed headers stops the run before anything is written; a missing or
-broken model only skips the model step.
+`hits`/`wins`/`lastMatched`/`sample`, fills the review inbox again and logs
+problems in `categoriser_issues`. Logs counts only, never transaction contents.
+A job sheet with renamed headers stops the run before anything is written; a
+missing or broken model only skips the model step.
 """
 
 from __future__ import annotations
@@ -35,9 +35,10 @@ from .review import (
     plan_inbox,
     transactions_by_id,
 )
-from .rules import INVALID_RULE, owner_slug, parse_rules
+from .rules import INVALID_RULE, owner_slug, parse_rules, rule_columns
 from .sheets import (
     append_rows,
+    backfill_context,
     ensure_categorised_sheet,
     ensure_issues_sheet,
     ensure_review_sheet,
@@ -99,10 +100,6 @@ def _safe_guess(model) -> Guess | None:
     return guess
 
 
-def _rule_ids(rules_values: list[list]) -> set[str]:
-    return {str(r[0]).strip() for r in rules_values[1:] if r and str(r[0]).strip()}
-
-
 def _refill_inbox(review_ws, settings, review_values: list[list], answers: AnswerPlan, by_id: dict[str, dict],
                   categorised: list[list], taxonomy: Taxonomy, model, today: str) -> tuple[list[list], bool]:
     """Plan the inbox from `categorised` as written and write it: (rows, written)."""
@@ -136,10 +133,10 @@ def main() -> None:
 
     # Answers first, so a rule made with "all like this" already applies in this run.
     by_id = transactions_by_id(transactions)
-    answers = apply_answers(review_values, by_id, taxonomy, owners, before_upsert, _rule_ids(rules_values),
+    answers = apply_answers(review_values, by_id, taxonomy, owners, before_upsert, rules_values,
                             today, now, settings.review_sheet)
     if answers.new_rules:
-        append_rows(rules_ws, settings, answers.new_rules)
+        append_rows(rules_ws, settings, answers.new_rules, key_column=rule_columns(rules_values[0])["ruleId"] + 1)
         rules_values = read_values(rules_ws)
 
     parsed = parse_rules(rules_values, taxonomy, owners, settings.rules_sheet)
@@ -160,6 +157,7 @@ def main() -> None:
     produced = [r for r in result.rows + model_rows if r.transactionId not in manual_ids]
     plan = upsert_categorised(ws, settings, produced + answers.manual_rows, clear_stale_at=now,
                               clear_methods=clear_methods)
+    context_filled = backfill_context(ws, settings, transactions)
     stats_written = write_rule_stats(rules_ws, settings, result.stats)
     _append_history(data_dir() / HISTORY_FILE, answers.history)
 
@@ -173,14 +171,14 @@ def main() -> None:
         "read=%d taxonomy=%d rules_active=%d rules_invalid=%d by_rule=%d by_transfer=%d uncovered=%d "
         "model=%s by_model=%d model_reviewed_checked=%d model_reviewed_wrong=%d "
         "updated=%d appended=%d cleared=%d skipped_reviewed=%d skipped_moved=%d skipped_duplicate=%d "
-        "rule_stats_written=%d review_answers=%d review_invalid=%d review_rules_added=%d review_changed=%d "
-        "review_spot_checks_right=%d review_spot_checks_wrong=%d review_size=%d review=%s "
+        "context_filled=%d rule_stats_written=%d review_answers=%d review_invalid=%d review_rules_added=%d "
+        "review_changed=%d review_spot_checks_right=%d review_spot_checks_wrong=%d review_size=%d review=%s "
         "issues_opened=%d issues_reopened=%d issues_resolved=%d",
         len(transactions), len(taxonomy), len(parsed.active), len(parsed.issues),
         result.by_rule, result.by_transfer, result.uncovered,
         model_status, len(model_rows), reviewed_checked, reviewed_wrong,
         len(plan.updates) - len(plan.cleared), len(plan.appends), len(plan.cleared),
-        len(plan.skipped_reviewed), len(plan.skipped_moved), len(plan.duplicates), stats_written,
+        len(plan.skipped_reviewed), len(plan.skipped_moved), len(plan.duplicates), context_filled, stats_written,
         len(answers.manual_rows), len(answers.keep), len(answers.new_rules), answers.changed,
         answers.spot_right, answers.spot_wrong, len(inbox), "written" if review_written else "skipped_busy",
         issues.opened, issues.reopened, issues.resolved,

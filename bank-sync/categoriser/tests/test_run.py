@@ -86,7 +86,8 @@ def test_rules_and_transfers_reach_categorised_and_rule_stats(monkeypatch, caplo
     assert "n" not in rows
     assert rows["stale"][1:8] == [""] * 7                  # its rule no longer covers it
     rules_ws = ss.sheets["categoriser_rules"]
-    assert rules_ws.values[1][RCOL["hits"]:] == [1, "2026-05-02"]
+    assert rules_ws.values[1][RCOL["hits"]:] == [1, "2026-05-02", 1, "Acme Market (1)"]
+    assert rows["g"][10:] == ["2026-05-02", "Acme Market", "", -12]   # context copied from transactions
     issues = ss.sheets["categoriser_issues"].values
     assert [r[COL["issueKey"]] for r in issues[1:]] == ["invalid_rule:R2"]
     assert "by_rule=1 by_transfer=2 uncovered=1" in caplog.text and "cleared=1" in caplog.text

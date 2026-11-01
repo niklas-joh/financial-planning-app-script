@@ -9,11 +9,13 @@ from gspread.utils import a1_to_rowcol
 
 
 class FakeWorksheet:
-    def __init__(self, title: str, values: list[list] | None = None, sheet_id: int = 1, row_count: int = 1000):
+    def __init__(self, title: str, values: list[list] | None = None, sheet_id: int = 1, row_count: int = 1000,
+                 col_count: int = 26):
         self.title = title
         self.id = sheet_id
         self.values = [list(r) for r in (values or [])]
         self.row_count = row_count
+        self.col_count = col_count
         self.spreadsheet = None  # set by FakeSpreadsheet
         self.frozen_rows = 0
         self.before_batch_get = None  # hook: simulate an edit between plan and write
@@ -65,12 +67,18 @@ class FakeWorksheet:
         self.calls.append("add_rows")
         self.row_count += n
 
+    def add_cols(self, n):
+        self.calls.append("add_cols")
+        self.col_count += n
+
     def freeze(self, rows=0, **_):
         self.frozen_rows = rows
 
     def _set_row(self, row, col, vals):
         if row > self.row_count:
             raise IndexError(f"row {row} is beyond the grid ({self.row_count} rows)")
+        if col - 1 + len(vals) > self.col_count:
+            raise IndexError(f"column {col - 1 + len(vals)} is beyond the grid ({self.col_count} columns)")
         while len(self.values) < row:
             self.values.append([])
         target = self.values[row - 1]
@@ -92,10 +100,17 @@ class FakeSpreadsheet:
         return self.sheets[title]
 
     def add_worksheet(self, title, rows, cols):
-        ws = FakeWorksheet(title, sheet_id=len(self.sheets) + 1, row_count=rows)
+        ws = FakeWorksheet(title, sheet_id=len(self.sheets) + 1, row_count=rows, col_count=cols)
         ws.spreadsheet = self
         self.sheets[title] = ws
         return ws
 
     def batch_update(self, body):
         self.requests.extend(body["requests"])
+
+    def fetch_sheet_metadata(self, params=None):
+        """Only what `_ensure_basic_filter` asks for: which sheets have a basic filter."""
+        filtered = {r["setBasicFilter"]["filter"]["range"]["sheetId"]
+                    for r in self.requests if "setBasicFilter" in r}
+        return {"sheets": [{"properties": {"sheetId": ws.id}, **({"basicFilter": {}} if ws.id in filtered else {})}
+                           for ws in self.sheets.values()]}

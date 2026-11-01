@@ -99,3 +99,15 @@ def test_labelled_tags_each_row_with_where_its_label_came_from():
     out = labelled([r, j], legacy, {"r": GROCERIES})
     assert [(t.get("transactionId"), label, kind) for t, label, kind in out] == [
         ("r", GROCERIES, "reviewed"), ("j", CAFE, "joined"), (None, LUNCH, "legacy")]
+
+
+def test_mined_rule_row_follows_the_sheet_column_order():
+    from categoriser.rules import RULE_COLUMNS
+    header = ["extra", *reversed(RULE_COLUMNS)]
+    values = MinedRule("counterpartyContains", "acme", "out", GROCERIES, 5, 0.94).to_values("2026-10-31", header)
+    named = dict(zip(header, values))
+    assert named["counterpartyContains"] == "acme" and named["active"] is False and named["extra"] == ""
+    assert len(values) == len(header)
+    parsed = parse_rules([header, values], TAXONOMY, OWNERS, "categoriser_rules")
+    assert parsed.issues == [] and parsed.rules[0].matches(txn(counterparty="Acme", amount=-2))
+    assert existing_signatures([header, values]) == {("counterpartyContains", "acme")}

@@ -8,6 +8,9 @@ case-insensitively, in the raw "counterparty | description | reference" text.
 
 Rules are tried by `priority` (lowest first), then by how many match columns
 are set (most first), then by `ruleId`. The first match wins.
+
+Columns are found by their header name, so they can be reordered (and other
+columns added) on the sheet; `RULE_COLUMNS` is only the order of a new sheet.
 """
 
 from __future__ import annotations
@@ -29,9 +32,10 @@ RULE_COLUMNS: tuple[str, ...] = (
     "owner", "type", "category", "subCategory",
     "notes", "source",
     # written by the job
-    "hits", "lastMatched",
+    "hits", "lastMatched", "wins", "sample",
 )
-RCOL = {name: i for i, name in enumerate(RULE_COLUMNS)}
+JOB_COLUMNS: tuple[str, ...] = ("hits", "lastMatched", "wins", "sample")
+RCOL = {name: i for i, name in enumerate(RULE_COLUMNS)}  # positions on a sheet the job creates
 MATCH_COLUMNS = ("account", "direction", "counterpartyContains", "descriptionContains", "textRegex",
                  "providerCategory", "amountMin", "amountMax")
 DIRECTIONS = ("in", "out", "any")
@@ -146,17 +150,33 @@ def _rule_issue(ref: str, detail: str, sheet: str) -> Issue:
                  source=f"categoriser.run: '{sheet}' sheet check", ref=ref)
 
 
+def rule_columns(header: list) -> dict[str, int]:
+    """Column name -> 0-based index on the rules sheet, from its header row.
+
+    Any order works, and extra columns are ignored. Raises ValueError when a
+    column of `RULE_COLUMNS` is missing or appears twice.
+    """
+    names = [str(h).strip() for h in header]
+    repeated = sorted({n for n in names if n in RULE_COLUMNS and names.count(n) > 1})
+    if repeated:
+        raise ValueError(f"Rules sheet header repeats column(s): {', '.join(repeated)}.")
+    index = {n: i for i, n in enumerate(names) if n in RULE_COLUMNS}
+    missing = [c for c in RULE_COLUMNS if c not in index]
+    if missing:
+        raise ValueError(f"Rules sheet header is missing column(s): {', '.join(missing)}.")
+    return index
+
+
 def parse_rules(values: list[list], taxonomy: Taxonomy, owners: set[str], sheet: str) -> ParsedRules:
     """`values` is the whole rules sheet incl. header, unformatted.
 
     Invalid rules are left out and reported (active ones only, so a half-written
     inactive rule does not raise an issue). Never raises for bad rule content.
     """
-    if values and [str(h).strip() for h in values[0][: len(RULE_COLUMNS)]] != list(RULE_COLUMNS):
-        raise ValueError("Header row of the rules sheet does not match the expected columns.")
+    col = rule_columns(values[0]) if values else RCOL
 
     def cell(row: list, name: str) -> object:
-        i = RCOL[name]
+        i = col[name]
         return row[i] if len(row) > i else ""
 
     def text(row: list, name: str) -> str:

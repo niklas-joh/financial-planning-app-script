@@ -53,10 +53,11 @@ class Settings:
     def writable_sheets(self) -> frozenset[str]:
         """The only sheets this job may write to. Never the transactions sheet.
 
-        The rules sheet is writable so the job can create it, fill `hits` and
-        `lastMatched`, and append mined rules and rules made in the review inbox;
-        the taxonomy sheet so it can be created and seeded once; the review sheet
-        is the inbox the job fills each run.
+        The rules sheet is writable so the job can create it, add missing job
+        columns, fill `hits`, `wins`, `lastMatched` and `sample`, add a filter and
+        append mined rules and rules made in the review inbox; the taxonomy sheet so
+        it can be created and seeded once; the review sheet is the inbox the job
+        fills each run.
         """
         return frozenset({self.output_sheet, self.issues_sheet, self.rules_sheet, self.taxonomy_sheet,
                           self.review_sheet})
