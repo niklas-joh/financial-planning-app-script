@@ -108,6 +108,8 @@
     const startedAt = deps.nowMs();
     const collected = { accounts: [], balances: [], transactions: [], holdings: [], holdingConnections: [] };
     const refreshed = [];
+    /** Accounts of connections whose transactions were read to today (for `deps.coverage`). */
+    let readToToday = [];
     let enrichments = [];
 
     const results = deps.connections.map(function (connection) {
@@ -131,6 +133,7 @@
           result.transactions = Object.assign({}, done.transactions);
           delete result.transactions.rawRows;
           refreshed.push(connection.key);
+          if (done.transactions.complete) readToToday = readToToday.concat(done.data.accounts);
         } catch (e) {
           if (e.name === 'TimeBudget') {
             result.status = 'skipped: time budget';
@@ -171,7 +174,7 @@
     }
     const moved = typeof deps.store.moved === 'function' ? deps.store.moved() : null;
     const owners = deps.owners ? deps.owners.save() : null;
-    const coverage = deps.coverage ? deps.coverage.update(collected.accounts) : null;
+    const coverage = deps.coverage ? deps.coverage.update(readToToday) : null;
     return { results: results, raw: raw, details: details, fx: fx, moved: moved, owners: owners, coverage: coverage };
   }
 

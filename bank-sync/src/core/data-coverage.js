@@ -264,7 +264,8 @@
    *   read: {load: function(): Object<string,string>, save: function(Object<string,string>): void},
    *   csvCoverage: function(): Object<string,string>, todayIso: function(): string}} deps - Services.
    * @returns {{update: function(Array<{accountId: string, provider: string}>): CoverageOutcome}} `update` records
-   *   the accounts read without an error in this run (API accounts) and rewrites the tab. It never throws.
+   *   the accounts whose transactions were read to today in this run (API accounts; Sync all leaves out a connection
+   *   that failed or ran out of time) and rewrites the tab. It never throws.
    */
   function create(deps) {
     return {

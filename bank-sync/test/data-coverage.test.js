@@ -222,3 +222,46 @@ test('csv import record: keeps each account\'s export end, in the local date of 
   const accounts = provider.listAccounts();
   assert.deepStrictEqual(saved[0].accounts, { [accounts[0].accountId]: toIso('28/08/2026') });
 });
+
+test('coverage: only a connection read to today counts as read; one stopped by the time budget keeps its old date', () => {
+  const book = fakeSheetBook();
+  const props = fakeProps({ BS_ACCOUNTS_READ: JSON.stringify({ 'eb-1': '2026-10-20' }) });
+  let rows = [];
+  let now = NOW;
+  let slow = false;
+  const account = { provider: 'enablebanking', accountId: 'eb-1', bank: 'Demo Bank', connection: 'demo-alex', accountName: 'Main', currency: 'EUR' };
+  const provider = {
+    maxWindowDays: 31,
+    listAccounts: () => [account],
+    getBalances: () => [],
+    getTransactions: () => { if (slow) now += BS.Config.TRANSACTIONS.TIME_BUDGET_MS; return []; }
+  };
+  const store = { load: () => rows, save: (r) => { rows = r; return r.length; } };
+  const deps = {
+    connections: [{ key: 'demo-alex', holder: 'alex', provider: 'enablebanking' }],
+    isConnected: () => true,
+    providerFor: () => provider,
+    store,
+    rawWriter: { writeTable: (tab, cols, r) => r.length },
+    nowMs: () => now,
+    todayIso: () => '2026-11-01',
+    coverage: DC.create({
+      tab: BS.DataCoverageTab.create(book, (d) => d.toISOString().slice(0, 10)),
+      owners: BS.AccountOwnersTab.create(book),
+      store,
+      read: DC.readStore(props),
+      csvCoverage: () => ({}),
+      todayIso: () => '2026-11-01'
+    })
+  };
+  BS.AccountOwnersTab.create(book).append([{ owner: 'alex', bank: 'Demo Bank', accountName: 'Main', provider: 'enablebanking', accountId: 'eb-1' }]);
+  slow = true;
+  const partial = BS.SyncAll.run(deps);
+  assert.strictEqual(partial.results[0].transactions.complete, false);
+  assert.strictEqual(JSON.parse(props.map.BS_ACCOUNTS_READ)['eb-1'], '2026-10-20');
+  assert.deepStrictEqual([tabRows(book, 'data_coverage')[0].upTo, tabRows(book, 'data_coverage')[0].status], ['2026-10-20', 'overdue']);
+  slow = false;
+  const full = BS.SyncAll.run(deps);
+  assert.strictEqual(full.results[0].transactions.complete, true);
+  assert.deepStrictEqual([tabRows(book, 'data_coverage')[0].upTo, tabRows(book, 'data_coverage')[0].status], ['2026-11-01', 'OK']);
+});
