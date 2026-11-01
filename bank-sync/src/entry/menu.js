@@ -120,7 +120,7 @@
         'to — that is expected. Copy that whole address from the address bar, then run ' +
         '<b>Bank Sync &gt; Finish Pluxee connection</b> and paste it.</p>')
         .setWidth(420).setHeight(240);
-      SpreadsheetApp.getUi().showModalDialog(html, 'Connect Pluxee (' + escapeHtml(started.holder) + ')');
+      SpreadsheetApp.getUi().showModalDialog(html, 'Connect Pluxee (' + started.holder + ')'); // title is plain text (holder is a slug)
     });
   }
 
@@ -132,7 +132,7 @@
       if (!pasted) return;
       const done = ns.Container.pluxeeConnect().finish(pasted);
       SpreadsheetApp.getUi().alert('Pluxee is connected for ' + done.holder + '. ' +
-        'Make sure ' + ns.Config.PROPERTY_KEYS.PLUXEE_CARD_PREFIX + done.holder.toUpperCase() +
+        'Make sure ' + ns.PluxeeCredentials.namesForHolder(done.holder).card +
         ' holds the card id (see the README), then run Sync all.');
     });
   }

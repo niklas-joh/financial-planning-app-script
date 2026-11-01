@@ -26,7 +26,8 @@
 
   /**
    * A PKCE code verifier: 64 hex characters (two UUIDs, dashes removed), which satisfies RFC 7636's
-   * 43-128 unreserved characters and carries ~240 bits of randomness.
+   * 43-128 unreserved characters and carries about 240 bits of randomness (two v4 UUIDs, less their fixed
+   * version and variant bits).
    * @param {function(): string} uuid - Random UUID source.
    * @returns {string} The verifier.
    */
@@ -129,8 +130,9 @@
           throw ns.Errors.create('InputError', 'That has no sign-in code in it. Paste the whole address the browser landed on.');
         }
         const state = queryParam(pasted, 'state');
-        if (state && state !== pending.state) {
-          throw ns.Errors.create('InputError', 'This code is from a different sign-in. Run Connect Pluxee again.');
+        if (state !== pending.state) { // a missing state fails too: it is the only guard before the code is spent
+          throw ns.Errors.create('InputError',
+            'This code is from a different sign-in, or the pasted address is incomplete. Run Connect Pluxee again and paste the whole address.');
         }
         const endpoint = ns.PluxeeClient.tokenEndpoint(deps.http);
         let out;

@@ -182,9 +182,7 @@
       cache: ns.Gas.cache(),
       uuid: function () { return Utilities.getUuid(); },
       sha256: ns.Gas.sha256Base64Url,
-      saveToken: function (holder, token) {
-        props.setProperty(ns.Config.PROPERTY_KEYS.PLUXEE_REFRESH_TOKEN_PREFIX + holder.toUpperCase(), token);
-      }
+      saveToken: function (holder, token) { ns.PluxeeCredentials.saveToken(props, holder, token); }
     });
   }
 

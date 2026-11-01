@@ -295,8 +295,37 @@ test('pluxee connect: finish rejects a missing session, a refused sign-in, no co
   assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: pending() }).deps).finish('app://home/?error=access_denied'), /refused/);
   assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: pending() }).deps).finish('nonsense'), /no sign-in code/);
   assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: pending() }).deps).finish('app://home/?code=c&state=OTHER'), /different sign-in/);
+  assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache: pending() }).deps).finish('app://home/?code=c'), /incomplete/); // state is required
 
   const cache = pending();
   assert.throws(() => BS.PluxeeConnect.create(connectDeps({ cache, tokenResponse: { access_token: 'at' } }).deps).finish(REDIRECT), /no refresh token/);
   assert.strictEqual(cache.get('pluxee_connect_pending'), null, 'pending cleared even when the exchange yields no token');
+});
+
+test('pluxee credentials: a holder maps to the upper-case property names, and saveToken writes the token', () => {
+  assert.deepStrictEqual(BS.PluxeeCredentials.namesForHolder('niklas'),
+    { card: 'PLUXEE_CARD_NIKLAS', token: 'PLUXEE_REFRESH_TOKEN_NIKLAS' });
+  const props = fakeProps({});
+  BS.PluxeeCredentials.saveToken(props, 'niklas', 'rt-new');
+  assert.strictEqual(props.map.PLUXEE_REFRESH_TOKEN_NIKLAS, 'rt-new');
+});
+
+test('gas sha256Base64Url: matches the RFC 7636 PKCE test vector', () => {
+  const crypto = require('node:crypto');
+  const saved = global.Utilities;
+  global.Utilities = {
+    DigestAlgorithm: { SHA_256: 'SHA_256' },
+    Charset: { UTF_8: 'UTF_8' },
+    computeDigest: (_algo, text) => crypto.createHash('sha256').update(text, 'utf8').digest(),
+    base64EncodeWebSafe: (bytes) => Buffer.from(bytes).toString('base64url') // GAS pads; the adapter strips '='
+  };
+  try {
+    delete require.cache[require.resolve('../src/lib/gas-adapters.js')];
+    require('../src/lib/gas-adapters.js');
+    assert.strictEqual(
+      BS.Gas.sha256Base64Url('dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'),
+      'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM');
+  } finally {
+    if (saved === undefined) delete global.Utilities; else global.Utilities = saved;
+  }
 });
