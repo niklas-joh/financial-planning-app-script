@@ -46,6 +46,20 @@
   }
 
   /**
+   * The OAuth token endpoint from PluxeeConnect's discovery document (shared by the refresh grant here and the
+   * sign-in code exchange in `PluxeeConnect`).
+   * @param {{request: function(Object): *}} http - JSON HTTP client.
+   * @returns {string} The token endpoint.
+   * @throws {Error} DataError when the document names none on PluxeeConnect's own host.
+   */
+  function tokenEndpoint(http) {
+    const doc = http.request({ method: 'GET', url: PLUXEE.ISSUER + '/.well-known/openid-configuration' }) || {};
+    const url = String(doc.token_endpoint || '');
+    if (url.indexOf(PLUXEE.ISSUER + '/') !== 0) throw ns.Errors.create('DataError', 'PluxeeConnect discovery names no usable token endpoint');
+    return url;
+  }
+
+  /**
    * Creates a client.
    * @param {{request: function(Object): *}} http - JSON HTTP client.
    * @param {{name: string, load: function(): string, save: function(string): void}} tokens - Refresh token store
@@ -70,17 +84,6 @@
     }
 
     /**
-     * @returns {string} The token endpoint from PluxeeConnect's discovery document.
-     * @throws {Error} DataError when the document names none on PluxeeConnect's own host.
-     */
-    function tokenEndpoint() {
-      const doc = http.request({ method: 'GET', url: PLUXEE.ISSUER + '/.well-known/openid-configuration' }) || {};
-      const url = String(doc.token_endpoint || '');
-      if (url.indexOf(PLUXEE.ISSUER + '/') !== 0) throw ns.Errors.create('DataError', 'PluxeeConnect discovery names no usable token endpoint');
-      return url;
-    }
-
-    /**
      * A fresh access token for this run (renewed once, then reused).
      * @returns {string} Access token.
      * @throws {Error} AuthError when the login has lapsed; HttpError for other failures.
@@ -91,7 +94,7 @@
       try {
         out = tokenClient.request({
           method: 'POST',
-          url: tokenEndpoint(),
+          url: tokenEndpoint(http),
           headers: { Accept: 'application/json' },
           form: { grant_type: 'refresh_token', refresh_token: tokens.load(), client_id: PLUXEE.CLIENT_ID }
         }) || {};
@@ -130,5 +133,5 @@
     };
   }
 
-  ns.PluxeeClient = { create: create, subscriptionKey: subscriptionKey };
+  ns.PluxeeClient = { create: create, subscriptionKey: subscriptionKey, tokenEndpoint: tokenEndpoint };
 })(globalThis.BankSync);

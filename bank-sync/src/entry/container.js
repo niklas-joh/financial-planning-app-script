@@ -170,8 +170,26 @@
     };
   }
 
+  /**
+   * Builds the Pluxee sign-in service for the Connect Pluxee / Finish Pluxee connection menu steps.
+   * @returns {{start: function(string): {holder: string, url: string}, finish: function(string): {holder: string}}}
+   */
+  function pluxeeConnect() {
+    const props = ns.Gas.props();
+    return ns.PluxeeConnect.create({
+      http: ns.Gas.http(),
+      tokenHttp: ns.Gas.http({ maxRetries: 0 }),
+      cache: ns.Gas.cache(),
+      uuid: function () { return Utilities.getUuid(); },
+      sha256: ns.Gas.sha256Base64Url,
+      saveToken: function (holder, token) {
+        props.setProperty(ns.Config.PROPERTY_KEYS.PLUXEE_REFRESH_TOKEN_PREFIX + holder.toUpperCase(), token);
+      }
+    });
+  }
+
   ns.Container = {
     services: services, providerFor: providerFor, fxService: fxService,
-    syncAllDeps: syncAllDeps, autoSyncDeps: autoSyncDeps, exportDeps: exportDeps
+    syncAllDeps: syncAllDeps, autoSyncDeps: autoSyncDeps, exportDeps: exportDeps, pluxeeConnect: pluxeeConnect
   };
 })(globalThis.BankSync);

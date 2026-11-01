@@ -106,6 +106,37 @@
     });
   }
 
+  /** Starts a one-time Pluxee sign-in: asks whose card, then shows the sign-in link and what to do next. */
+  function connectPluxee() {
+    guarded(function () {
+      const holder = ask('Connect Pluxee', 'Whose Pluxee card is this? A short name, e.g. niklas:');
+      if (!holder) return;
+      const started = ns.Container.pluxeeConnect().start(holder);
+      const html = HtmlService.createHtmlOutput(
+        '<p>Open the link and sign in to Pluxee as <b>' + escapeHtml(started.holder) + '</b> ' +
+        '(captcha, then the emailed code).</p>' +
+        '<p><a href="' + escapeHtml(started.url) + '" target="_blank">Open Pluxee sign-in</a></p>' +
+        '<p>Your browser will try to open an address starting <code>app.pluxee.consumers.eva://</code> and fail ' +
+        'to — that is expected. Copy that whole address from the address bar, then run ' +
+        '<b>Bank Sync &gt; Finish Pluxee connection</b> and paste it.</p>')
+        .setWidth(420).setHeight(240);
+      SpreadsheetApp.getUi().showModalDialog(html, 'Connect Pluxee (' + escapeHtml(started.holder) + ')');
+    });
+  }
+
+  /** Finishes a Pluxee sign-in: takes the pasted redirect address, stores the refresh token. */
+  function finishPluxee() {
+    guarded(function () {
+      const pasted = ask('Finish Pluxee connection',
+        'Paste the address your browser landed on (it starts app.pluxee.consumers.eva://home/?code=...):');
+      if (!pasted) return;
+      const done = ns.Container.pluxeeConnect().finish(pasted);
+      SpreadsheetApp.getUi().alert('Pluxee is connected for ' + done.holder + '. ' +
+        'Make sure ' + ns.Config.PROPERTY_KEYS.PLUXEE_CARD_PREFIX + done.holder.toUpperCase() +
+        ' holds the card id (see the README), then run Sync all.');
+    });
+  }
+
   /**
    * Runs an action under the script lock so syncs never overlap. Show results after it returns.
    * @param {function(): *} action - Work to run while holding the lock.
@@ -218,7 +249,8 @@
   }
 
   ns.Menu = {
-    connect: connect, syncAll: syncAll, importCsv: importCsv, reprocess: reprocess, requestT212Report: requestT212Report, status: status,
+    connect: connect, connectPluxee: connectPluxee, finishPluxee: finishPluxee,
+    syncAll: syncAll, importCsv: importCsv, reprocess: reprocess, requestT212Report: requestT212Report, status: status,
     enableDailySync: enableDailySync, disableDailySync: disableDailySync
   };
 })(globalThis.BankSync);
@@ -227,6 +259,8 @@
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Bank Sync')
     .addItem('Connect a bank...', 'menuConnect')
+    .addItem('Connect Pluxee...', 'menuConnectPluxee')
+    .addItem('Finish Pluxee connection...', 'menuFinishPluxee')
     .addItem('Sync all', 'menuSyncAll')
     .addItem('Import CSV files', 'menuImportCsv')
     .addItem('Request Trading 212 report', 'menuRequestT212Report')
@@ -241,6 +275,12 @@ function onOpen() {
 
 /** Menu entry: connect a bank. */
 function menuConnect() { BankSync.Menu.connect(); }
+
+/** Menu entry: start a one-time Pluxee sign-in. */
+function menuConnectPluxee() { BankSync.Menu.connectPluxee(); }
+
+/** Menu entry: finish a Pluxee sign-in by pasting the redirect address. */
+function menuFinishPluxee() { BankSync.Menu.finishPluxee(); }
 
 /** Menu entry: sync everything. */
 function menuSyncAll() { BankSync.Menu.syncAll(); }
