@@ -40,6 +40,7 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 6 | CSV import provider: Drive folder per holder, BIL export, Trading 212 card details (B3) | Merged (#68), live since 2026-10-25 (first import: 159 BIL rows; report details on 8 Trading 212 rows; a second run changed nothing). BIL message fields and per-bank format files: #72, pushed 2026-10-26 |
 | B1 | Investment transactions: `investment_transactions` and `unclassified_transactions` tabs, rows routed by provider and report label | Merged (#76), live since 2026-10-26 (see Live state). Trading 212 bank transfers to `transactions`: #79 |
 | 6b | Avanza CSV export as one more CSV format, rows to `investment_transactions` | Merged (#80), live since 2026-10-30 (see Live state) |
+| 6c | Trade Republic: own job (`bank-sync/trade-republic/`, pytr web login, Docker, launchd 05:40) overwrites one CSV in the CSV folder; `trade-republic` CSV format with `classification` per row | PR open, not deployed (setup: `bank-sync/trade-republic/README.md`) |
 | 9 | Avanza unofficial API (values, positions, cash) | Roadmap item only, not planned: see "Avanza" for the findings and what it would take |
 | 7 | Danske Bank (Sweden) | Done with no code change: connected through *Connect a bank...*; more banks follow the same route |
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
@@ -68,7 +69,10 @@ In this order; each item still gets its own PR and stops for review.
    Next: 3b, the model retrains itself from the reviews (design in
    `docs/superpowers/specs/2026-10-31-categoriser-phase-3-design.md`).
 4. Analysis on the classified data, toward one sheet (open decision "One sheet").
-5. When convenient: Phase 8 (partner), B4 (Drive scope), retiring Plaid/SaltEdge, the old portfolio sheet and the
+5. 6c Trade Republic: owner setup (install, login, upload the first file, share it with the service account, set
+   `TR_DRIVE_FILE_ID`), then the first import; record counts and unknown types in the next PR. Later: auto-update like
+   the categoriser.
+6. When convenient: Phase 8 (partner), B4 (Drive scope), retiring Plaid/SaltEdge, the old portfolio sheet and the
    one-time migration code. Phase 9 (Avanza API) stays unplanned.
 
 ## Account numbers (owner, 2026-10-30)

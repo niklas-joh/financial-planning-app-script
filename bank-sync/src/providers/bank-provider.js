@@ -66,6 +66,7 @@
    *   `MASK_ACCOUNT_NUMBERS` is on), or ''.
    * @property {string} [counterpartyBank] - The other party's bank, or ''.
    * @property {string} [reference] - Payment reference (e.g. end-to-end id), masked like account numbers when masking is on, or ''.
+   * @property {string} [classification] - 'card', 'transfer' or 'investment' (the tab it is stored on; see `TxnRouting`), or ''.
    * @property {Object<string,*>} [apiFields] - Every API field, flattened (raw tab only; never stored on `transactions`).
    */
 

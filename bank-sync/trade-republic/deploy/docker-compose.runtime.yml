@@ -1,0 +1,15 @@
+# Installed as ~/trade-republic/docker-compose.yml by scripts/install-schedule.sh.
+# Uses the prebuilt image only; the container never reads the repo.
+services:
+  tr-export:
+    image: tr-export:local
+    env_file: .env
+    environment:
+      TR_HOME: /app
+      GOOGLE_APPLICATION_CREDENTIALS: /app/credentials/service-account.json
+    volumes:
+      - ./credentials:/app/credentials:ro
+      - ./data:/app/data
+      - ./session:/app/session
+    command: ["python", "-m", "tr_export", "run"]
+    restart: "no"

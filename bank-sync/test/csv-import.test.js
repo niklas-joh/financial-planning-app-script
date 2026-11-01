@@ -577,3 +577,76 @@ test('csv avanza: Sync all puts Avanza rows on investment_transactions and BIL r
   ]);
   assert.ok(!lines.join().includes('Demo') && !lines.join().includes('2102'));
 });
+
+// --- Trade Republic (our own job's export: one file, full history, TR event ids). Made-up merchants, ISINs and ids. ---
+
+const TR_HEADER = 'TR event id;Timestamp;Date;Account;Event type;Type;Title;Subtitle;Amount;Currency;ISIN;Shares;Fees;Taxes;Classification';
+const TR = {
+  card: '0b1e0000-0000-4000-8000-000000000001;2026-08-20T21:58:03.120+0000;2026-08-20;Trade Republic;CARD_TRANSACTION;REMOVAL;Demo Bakery;;-4.2;EUR;;;;;card',
+  refund: '0b1e0000-0000-4000-8000-000000000002;2026-08-19T09:00:00.000+0000;2026-08-19;Trade Republic;CARD_REFUND;DEPOSIT;Demo Shop;;12.99;EUR;;;;;card',
+  deposit: '0b1e0000-0000-4000-8000-000000000003;2026-08-18T07:30:00.000+0000;2026-08-18;Trade Republic;BANK_TRANSACTION_INCOMING;DEPOSIT;Demo Person;Einzahlung;500;EUR;;;;;transfer',
+  buy: '0b1e0000-0000-4000-8000-000000000004;2026-08-17T10:15:00.000+0000;2026-08-17;Trade Republic;SAVINGS_PLAN_EXECUTED;BUY;Demo World ETF;Sparplan ausgeführt;-100;EUR;XS0000000052;1.234567;0;;investment',
+  dividend: '0b1e0000-0000-4000-8000-000000000005;2026-08-16T06:00:00.000+0000;2026-08-16;Trade Republic;CREDIT;DIVIDEND;Demo Shares;Bardividende;3.51;EUR;XS0000000060;10;;0.62;investment',
+  unknown: '0b1e0000-0000-4000-8000-000000000006;2026-08-15T06:00:00.000+0000;2026-08-15;Trade Republic;NEW_EVENT_TYPE;;Something new;;-1;EUR;;;;;'
+};
+const tr = (...rows) => [TR_HEADER].concat(rows).join('\r\n') + '\r\n';
+
+test('csv trade republic: TR event id is the id, title the counterparty, subtitle (else type) the description', () => {
+  const out = normalize(tr(TR.card, TR.deposit, TR.buy, TR.dividend, TR.unknown));
+  assert.deepStrictEqual(out.accounts.map((a) => [a.accountId, a.bank, a.accountName, a.currency]), [
+    ['trade-republic-' + BS.Hash.fnv1a('Trade Republic'), 'Trade Republic', 'Trade Republic', 'EUR']
+  ]);
+  assert.deepStrictEqual(out.transactions.map((t) => [t.transactionId.slice(-2), t.bookingDate, t.amount, t.counterparty, t.description,
+    t.category, t.reference, t.classification]), [
+    ['01', '2026-08-20', -4.2, 'Demo Bakery', 'REMOVAL', 'CARD_TRANSACTION', '', 'card'],
+    ['03', '2026-08-18', 500, 'Demo Person', 'Einzahlung', 'BANK_TRANSACTION_INCOMING', '', 'transfer'],
+    ['04', '2026-08-17', -100, 'Demo World ETF', 'Sparplan ausgeführt', 'SAVINGS_PLAN_EXECUTED', 'XS0000000052', 'investment'],
+    ['05', '2026-08-16', 3.51, 'Demo Shares', 'Bardividende', 'CREDIT', 'XS0000000060', 'investment'],
+    ['06', '2026-08-15', -1, 'Something new', 'NEW_EVENT_TYPE', 'NEW_EVENT_TYPE', '', '']
+  ]);
+  // Shares, fees and taxes stay on the raw tab as written.
+  assert.deepStrictEqual([out.transactions[2].apiFields.Shares, out.transactions[3].apiFields.Taxes], ['1.234567', '0.62']);
+  // The same file again (the job overwrites it every run) gives the same ids.
+  assert.deepStrictEqual(normalize(tr(TR.card, TR.deposit)).transactions.map((t) => t.transactionId),
+    out.transactions.slice(0, 2).map((t) => t.transactionId));
+});
+
+test('csv trade republic: a row that cannot be read skips the file and names the record only', () => {
+  assert.throws(() => normalize(tr(TR.card, TR.buy.replace(';-100;', ';-100,00;'))), /Record 2: Not a number/);
+  assert.throws(() => normalize(tr(TR.card.replace(';2026-08-20;', ';20/08/2026;'))), /Record 1: Not a date/);
+  assert.throws(() => normalize(tr(TR.card.replace(/^[^;]+/, ''))), /Record 1: A Trade Republic row has no event id/);
+  assert.throws(() => normalize(tr(TR.card.replace(';EUR;', ';;'))), /Record 1: A Trade Republic row has no currency/);
+  assert.throws(() => normalize(tr(TR.card.replace(';-4.2;', ';;'))), /Record 1: A Trade Republic row has no amount/);
+  assert.throws(() => normalize(tr(TR.card.replace(/card$/, 'spending'))), /Record 1: A Trade Republic row has an unknown classification/);
+});
+
+test('csv trade republic: Sync all routes by the file\'s classification; a second run adds and moves nothing', () => {
+  const T = BS.Config.TABS;
+  const book = fakeSheetBook();
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const tab = (name) => BS.TransactionsStore.create(book, iso, name).load();
+  const routedStore = () => {
+    const stores = {};
+    BS.TxnRouting.tabs().forEach((name) => { stores[name] = BS.TransactionsStore.create(book, iso, name); });
+    return BS.TxnRouting.createStore(stores);
+  };
+  const files = [file('trade-republic.csv', tr(TR.card, TR.refund, TR.deposit, TR.buy, TR.dividend, TR.unknown))];
+  const r = folderRun(files);
+  r.deps.store = routedStore();
+  const first = r.run();
+  assert.deepStrictEqual(first.results.map((x) => [x.transactions.added, x.transactions.updated]), [[6, 0]]);
+  assert.deepStrictEqual(tab(T.TRANSACTIONS).map((t) => [t.category, t.classification]), [
+    ['CARD_TRANSACTION', 'card'],
+    ['CARD_REFUND', 'card'],
+    ['BANK_TRANSACTION_INCOMING', 'transfer'],
+    ['NEW_EVENT_TYPE', '']
+  ]);
+  assert.deepStrictEqual(tab(T.INVESTMENT_TRANSACTIONS).map((t) => t.category), ['SAVINGS_PLAN_EXECUTED', 'CREDIT']);
+  assert.strictEqual(tab(T.UNCLASSIFIED_TRANSACTIONS).length, 0);
+
+  r.deps.store = routedStore();
+  const second = r.run();
+  assert.deepStrictEqual(second.results.map((x) => [x.transactions.added, x.transactions.updated]), [[0, 0]]);
+  assert.strictEqual(BS.TxnRouting.movedText(second.moved), '');
+  assert.deepStrictEqual(BS.CsvFolders.statusLines(r.props).slice(1), ['  trade-republic: 1 file, 6 transactions, 2026-08-15 to 2026-08-20']);
+});
