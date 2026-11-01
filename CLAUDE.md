@@ -44,7 +44,8 @@ Current state, phases and deploy rules: `docs/BANK_SYNC_ROADMAP.md` (read it fir
 
 Python job that reads the Bank Sync sheet's `transactions` tab and writes only to the
 sheets in `Settings.writable_sheets`: `categorised`, its `categoriser_issues` log,
-`categoriser_rules` (job fills only `hits`/`lastMatched`; mining appends inactive rows)
+`categoriser_rules` (columns matched by header name; job fills only `hits`/`wins`/`lastMatched`/`sample`;
+mining appends inactive rows)
 and `categoriser_taxonomy` (never to `transactions`; rows with `reviewed` = TRUE are
 never overwritten). The legacy "Financial Planning" sheet is read only, with a read-only
 token, and only by the hand-run `mine`/`evaluate`/`train`/`seed_taxonomy` commands. The model

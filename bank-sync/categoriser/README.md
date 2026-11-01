@@ -11,16 +11,20 @@ then a model for the rest, which labels a row only when it is confident. Everyth
 ## Output contract
 
 - Reads `transactions`. **Never writes to it** (enforced in `sheets._assert_writable`).
-- Writes only to `categorised`, `categoriser_issues`, `categoriser_rules` (only `hits`/`lastMatched`, and
-  rows appended by `categoriser.mine`) and `categoriser_taxonomy` (created, and seeded once). This list is
+- Writes only to `categorised`, `categoriser_issues`, `categoriser_rules` (only `hits`, `wins`, `lastMatched`
+  and `sample`, and rows appended by `categoriser.mine`) and `categoriser_taxonomy` (created, and seeded once). This list is
   `Settings.writable_sheets`. The legacy sheet is only opened with a read-only token.
 - `categorised` is keyed by `transactionId`:
 
-  | transactionId | owner | type | category | subCategory | method | confidence | ruleId | reviewed | updatedAt |
-  |---|---|---|---|---|---|---|---|---|---|
+  | transactionId | owner | type | category | subCategory | method | confidence | ruleId | reviewed | updatedAt | bookingDate | counterparty | description | amountEur |
+  |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 
   `method` is `rule`, `model` or `manual`; `reviewed` is a checkbox; `updatedAt` is ISO 8601 UTC;
-  `confidence` is blank when not applicable.
+  `confidence` is blank when not applicable. The last four columns are copied from `transactions` so that
+  filtering on `ruleId` shows what a rule caught. A sheet from before these columns existed gets them added
+  at the end on the next run (its rule and model rows are rewritten once, so their `updatedAt` moves). Rows the
+  run doesn't rewrite (reviewed, manual) get only these four cells filled while they are all blank; their labels
+  and `updatedAt` are never touched (`context_filled` in the log).
 - Rows with `reviewed = TRUE` are never overwritten. Other existing rows are updated in place when something
   changed (so `updatedAt` is the last change); new IDs are appended below the last row with an ID.
 - A `rule` or `model` row that the run no longer produces (rule switched off or changed, model no longer
@@ -81,10 +85,23 @@ sets one.
 | `owner` | blank = the account's owner |
 | `type`, `category`, `subCategory` | must be a row of `categoriser_taxonomy` |
 | `notes`, `source` | free text; `manual` or `mined` |
-| `hits`, `lastMatched` | written by the job: rows the rule matches on its own (active or not), and the latest `bookingDate` |
+| `hits` | written by the job: rows on `transactions` the rule matches **on its own**, ignoring other rules and `active` |
+| `lastMatched` | written by the job: the latest `bookingDate` among those rows |
+| `wins` | written by the job: rows the rule actually categorised (it was the first active rule to match) |
+| `sample` | written by the job: the 3 most common counterparties among the `hits`, with counts, e.g. `Acme Market (12); ACME MKT ONLINE (3); +2 more` (description when the counterparty is blank) |
 
 Blank match columns mean "any", but at least one must be set. An active rule that breaks a check is skipped and
-logged as `invalid_rule`; the run carries on. The job never edits your rules, only `hits` and `lastMatched`.
+logged as `invalid_rule`; the run carries on. The job never edits your rules, only the four job columns.
+
+**Reading the job columns.** `hits` is not an exact-text count: one rule can catch several spellings and
+merchants (`sample` shows which), and a row can count towards several rules. On an inactive (e.g. mined) rule,
+`hits` is what it would catch if switched on; `wins` is 0. On an active rule, `hits - wins` is what a rule
+earlier in the matching order took instead. To see every row a rule labelled, filter `categorised` on its `ruleId`.
+
+**Layout.** Columns are found by header name: reorder them, or add your own, freely. A missing job column is added
+at the end; a missing or repeated rule column stops the run before anything is written. The job adds a filter to
+the sheet (once; an existing one is left as is), so it can be sorted, e.g. by `hits`. Sorting is safe: rules are
+tried by `priority`, not by row.
 
 ### Taxonomy sheet (`categoriser_taxonomy`)
 
