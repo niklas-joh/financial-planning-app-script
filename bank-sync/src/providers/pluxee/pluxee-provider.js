@@ -2,7 +2,7 @@
  * @fileoverview PluxeeProvider: implements the BankProvider contract for one Pluxee card (one
  * connection). One call returns the card and its latest transactions, so it is made once per run and
  * serves `listAccounts` and `getTransactions`; the whole list is read at once (`maxWindowDays: Infinity`)
- * and filtered to the requested dates. No balances yet.
+ * and returned up to the requested end date, older rows included. No balances yet.
  */
 (function (ns) {
   /**
@@ -43,14 +43,16 @@
       },
 
       /**
-       * The card's transactions dated in a range (local dates, inclusive).
+       * Every transaction the response holds up to `dateTo`, also those before `dateFrom`: one call returns the
+       * card's history (99 rows, over a year on a lunch card) whatever the range, so the first sync stores all of
+       * it, not just the first-run lookback, and later syncs find those rows unchanged (the upsert is by id).
        * @param {string} accountId - Card id.
-       * @param {{dateFrom: string, dateTo: string}} range - ISO dates.
+       * @param {{dateFrom: string, dateTo: string}} range - ISO dates; only `dateTo` limits the rows.
        * @returns {Array<import('../bank-provider.js').Transaction>} Transactions, declined ones left out.
        */
       getTransactions: function (accountId, range) {
         return ns.PluxeeNormalize.transactions(read().transactions, accountId, deps.toLocalDate).filter(function (t) {
-          return t.bookingDate >= range.dateFrom && t.bookingDate <= range.dateTo;
+          return t.bookingDate <= range.dateTo;
         });
       }
     });

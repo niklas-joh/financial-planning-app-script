@@ -107,6 +107,12 @@ run's refresh got `invalid_grant`, most likely because the portal tab was still 
 token the first run had already rotated (refresh-token reuse cancels the login). The README now says to close the tab
 right after copying the token.
 
+After #122 (2026-11-01): with a fresh refresh token, *Sync all* gave `pluxee-niklas` 10 added (1 account added to
+`account_owners`, 10 converted to EUR), and a second run 0 added, 0 updated. Only 10 because a new account's first
+sync reads the 90-day lookback; since the response holds the whole history anyway, the provider now returns every row
+up to the end date, so the next sync adds the older rows (May 2025 onward) once. Still to see: whether the saved
+refresh token survives to the next daily run.
+
 Deploy: from `bank-sync/`, `npm test`, `clasp push`; reload the sheet; add the two properties (README, "Pluxee
 meal-voucher card"); *Sync all*; check *Show status* and the `transactions` rows of `pluxee-<holder>`; run *Sync all*
 again (expect 0 added, 0 updated).

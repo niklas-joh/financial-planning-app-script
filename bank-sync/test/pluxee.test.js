@@ -184,15 +184,16 @@ test('pluxee client: a token endpoint off the PluxeeConnect host is refused (the
   assert.ok(!http.calls.some((c) => c.method === 'POST'));
 });
 
-test('pluxee provider: one API call serves the account and the transactions, filtered to the range', () => {
+test('pluxee provider: one API call serves the account and every transaction up to the end date', () => {
   let reads = 0;
   const client = { transactions: (id) => { reads++; assert.strictEqual(id, 'LUX1'); return { card: CARD, transactions: ITEMS }; } };
   const p = BS.PluxeeProvider.create({ connection: CONN, cardId: 'LUX1', client, toLocalDate });
   assert.strictEqual(p.maxWindowDays, Infinity);
   assert.strictEqual(p.listAccounts()[0].accountId, CARD.cardId);
   assert.deepStrictEqual(p.getBalances(CARD.cardId), []);
-  const rows = p.getTransactions(CARD.cardId, { dateFrom: '2026-10-20', dateTo: '2026-10-31' });
-  assert.deepStrictEqual(rows.map((t) => t.transactionId), ['LUXa1', 'LUXa4']);
+  // Rows before dateFrom are kept (the first sync stores the whole history); rows after dateTo are not.
+  const rows = p.getTransactions(CARD.cardId, { dateFrom: '2026-10-20', dateTo: '2026-10-25' });
+  assert.deepStrictEqual(rows.map((t) => t.transactionId), ['LUXa1', 'LUXa3']);
   assert.strictEqual(reads, 1);
   assert.throws(() => p.authorize(), /PLUXEE_CARD_/);
 });

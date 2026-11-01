@@ -362,8 +362,10 @@ What it writes:
   (`Pluxee` for top-ups), `description` Pluxee's kind (`Purchase`, `Reloading`, often blank), `category` Pluxee's code
   (`PAYMENT`, `LOAD`), `classification` = `card`.
   Declined payments are left out; a status other than approved is stored as pending. Amounts are in EUR.
-- Each sync reads the latest 99 transactions (what the portal asks for; the response has no paging). On a lunch card
-  that is over a year of history, so the first sync loads that and later ones only need the last days.
+- Each sync reads the latest 99 transactions (what the portal asks for; the response has no paging) and stores all of
+  them, not only the 90-day first-run lookback other accounts use. On a lunch card that is over a year of history:
+  the first sync loads it, and later syncs find those rows unchanged and add only new ones. Anything older than the
+  99 rows is not available.
 - The API also wants the portal's subscription key, a fixed value in the portal's script that every visitor's browser
   sends. Each sync reads it from `consumers.pluxee.lu`, once per Pluxee connection (nothing to set up, nothing stored); if Pluxee changes its
   portal so it cannot be found, the sync says so for that connection without using up the refresh token.
