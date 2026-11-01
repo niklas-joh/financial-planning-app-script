@@ -1,6 +1,7 @@
 #!/bin/bash
-# Run from Terminal/SSH (which can read ~/Documents). Safe to re-run, e.g.
-# after code changes to rebuild the image.
+# Run from Terminal/SSH (which can read ~/Documents). Needed once, then only when the
+# launchd plist template changes or to put a branch on the schedule (with
+# CATEGORISER_AUTO_UPDATE=0); code merged to `main` is picked up by the daily run. Safe to re-run.
 #  1. Creates ~/categoriser (outside Documents and iCloud) and MOVES .env,
 #     credentials/, data/, models/ there from the repo folder if present.
 #  2. Builds the categoriser:local image from the repo, labelled with the git tree of

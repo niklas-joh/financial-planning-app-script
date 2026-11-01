@@ -6,7 +6,9 @@
 # Auto-update (on unless CATEGORISER_AUTO_UPDATE=0 in .env): before running, it fetches
 # `main` of the public repo into ~/categoriser/repo (only bank-sync/categoriser) and, if
 # that folder changed since the image was built, rebuilds the image and refreshes the
-# runtime files. Any failure (offline, build error) keeps the current image and the run
+# runtime files. A commit is used only once GitHub shows its `Tests (categoriser)` check
+# passed (CI also runs on every push to main); until then the current image runs. Any
+# failure (offline, CI pending or red, build error) keeps the current image and the run
 # goes ahead. A changed launchd plist template is only reported: re-run install-schedule.sh.
 set -euo pipefail
 
@@ -16,7 +18,10 @@ mkdir -p logs
 STAMP=logs/.last-success
 TODAY=$(date +%F)
 
-REPO_URL=${CATEGORISER_REPO_URL:-https://github.com/niklas-joh/financial-planning-app-script.git}
+REPO_SLUG=niklas-joh/financial-planning-app-script
+REPO_URL=${CATEGORISER_REPO_URL:-https://github.com/$REPO_SLUG.git}
+CI_CHECK="Tests (categoriser)"
+VERIFIED=logs/.verified-commit   # last main commit whose CI check passed
 BRANCH=main
 SUB=bank-sync/categoriser
 IMAGE=categoriser:local
@@ -49,6 +54,18 @@ refresh_file() {
   cp -p "$src" "$dest.new" && mv -f "$dest.new" "$dest"
 }
 
+# 0 when every `$CI_CHECK` run on commit $1 completed successfully (at least one).
+# Public repo: one unauthenticated GitHub API call; no jq needed.
+ci_passed() {
+  local json statuses conclusions
+  json=$(curl -fsS --max-time 20 -H "Accept: application/vnd.github+json" \
+    "https://api.github.com/repos/$REPO_SLUG/commits/$1/check-runs?check_name=${CI_CHECK// /%20}") || return 1
+  statuses=$(printf '%s' "$json" | grep -o '"status": *"[a-z_]*"' | sed 's/.*"\([a-z_]*\)"$/\1/')
+  conclusions=$(printf '%s' "$json" | grep -o '"conclusion": *"[a-z_]*"' | sed 's/.*"\([a-z_]*\)"$/\1/')
+  [ -n "$statuses" ] && ! printf '%s\n' "$statuses" | grep -qv '^completed$' \
+    && [ "$(printf '%s\n' "$conclusions" | grep -c '^success$')" = "$(printf '%s\n' "$statuses" | wc -l | tr -d ' ')" ]
+}
+
 auto_update() {
   if [ "$(env_value CATEGORISER_AUTO_UPDATE)" = "0" ]; then
     log "auto-update off (CATEGORISER_AUTO_UPDATE=0)"
@@ -64,6 +81,13 @@ auto_update() {
   commit=$(git -C repo rev-parse FETCH_HEAD) || return 1
   want=$(git -C repo rev-parse "FETCH_HEAD:$SUB") || return 1
   have=$(docker image inspect -f "{{ index .Config.Labels \"$TREE_LABEL\" }}" "$IMAGE" 2>/dev/null || true)
+  if [ "$commit" != "$(cat "$VERIFIED" 2>/dev/null)" ]; then
+    if ! ci_passed "$commit"; then
+      log "$BRANCH is at ${commit:0:7}, but its '$CI_CHECK' check has not passed (pending, failed or unreachable): keeping the current image"
+      return 0
+    fi
+    echo "$commit" > "$VERIFIED"
+  fi
   git -C repo checkout --quiet --force --detach FETCH_HEAD || return 1
 
   if [ "$want" != "$have" ]; then

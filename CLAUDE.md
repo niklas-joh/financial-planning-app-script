@@ -64,8 +64,9 @@ Details: `bank-sync/categoriser/README.md`.
 - **Runs daily at 06:15** via launchd (`lu.niklas.categoriser`) from `~/categoriser/`,
   using the Docker image `categoriser:local`.
 - **Deploying = merging to `main`.** Before each daily run, `run-scheduled.sh` fetches `main`
-  into `~/categoriser/repo` and rebuilds the image if `bank-sync/categoriser/` changed (fetch or
-  build failure keeps the current image). Only a changed plist template needs
+  into `~/categoriser/repo` and rebuilds the image if `bank-sync/categoriser/` changed, but only
+  once that commit's `Tests (categoriser)` check is green on GitHub (pending/red CI, fetch or
+  build failure keep the current image). Runtime deps are capped below the next major version. Only a changed plist template needs
   `scripts/install-schedule.sh` re-run (the log warns). To test a branch on the schedule, set
   `CATEGORISER_AUTO_UPDATE=0` in `~/categoriser/.env` and run `install-schedule.sh` from it.
   Apps Script changes never touch it.

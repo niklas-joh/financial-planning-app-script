@@ -15,7 +15,8 @@ This folder is what the daily scheduled job runs from. The **code** lives in the
 
 The job runs the Docker image `categoriser:local`. Before each daily run it fetches `main` and, if
 `bank-sync/categoriser/` changed, rebuilds the image. So **merging to `main` is the deploy**; it goes live
-at the next 06:15 run. If the fetch or build fails, the current image runs as before.
+at the next 06:15 run once GitHub shows that commit's `Tests (categoriser)` check passed. If the check is
+pending or red, or the fetch or build fails, the current image runs as before.
 
 To run a branch instead, add `CATEGORISER_AUTO_UPDATE=0` to `.env` and run `install-schedule.sh` from that
 branch. Remove the line to go back to `main`. A changed schedule (plist) still needs `install-schedule.sh`;

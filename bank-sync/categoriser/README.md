@@ -171,7 +171,8 @@ must be in the taxonomy. Owner is the account's owner.
 - **Train** by hand, after reviewing rows or approving rules: from the runtime folder,
   `docker compose run --rm categoriser python -m categoriser.train`. Use the scheduled image: the model is saved
   with its scikit-learn version and the daily run skips a model from another version (`model=incompatible` in the
-  log). scikit-learn is pinned in `pyproject.toml`; after a bump reaches `main`, the next run rebuilds the image and skips the old model (`model=incompatible`) until you retrain with the new image.
+  log). scikit-learn is pinned in `pyproject.toml`; after a bump reaches `main`, the next run rebuilds the
+  image and skips the old model (`model=incompatible`) until you retrain with the new image.
 - Examples are the same as for mining: legacy rows, Bank Sync rows joined to them and rows you reviewed
   (these count three times). Labels with fewer than 2 examples are not learnt.
 - It first runs the holdout below, then trains on everything and writes `models/categoriser-model.joblib` and
@@ -275,7 +276,12 @@ one the image was built from (an image label), it rebuilds `categoriser:local` a
 `docker-compose.yml`, `README.md` and `run-scheduled.sh` itself (used from the next run). So a change
 merged today goes live at the next 06:15 run. The log line `run start (<commit>)` says which commit ran.
 
+- **Only green commits deploy.** A new `main` commit is used once GitHub shows its `Tests (categoriser)` check
+  passed (CI runs on every push to `main`). Pending, red or unreachable: the current image runs and the log says
+  `check has not passed`; the next run tries again. A merge just before 06:15 may therefore go live a day later.
 - Offline, fetch or build failure: the current image runs as before (`auto-update did not complete` in the log).
+- Dependencies are capped below their next major version in `pyproject.toml`, so a rebuild picks up bug fixes but
+  not a breaking release CI never saw.
 - Changes elsewhere in the repo don't trigger a rebuild.
 - A changed `launchd/*.plist.template` (e.g. the schedule time) is only reported (`WARNING: the launchd schedule
   changed`): re-run `install-schedule.sh` for that.
