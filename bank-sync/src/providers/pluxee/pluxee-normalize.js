@@ -81,7 +81,8 @@
 
   /**
    * Maps one transaction.
-   * @param {Object} item - {id, description, date, status, type, amount, merchantName, merchantCity, ...}.
+   * @param {Object} item - {id, description ('Purchase', 'Reloading' or null), merchantName, date, status, type
+   *   ('DEBIT', 'CREDIT'), code ('PAYMENT', 'LOAD'), amount, merchantCity, ...}.
    * @param {string} accountId - Card id.
    * @param {function(string): string} toLocalDate - Date-time to local date.
    * @returns {?import('../bank-provider.js').Transaction} Transaction, or null for a declined one.
@@ -108,7 +109,7 @@
       fxRateDate: '',
       counterparty: clean(item.merchantName) || description,
       description: description,
-      category: clean(item.type),
+      category: clean(item.code) || clean(item.type),
       classification: 'card',
       counterpartyAccount: '',
       counterpartyBank: '',

@@ -20,13 +20,13 @@ const fakeProps = (init) => {
 const CARD = { cardId: 'LUX0000000000000000001', maskedPan: 'XXXX 1234', name: 'Demo Lunch', state: 'ACTIVE' };
 const money = (value) => ({ value, exponent: 2, currency: 'EUR' });
 const ITEMS = [
-  { id: 'LUXa1', description: 'Corner Deli', date: '2026-10-25T09:42:04.000', status: 'APPROVED', type: 'DEBIT',
+  { id: 'LUXa1', description: 'Purchase', date: '2026-10-25T09:42:04.000', status: 'APPROVED', type: 'DEBIT', code: 'PAYMENT',
     amount: money(-1250), merchantName: 'Corner Deli   Demo Town ', merchantCity: 'DEMO TOWN' },
   { id: 'LUXa2', description: 'Music Store', date: '2026-10-22T19:10:20.000', status: 'DECLINED', type: 'DEBIT',
     amount: money(-999), merchantName: 'MUSIC STORE' },
-  { id: 'LUXa3', description: 'Monthly credit', date: '2026-10-01T00:05:00.000', status: 'APPROVED', type: 'CREDIT',
-    amount: money(22000) },
-  { id: 'LUXa4', description: 'Bakery', date: '2026-10-26T12:00:00.000', status: 'AUTHORIZED', type: 'DEBIT',
+  { id: 'LUXa3', description: 'Reloading', date: '2026-10-01T00:05:00.000', status: 'APPROVED', type: 'CREDIT', code: 'LOAD',
+    amount: money(22000), merchantName: 'Pluxee' },
+  { id: 'LUXa4', description: null, date: '2026-10-26T12:00:00.000', status: 'AUTHORIZED', type: 'DEBIT',
     amount: money(-480), merchantName: 'Bakery' }
 ];
 
@@ -66,8 +66,8 @@ test('pluxee normalize: zone-less local times keep their date; zoned ones go thr
 test('pluxee normalize: approved rows are booked card rows, declined ones dropped, others pending', () => {
   const rows = BS.PluxeeNormalize.transactions(ITEMS, 'LUX1', toLocalDate);
   assert.deepStrictEqual(rows.map((t) => [t.transactionId, t.bookingDate, t.status, t.amount, t.counterparty, t.category]), [
-    ['LUXa1', '2026-10-25', 'booked', -12.5, 'Corner Deli Demo Town', 'DEBIT'],
-    ['LUXa3', '2026-10-01', 'booked', 220, 'Monthly credit', 'CREDIT'],
+    ['LUXa1', '2026-10-25', 'booked', -12.5, 'Corner Deli Demo Town', 'PAYMENT'],
+    ['LUXa3', '2026-10-01', 'booked', 220, 'Pluxee', 'LOAD'],
     ['LUXa4', '2026-10-26', 'pending', -4.8, 'Bakery', 'DEBIT']
   ]);
   assert.ok(rows.every((t) => t.provider === 'pluxee' && t.classification === 'card' && t.currency === 'EUR'));

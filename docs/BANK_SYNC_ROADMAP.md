@@ -94,8 +94,10 @@ session, so days rather than months), and whether the token endpoint and the API
 as they do from the portal. The first deploy answers the second; *Show status* and the daily summary show when
 the login lapses. If it lapses within hours, keep CSV exports instead.
 
-Field names on the transactions (`amount`, `merchantName`) were read from a cut-off screenshot: check them against
-the first live sync (`raw_transactions`) and fix `pluxee-normalize.js` if a column stays empty.
+Field names checked against a full response (99 rows, May 2025 to October 2026, no paging fields): `merchantName` is
+always set (`Pluxee` on top-ups), `description` is generic (`Purchase`, `Reloading` or null), `code` is `PAYMENT`
+or `LOAD`, `type` `DEBIT` or `CREDIT`. `splitData[].availableBalanceAmount` did not match the card balance the portal
+shows, so no balance is taken from it.
 
 Deploy: from `bank-sync/`, `npm test`, `clasp push`; reload the sheet; add the two properties (README, "Pluxee
 meal-voucher card"); *Sync all*; check *Show status* and the `transactions` rows of `pluxee-<holder>`; run *Sync all*

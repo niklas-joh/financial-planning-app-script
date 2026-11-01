@@ -357,10 +357,12 @@ What it writes:
 
 - The card is one account (`bank` Pluxee, `accountName` the product, e.g. "Pluxee Lunch", `ibanMasked` the card's
   masked number as Pluxee shows it). No balances yet.
-- `transactions`: every approved payment (negative) and top-up (positive) of the card, `counterparty` the merchant,
-  `description` Pluxee's short name, `category` Pluxee's type (`DEBIT`, `CREDIT`), `classification` = `card`.
+- `transactions`: every approved payment (negative) and top-up (positive) of the card, `counterparty` the merchant
+  (`Pluxee` for top-ups), `description` Pluxee's kind (`Purchase`, `Reloading`, often blank), `category` Pluxee's code
+  (`PAYMENT`, `LOAD`), `classification` = `card`.
   Declined payments are left out; a status other than approved is stored as pending. Amounts are in EUR.
-- Each sync reads the latest 99 transactions (what the portal asks for), which covers far more than a day.
+- Each sync reads the latest 99 transactions (what the portal asks for; the response has no paging). On a lunch card
+  that is over a year of history, so the first sync loads that and later ones only need the last days.
 - When PluxeeConnect refuses the refresh token, the sync reports "Pluxee login has expired" for that connection
   (the others still run): sign in again and paste the new refresh token into the same property.
 
