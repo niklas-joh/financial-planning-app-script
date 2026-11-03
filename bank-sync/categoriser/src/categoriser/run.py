@@ -1,7 +1,7 @@
 """Entry point: `python -m categoriser.run` (what Docker and launchd run).
 
 Applies the answers ticked in the review inbox (reviewed `manual` rows, and rules
-for "all like this"), reads transactions, the taxonomy and the rules, categorises
+for rows applied to a merchant), reads transactions, the taxonomy and the rules, categorises
 with the active rules and internal-transfer pairing, then lets the model (if one
 is trained) label the confident rest. Writes `categorised`, refreshes the rules'
 `hits`/`wins`/`lastMatched`/`sample`, fills the review inbox again and logs
@@ -133,7 +133,7 @@ def main() -> None:
     review_values = read_values(review_ws)
     rules_values = read_values(rules_ws)
 
-    # Answers first, so a rule made with "all like this" already applies in this run.
+    # Answers first, so a rule made from a review answer already applies in this run.
     by_id = transactions_by_id(transactions)
     answers = apply_answers(review_values, by_id, taxonomy, owners, before_upsert, rules_values,
                             today, now, settings.review_sheet)
