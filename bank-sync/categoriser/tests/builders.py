@@ -50,13 +50,15 @@ def rules_sheet(*rows) -> list[list]:
     return [list(RULE_COLUMNS), *rows]
 
 
-def review_row(tid, answer="", owner="", accept=False, all_like_this=False, match_text="", suggested="",
-               kind="merchant", confidence="") -> list:
+def review_row(tid, answer="", owner="", accept=False, apply_to="This row only", merchant_text="",
+               description_text="", suggested="", spot_check=False, confidence="") -> list:
+    """An inbox row; a merchant row has `similar` 1, a spot check none (as `plan_inbox` writes them)."""
     from categoriser.review import REVIEW_COLUMNS
 
     values = {c: "" for c in REVIEW_COLUMNS}
-    values.update(transactionId=tid, answer=answer, owner=owner, accept=accept, allLikeThis=all_like_this,
-                  matchText=match_text, suggested=suggested, kind=kind, confidence=confidence)
+    values.update(transactionId=tid, answer=answer, owner=owner, accept=accept, applyTo=apply_to,
+                  merchantText=merchant_text, descriptionText=description_text, suggested=suggested,
+                  confidence=confidence, similar="" if spot_check else 1)
     return [values[c] for c in REVIEW_COLUMNS]
 
 

@@ -153,7 +153,7 @@ def review_spreadsheet(answer=GROCERY, extra_rows=()):
     txns = [txn("bob", -5, counterparty="Acme Market", tid="a1", day="2026-05-01"),
             txn("bob", -6, counterparty="Acme Market", tid="a2", day="2026-05-02"),
             txn("bob", -7, counterparty="Lone Shop", tid="n")]
-    review = review_sheet(review_row("a1", answer=answer, accept=True, all_like_this=True, match_text="acme market"),
+    review = review_sheet(review_row("a1", answer=answer, accept=True, apply_to="Same merchant", merchant_text="acme market"),
                           *extra_rows)
     return spreadsheet(txns, [HEADER], [list(RULE_COLUMNS)], TAXONOMY_ROWS, review)
 
@@ -167,7 +167,7 @@ def history(data):
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
-def test_answer_with_all_like_this_labels_the_merchant_in_the_same_run(monkeypatch, data, caplog):
+def test_answer_for_the_same_merchant_labels_the_merchant_in_the_same_run(monkeypatch, data, caplog):
     caplog.set_level("INFO", logger="categoriser")
     ss = review_spreadsheet()
     run_with(monkeypatch, ss)
@@ -234,7 +234,7 @@ def test_inbox_is_created_and_filled_on_the_first_run(monkeypatch):
 def test_answered_spot_check_is_not_offered_again(monkeypatch, models):
     trained(models)
     monkeypatch.setattr(run, "load_settings", lambda: Settings("x", Path("/dev/null"), model_min_confidence=0.5))
-    review = review_sheet(review_row("s", answer=GROCERY, suggested=GROCERY, accept=True, kind="spot check"))
+    review = review_sheet(review_row("s", answer=GROCERY, suggested=GROCERY, accept=True, spot_check=True))
     ss = spreadsheet([txn("bob", -25, counterparty="Acme Market", tid="s")], [HEADER], [list(RULE_COLUMNS)],
                      TAXONOMY_ROWS, review)
     monkeypatch.setattr(run, "open_spreadsheet", lambda _: ss)
@@ -277,3 +277,19 @@ def test_categorised_grows_past_its_first_1000_rows_and_counts_coverage(monkeypa
     issues = ss.sheets["categoriser_issues"].values[1:]
     assert [(r[COL["type"]], r[COL["transactionId"]]) for r in issues] == [("orphaned_categorised_row", "gone")]
     assert "transactions=1501 categorised=1500 uncategorised=1 orphaned=1 not_written=0" in caplog.text
+
+
+def test_merchant_and_description_rule_labels_only_rows_with_both(monkeypatch):
+    txns = [txn("bob", -5, counterparty="Trading Markets", description="Savings for Alice", tid="a1", day="2026-05-01"),
+            txn("bob", -6, counterparty="Trading Markets", description="Savings for Alice", tid="a2", day="2026-05-02"),
+            txn("bob", -7, counterparty="Trading Markets", description="Savings for Carol", tid="c1", day="2026-05-03")]
+    review = review_sheet(review_row("a1", answer=GROCERY, accept=True, apply_to="Merchant + description",
+                                     merchant_text="trading markets", description_text="savings for alice"))
+    ss = spreadsheet(txns, [HEADER], [list(RULE_COLUMNS)], TAXONOMY_ROWS, review)
+    run_with(monkeypatch, ss)
+    [rule] = ss.sheets["categoriser_rules"].values[1:]
+    assert (rule[RCOL["counterpartyContains"]], rule[RCOL["descriptionContains"]]) == \
+        ("trading markets", "savings for alice")
+    labelled = {r[0]: r[5] for r in ss.sheets["categorised"].values[1:] if r[2]}
+    assert labelled == {"a1": "manual", "a2": "rule"}
+    assert inbox_ids(ss) == ["c1"]

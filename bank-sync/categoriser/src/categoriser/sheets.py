@@ -17,7 +17,15 @@ from .config import Settings
 from .engine import RuleStats
 from .issues import ISSUE_COLUMNS, Issue, IssuesPlan, plan_issues
 from .merge import UpsertPlan, drop_newly_reviewed, plan_context_backfill, plan_upsert
-from .review import OWNER_COLUMNS, REVIEW_COLUMNS, VCOL, owner_cells
+from .review import (
+    APPLY_TO,
+    OWNER_COLUMNS,
+    REVIEW_COLUMNS,
+    VCOL,
+    is_legacy_review_header,
+    owner_cells,
+    upgrade_legacy_review,
+)
 from .rules import DIRECTIONS, JOB_COLUMNS, RULE_COLUMNS, SOURCES, rule_columns
 from .schema import CATEGORISED_COLUMNS, CONTEXT_COLUMNS, KEY_COLUMN, REVIEWED_COLUMN, CategorisedRow, Method
 from .taxonomy import TAXONOMY_COLUMNS
@@ -89,7 +97,7 @@ def _validations(settings: Settings, title: str, header: list) -> dict[int, dict
             col["subCategory"]: _one_of_range(tax, "C"),
         }
     if title == settings.review_sheet:
-        return {VCOL["accept"]: CHECKBOX, VCOL["allLikeThis"]: CHECKBOX,
+        return {VCOL["accept"]: CHECKBOX, VCOL["applyTo"]: _one_of_list(APPLY_TO),
                 VCOL["owner"]: _one_of_range(settings.owners_sheet, "A")}
     return {}
 
@@ -139,9 +147,25 @@ def _missing_columns(header: list[str], columns: tuple[str, ...], by_name: bool)
 
 
 def ensure_review_sheet(ss: gspread.Spreadsheet, settings: Settings) -> gspread.Worksheet:
-    """Return the review inbox, creating it with checkboxes on `accept`/`allLikeThis` and an
-    owner dropdown if missing. The `answer` dropdown is set by `write_review`."""
+    """Return the review inbox, creating it with a checkbox on `accept` and dropdowns on `applyTo`
+    and `owner` if missing. The `answer` dropdown is set by `write_review`. An inbox with the old
+    columns is first rewritten in today's (`_upgrade_legacy_review`), so no answer is lost."""
+    _upgrade_legacy_review(ss, settings)
     return _ensure_sheet(ss, settings, settings.review_sheet, REVIEW_COLUMNS)
+
+
+def _upgrade_legacy_review(ss: gspread.Spreadsheet, settings: Settings) -> None:
+    try:
+        ws = ss.worksheet(settings.review_sheet)
+    except gspread.WorksheetNotFound:
+        return
+    if not is_legacy_review_header(ws.row_values(1)):
+        return
+    _assert_writable(ws, settings)
+    ws.update(upgrade_legacy_review(read_values(ws)), "A1", value_input_option=ValueInputOption.raw)
+    # Rules without a `rule` clear the dropdowns and checkboxes the columns had before they moved.
+    ss.batch_update({"requests": [{"setDataValidation": {"range": {"sheetId": ws.id, "startRowIndex": 1}}}]})
+    _apply_validations(ss, ws, settings)
 
 
 def _ensure_sheet(ss: gspread.Spreadsheet, settings: Settings, title: str,
@@ -348,8 +372,7 @@ def write_review(ws: gspread.Worksheet, settings: Settings, rows: list[list], re
                  answers: list[str]) -> bool:
     """Rewrite the review inbox below its header; blank the rows left over from before.
 
-    The transactionId column and the columns the owner edits (answer, owner, accept,
-    allLikeThis, matchText) are read again first: if any of them changed since the run
+    The transactionId column and the columns the owner edits (`OWNER_COLUMNS`) are read again first: if any of them changed since the run
     read the tab (`read_at_start`), nothing is written and False is returned, so the
     edit is picked up by the next run instead of being overwritten.
     `answers` feed the `answer` dropdown (not strict; the job checks answers).
