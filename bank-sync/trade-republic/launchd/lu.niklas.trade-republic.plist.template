@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template. __TR_DIR__ is replaced with the runtime folder (~/trade-republic) by
+  scripts/install-schedule.sh. Daily at 05:40, before the Bank Sync daily sync (06:00-07:00);
+  RunAtLoad catches up after login, and launchd runs a missed slot once on wake.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>lu.niklas.trade-republic</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__TR_DIR__/run-scheduled.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__TR_DIR__</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>5</integer>
+    <key>Minute</key>
+    <integer>40</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>__TR_DIR__/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__TR_DIR__/logs/launchd.err.log</string>
+</dict>
+</plist>

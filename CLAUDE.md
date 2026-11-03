@@ -72,6 +72,22 @@ Details: `bank-sync/categoriser/README.md`.
   Apps Script changes never touch it.
 - Tests: `pytest` in `bank-sync/categoriser/` (no network); CI runs them in the `Tests (categoriser)` job.
 
+### `bank-sync/trade-republic/` (Python, separate from Apps Script)
+
+Job that reads the Trade Republic timeline with pytr (private API, pinned exactly) and overwrites one CSV file in the
+Bank Sync CSV folder on Drive (an existing file shared with the service account; content only, and only when it
+changed). Bank Sync reads it with `src/providers/csv/formats/trade-republic.js`; its columns are
+`src/tr_export/csv_format.py` `COLUMNS`, and `tests/test_contract.py` keeps the two in step. Change them together.
+Details: `bank-sync/trade-republic/README.md`.
+
+- Web login only (pytr v2, confirm in the app; never a device reset). The PIN is never stored. The scheduled run only
+  resumes the saved session and exits 3 when a login is needed; it never prompts.
+- Secrets, the session and data live in `~/trade-republic/` (`.env`, `session/`, `credentials/`, `data/`, `logs/`),
+  never in the repo. Logs hold counts, dates and event type names only.
+- Runs daily at 05:40 via launchd (`lu.niklas.trade-republic`) with the Docker image `tr-export:local`. No
+  auto-update: re-run `scripts/install-schedule.sh` after a merge.
+- Tests: `pytest` in `bank-sync/trade-republic/` (no network); CI runs them in the `Tests (trade-republic)` job.
+
 ## Conventions
 
 - Principles: see `docs/DEVELOPMENT_PRINCIPLES.md` (KISS, YAGNI, SRP, DRY).

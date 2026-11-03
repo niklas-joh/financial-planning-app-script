@@ -489,6 +489,15 @@ Supported exports:
   Trades (`Köp`, `Sälj`) are imported: for Avanza they are the only record (there is no daily value), and with them the
   sum of an account's rows is its cash movement. Filter on `category` to leave them out of a total. A blank `Belopp`
   (a movement without cash, e.g. a split; not seen so far) is imported with amount 0.
+- **Trade Republic** (one file, the whole history): written by this repo's own job, `bank-sync/trade-republic/`
+  (pytr, web login; see its README), which overwrites `trade-republic.csv` in the folder each morning. UTF-8,
+  `;`-separated, header `TR event id;Timestamp;Date;Account;Event type;Type;Title;Subtitle;Amount;Currency;ISIN;Shares;Fees;Taxes;Classification`,
+  dates `YYYY-MM-DD`, `.` decimal point, no thousands separator. The id is Trade Republic's event id, so the daily
+  re-read adds nothing. `counterparty`: `Title` (merchant, sender or security); `description`: `Subtitle`, else `Type`;
+  `category`: the event type as a code (`CARD_TRANSACTION`, `SAVINGS_PLAN_EXECUTED`, ...); `reference`: the ISIN;
+  `classification`: from the file (`card` and `transfer` rows go to `transactions`, `investment` rows to
+  `investment_transactions`, an empty one, an event type the job does not know, to `transactions`). Shares, fees and
+  taxes only as `api.*` on `raw_transactions`.
 
 What it writes:
 
@@ -504,7 +513,7 @@ What it writes:
   sync that re-reads a row without a counterparty, category or classification keeps the ones already stored. The summary says how many rows got details from a
   report: "Details from reports: N transactions updated (M read)."
 - Each source's parsing lives in its own file (`src/providers/csv/formats/bil.js`, `trading212-report.js`,
-  `avanza.js`), but all of them write to the same tabs, so totals across banks stay one sum.
+  `avanza.js`, `trade-republic.js`), but all of them write to the same tabs, so totals across banks stay one sum.
 - The daily sync shows no window (a time-driven run has no screen). *Sync all*, *Import CSV files* and *Show
   status* show their summary in a window that does not keep the run waiting: the run ends as soon as the work
   is done, and the window stays until you close it.
@@ -542,11 +551,12 @@ movements inside investment accounts:
 
 | Tab | What is on it |
 |---|---|
-| `transactions` | Bank and BIL rows (current-account cash flow), and Trading 212 card payments, cashback and bank transfers (deposits, withdrawals) once a report names them |
-| `investment_transactions` | Trading 212 interest, lending interest, dividends, fees and transfers between Trading 212 accounts; every Avanza row (trades, dividends, taxes, fees, deposits and withdrawals) |
+| `transactions` | Bank and BIL rows (current-account cash flow), Trading 212 card payments, cashback and bank transfers (deposits, withdrawals) once a report names them, and Trade Republic card payments and transfers |
+| `investment_transactions` | Trading 212 interest, lending interest, dividends, fees and transfers between Trading 212 accounts; every Avanza row (trades, dividends, taxes, fees, deposits and withdrawals); Trade Republic trades, savings plans, saveback, dividends, interest and taxes |
 | `unclassified_transactions` | Trading 212 `WITHDRAW` and `DEPOSIT` rows no report has named yet: the API cannot tell a card payment or cashback from a bank transfer |
 
-- The rule is `src/core/txn-routing.js` `tabFor`: a row's `classification` (set by the Trading 212 report: `card` and
+- The rule is `src/core/txn-routing.js` `tabFor`: a row's `classification` (set by the Trading 212 report or written in the
+  Trade Republic file: `card` and
   `transfer` go to `transactions`, `investment` to `investment_transactions`) decides; without one, Trading 212 rows and
   rows of an investment CSV source (Avanza) go to `investment_transactions`, except Trading 212's `WITHDRAW` and
   `DEPOSIT`, which go to `unclassified_transactions`; every other row goes to `transactions`. The investment providers,

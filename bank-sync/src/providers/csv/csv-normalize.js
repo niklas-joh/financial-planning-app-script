@@ -177,6 +177,7 @@
         counterpartyAccount: maskNumbers(row.counterpartyAccount || ''),
         counterpartyBank: row.counterpartyBank || '',
         reference: maskNumbers(row.reference || ''),
+        classification: row.classification || '',
         apiFields: apiFields(records[i], row.extra)
       };
     });
