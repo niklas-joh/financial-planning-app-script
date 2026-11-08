@@ -156,3 +156,14 @@ def test_commit_without_green_ci_is_not_deployed_until_it_is(env, state):
     env.ci("success")
     out, calls = env.run()
     assert calls == ["curl", "build", "run"] and f"run start ({commit})" in out
+
+
+def test_callers_path_comes_first():
+    """The fallback folders (for launchd's bare PATH) go after the caller's PATH, so a `docker`
+    earlier on it wins. Before, /usr/local/bin/docker beat the tests' fake and rebuilt the real image."""
+    line = next(l for l in (CATEGORISER / "scripts/run-scheduled.sh").read_text().splitlines()
+                if l.startswith("export PATH="))
+    path = subprocess.run(["bash", "-c", f'{line}; echo "$PATH"'], env={"PATH": "/fake/bin:/usr/bin:/bin"},
+                          check=True, capture_output=True, text=True).stdout.strip().split(":")
+    assert path[:3] == ["/fake/bin", "/usr/bin", "/bin"]
+    assert "/usr/local/bin" in path and "/Applications/Docker.app/Contents/Resources/bin" in path
