@@ -12,7 +12,8 @@
 # goes ahead. A changed launchd plist template is only reported: re-run install-schedule.sh.
 set -euo pipefail
 
-export PATH="/usr/local/bin:/opt/homebrew/bin:/Applications/Docker.app/Contents/Resources/bin:$PATH"
+# launchd's PATH has no docker: add its usual folders, after the caller's own PATH.
+export PATH="$PATH:/usr/local/bin:/opt/homebrew/bin:/Applications/Docker.app/Contents/Resources/bin"
 cd "$(dirname "$0")"
 mkdir -p logs
 STAMP=logs/.last-success

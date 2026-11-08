@@ -12,8 +12,8 @@
    *   (for Trading 212: name 'Trading 212', no country).
    * @property {string} [provider] - Provider id serving the connection; missing means 'enablebanking'
    *   (stored Enable Banking connections predate the field).
-   * @property {string} [propertySuffix] - Trading 212 only: the holder part of the Script Property names
-   *   (e.g. 'NIKLAS' in `T212_API_KEY_NIKLAS`). Never the secret itself.
+   * @property {string} [propertySuffix] - Trading 212 and Pluxee: the holder part of the Script Property names
+   *   (e.g. 'NIKLAS' in `T212_API_KEY_NIKLAS` or `PLUXEE_CARD_NIKLAS`). Never the secret itself.
    */
 
   /**
@@ -57,11 +57,21 @@
    *   back before the last one's end, the
    *   time after an export run starts during which a rate-limited call may still wait for its reset (ms; it
    *   bounds those waits, not the run), and how many redirects a report download follows.
+   * @property {Object} PLUXEE - Pluxee Luxembourg meal-voucher card (unofficial: the consumer portal's own API):
+   *   provider id, display name, the PluxeeConnect OpenID issuer (its discovery document names the token endpoint),
+   *   the Pluxee iOS app's public OAuth client id, its custom-scheme redirect, OAuth scope and resource audiences
+   *   (all from the app's sign-in, not secrets; this client issues long-lived refresh tokens, unlike the portal's),
+   *   the API origin and the card transactions path, the portal origin (its script carries the API subscription key
+   *   every visitor's browser sends; it is read from there each run, never stored), the `authorization-version`
+   *   header the portal sends, and how many transactions one call asks for (the portal's own value).
    * @property {Object} CSV - CSV import: provider id, display name of its connections (one Drive folder per
    *   holder), the largest file read, and how many skipped files (and characters each) the last-read record
    *   names, so it stays far below the 9 KB Script Property limit.
    * @property {{MAX_LISTED: number}} REPROCESS - *Re-process stored rows*: how many rows still holding a masked value
    *   its summary names (the rest are counted).
+   * @property {Object} COVERAGE - The `data_coverage` tab: days per update frequency (the words typed in the
+   *   `frequency` columns), the default frequency of a CSV account per source (the prefix of its account id) and
+   *   otherwise, the default of a `manual_balances` item, and how many due accounts a summary or status line names.
    * @property {{WARN_DAYS: Array<number>}} CONSENT - Days before a consent lapses on which a warning
    *   email is sent (each once per consent); one more is sent once it has lapsed.
    */
@@ -96,9 +106,12 @@
       T212_HISTORY_PREFIX: 'T212_HISTORY_',
       T212_EXPORT_PREFIX: 'T212_EXPORT_',
       T212_EXPORT_FOLDER_PREFIX: 'CSV_FOLDER_T212_',
+      PLUXEE_REFRESH_TOKEN_PREFIX: 'PLUXEE_REFRESH_TOKEN_',
+      PLUXEE_CARD_PREFIX: 'PLUXEE_CARD_',
       CSV_FOLDER_PREFIX: 'CSV_FOLDER_',
       CSV_IMPORTS_PREFIX: 'CSV_IMPORTS_',
       LAST_RUN: 'BS_LAST_RUN',
+      ACCOUNTS_READ: 'BS_ACCOUNTS_READ',
       CONSENT_WARNED_PREFIX: 'BS_CONSENT_WARNED_'
     }),
     TABS: Object.freeze({
@@ -111,7 +124,9 @@
       RATES: 'rates',
       HOLDINGS: 'holdings',
       DAILY_VALUES: 'daily_values',
-      ACCOUNT_OWNERS: 'account_owners'
+      ACCOUNT_OWNERS: 'account_owners',
+      DATA_COVERAGE: 'data_coverage',
+      MANUAL_BALANCES: 'manual_balances'
     }),
     ROUTING: Object.freeze({
       INVESTMENT_PROVIDERS: Object.freeze({
@@ -165,6 +180,20 @@
       EXPORT_BUDGET_MS: 240000,
       MAX_REDIRECTS: 3
     }),
+    PLUXEE: Object.freeze({
+      PROVIDER_ID: 'pluxee',
+      BANK_NAME: 'Pluxee',
+      ISSUER: 'https://connect.pluxee.app/op',
+      CLIENT_ID: '61277322-715e-43ff-bf04-e4ee340715b8',
+      REDIRECT_URI: 'app.pluxee.consumers.eva://home/',
+      SCOPE: 'openid profile email phone https://api.pluxee.app/gl/payment/scopes/user-app',
+      RESOURCE: 'https://api.pluxee.app/gl/cwc/consumer-front-api/ https://api.pluxee.app/gl/payment/ https://api.pluxee.app/gl/psca/',
+      API_ORIGIN: 'https://api.pluxee.app',
+      PORTAL_ORIGIN: 'https://consumers.pluxee.lu',
+      AUTHORIZATION_VERSION: '2',
+      TRANSACTIONS_PATH: '/gl/eva/bff/v2/lu/cards/',
+      PAGE_LIMIT: 99
+    }),
     CSV: Object.freeze({
       PROVIDER_ID: 'csv',
       BANK_NAME: 'CSV import',
@@ -174,6 +203,13 @@
     }),
     REPROCESS: Object.freeze({
       MAX_LISTED: 25
+    }),
+    COVERAGE: Object.freeze({
+      FREQUENCY_DAYS: Object.freeze({ daily: 1, weekly: 7, monthly: 31, quarterly: 92, yearly: 366 }),
+      CSV_FREQUENCY: Object.freeze({ avanza: 'quarterly' }),
+      DEFAULT_CSV_FREQUENCY: 'monthly',
+      DEFAULT_MANUAL_FREQUENCY: 'monthly',
+      MAX_LISTED: 10
     }),
     CONSENT: Object.freeze({
       WARN_DAYS: Object.freeze([30, 14, 7, 1])

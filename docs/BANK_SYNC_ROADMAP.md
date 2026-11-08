@@ -6,7 +6,9 @@ SRP/DRY, JSDoc, provider abstraction, normalized models, FX design, idempotent
 imports, Node-testable pure logic). This file records what has been built, what was
 decided, and what comes next. Update it in the same PR that changes the state.
 
-Last updated: 2026-10-31 (categoriser phase 3a: review inbox, see
+Last updated: 2026-11-01 (C1 data sources and coverage: `source`/`frequency`/`howTo` on `account_owners`, `data_coverage` tab;
+before that: Pluxee app sign-in: long-lived refresh token via the mobile app's OAuth client,
+Connect/Finish Pluxee menu; before that: P1 Pluxee card provider; before that: categoriser phase 3a: review inbox, see
 `docs/superpowers/specs/2026-10-31-categoriser-phase-3-design.md`; before that: O1 account owners: one CSV folder for everyone, owner per account on `account_owners`;
 before that: account numbers stored in full by default, `MASK_ACCOUNT_NUMBERS` and *Re-process stored
 rows*, live and re-processed; Trading 212 report export live (#83, #88, #94); 6b Avanza CSV import live;
@@ -46,6 +48,8 @@ Two independent Apps Script projects, each bound to its own Sheet:
 | 8 | Wife's accounts (second holder at the same bank) | Last; already accounted for in the 2.5 design |
 | M1 | Account numbers in full: `MASK_ACCOUNT_NUMBERS` (default off), one masking helper, *Re-process stored rows* | Merged (#91), live since 2026-10-30: re-processed twice, nothing left masked (see "Live state") |
 | O1 | Account owners: `account_owners` tab (owner per account, typed by the owner), `owner` label on every tab, one CSV folder for everyone's exports | Merged, not deployed yet (see "O1: account owners" for the deploy steps) |
+| P1 | Pluxee meal-voucher card (unofficial portal API): card as an account, approved payments and top-ups on `transactions` | Merged, not deployed yet (see "Pluxee" for the deploy steps and the open question) |
+| C1 | Data sources and coverage: how each account is fetched (`account_owners`), how far its data reaches and what is due (`data_coverage`) | Merged, not deployed yet (see "C1: data sources and coverage") |
 | B3+ | Trading 212 report export: monthly request through the API, saved to an exports folder, applied by the CSV import | Merged (#83, #88, #94), live since 2026-10-30 (see Live state) |
 
 Rules for every phase: branch per task, one small PR per phase, squash merge, never
@@ -60,7 +64,8 @@ quirks) goes into the next phase's PR.
 
 In this order; each item still gets its own PR and stops for review.
 
-1. Owner action: drop an Avanza "Sedan start" export in the CSV folder. (The Trading 212 report export is live and named
+1. Owner action: drop an Avanza "Sedan start" export in the CSV folder, and BIL exports from 2026-08-28 to today
+   (every BIL account stops at the end of August; see "C1: data sources and coverage"). (The Trading 212 report export is live and named
    795 of the 817 unclassified rows; see Live state. The 22 left are still to be looked at.)
 2. Bank balances in `daily_values` (tag the booked balance `cash`; BIL has no balance in its export) and Avanza cash from
    a "Sedan start" export (open decision "Daily values for banks").
@@ -74,6 +79,83 @@ In this order; each item still gets its own PR and stops for review.
    the categoriser.
 6. When convenient: Phase 8 (partner), B4 (Drive scope), retiring Plaid/SaltEdge, the old portfolio sheet and the
    one-time migration code. Phase 9 (Avanza API) stays unplanned.
+
+## Pluxee (owner, 2026-11-01)
+
+The Pluxee Luxembourg lunch card is read through the consumer portal's own API, since no open-banking provider
+serves it and Pluxee publishes no API. Found by inspecting the portal (2026-11-01):
+
+- The portal (`consumers.pluxee.lu`) signs in through PluxeeConnect (`connect.pluxee.app/op`, OpenID Connect) with
+  an emailed six-digit code; the login page carries hCAPTCHA. The portal keeps an access token (about 30 minutes)
+  and a **refresh token** in session storage (scope `openid profile email`, no `offline_access`).
+- Transactions: `GET https://api.pluxee.app/gl/eva/bff/v2/lu/cards/<cardId>/transactions?limit=99` with the
+  bearer token returns `{card, transactions}`; amounts are `{value, exponent, currency}` in minor units; statuses
+  seen: `APPROVED`, `DECLINED`; dates are local times without a zone.
+
+As built: one connection per `PLUXEE_CARD_<HOLDER>` / `PLUXEE_REFRESH_TOKEN_<HOLDER>` pair in Script Properties.
+Each sync renews the access token with the `refresh_token` grant (token endpoint from the discovery document,
+the portal's public client id) and saves a rotated refresh token before anything else. A refused refresh is an
+AuthError asking for a new sign-in. Rows are `classification` = `card`; declined ones are dropped.
+
+Open question: **how long the refresh token lives** without a new sign-in (likely tied to the PluxeeConnect
+session, so days rather than months), and whether the token endpoint and the API accept calls from Apps Script
+as they do from the portal. The first deploy answers the second; *Show status* and the daily summary show when
+the login lapses. If it lapses within hours, keep CSV exports instead.
+
+Field names checked against a full response (99 rows, May 2025 to October 2026, no paging fields): `merchantName` is
+always set (`Pluxee` on top-ups), `description` is generic (`Purchase`, `Reloading` or null), `code` is `PAYMENT`
+or `LOAD`, `type` `DEBIT` or `CREDIT`. `splitData[].availableBalanceAmount` did not match the card balance the portal
+shows, so no balance is taken from it.
+
+First live run (2026-11-01, after #120): the refresh grant worked from Apps Script (a new access and refresh token
+came back), but the API answered 401 "missing subscription key": the portal also sends `ocp-apim-subscription-key`
+(a fixed key in its script, the same for every visitor) and `authorization-version: 2`, which the phone inspector did
+not show. Both are now sent; the key is read from the portal's script each run rather than committed. The second
+run's refresh got `invalid_grant`, most likely because the portal tab was still open and renewed itself with the
+token the first run had already rotated (refresh-token reuse cancels the login). The README now says to close the tab
+right after copying the token.
+
+After #122 (2026-11-01): with a fresh refresh token, *Sync all* gave `pluxee-niklas` 10 added (1 account added to
+`account_owners`, 10 converted to EUR), and a second run 0 added, 0 updated. Only 10 because a new account's first
+sync reads the 90-day lookback; since the response holds the whole history anyway, the provider now returns every row
+up to the end date, so the next sync adds the older rows (May 2025 onward) once. Still to see: whether the saved
+refresh token survives to the next daily run.
+
+Deploy: from `bank-sync/`, `npm test`, `clasp push`; reload the sheet; add the two properties (README, "Pluxee
+meal-voucher card"); *Sync all*; check *Show status* and the `transactions` rows of `pluxee-<holder>`; run *Sync all*
+again (expect 0 added, 0 updated).
+
+### App sign-in to replace the short-lived portal token (owner, 2026-11-01)
+
+Problem found in use: the portal's refresh token lapses within ~30 minutes, so a run more than a few minutes after
+the browser sign-in failed with `AuthError` and needed a fresh token every time. Checked against PluxeeConnect's
+own login server: the **portal** web client (`e8adfb42-…`) is refused the `offline_access` scope
+(`invalid_scope`), so its refresh token is tied to the browser session and dies with it — nothing on our side can
+extend it.
+
+The **Pluxee iOS app** uses a different OAuth client, captured from the app's sign-in (client
+`61277322-715e-43ff-bf04-e4ee340715b8`, a public native client, PKCE S256, redirect
+`app.pluxee.consumers.eva://home/`, scope `openid profile email phone …/payment/scopes/user-app`, three
+`resource` audiences). Native app clients of this kind are granted long-lived refresh tokens; the login's session
+cookie was seen set six months ahead, so the app stays signed in for months. The app calls the same
+`api.pluxee.app/gl/eva/bff` server we read, so its token should work on the transactions endpoint.
+
+As built (this PR): Pluxee now signs in through the app client. Two menu steps, no developer tools:
+**Connect Pluxee** builds a PKCE authorization URL (verifier kept in the script cache between steps) and shows
+it; **Finish Pluxee connection** takes the address the browser lands on, exchanges the `code` for tokens
+(`PluxeeConnect` module, no-retry client so a resend cannot trip reuse detection), and saves the refresh token.
+`Config.PLUXEE.CLIENT_ID` is now the app client, so the existing refresh grant renews app-issued tokens. The
+subscription-key read from the portal script is unchanged. Only the card id is still set by hand.
+
+Open questions, to confirm on the first live sign-in (needs the owner's real login — cannot be scripted):
+- **Does the refresh grant for this client need a `resource` parameter?** It has three audiences; the refresh
+  currently sends none (as the portal path did). If PluxeeConnect refuses the refresh without one, add the eva/bff
+  audience to the refresh form.
+- **How long the refresh token actually lives.** Expected months from the session cookie; *Show status* and the
+  daily summary show when it lapses. Re-connecting is now two menu taps, and each sync reads the latest 99 rows,
+  so nothing is lost between sign-ins.
+- The sign-in omits the app's `prompt=select_account` so a plain browser with no Pluxee session goes straight to
+  login; revisit if the authorization step misbehaves.
 
 ## Account numbers (owner, 2026-10-30)
 
@@ -224,7 +306,12 @@ Load order is `filePushOrder` in `bank-sync/.clasp.json` (entries include `src/`
   `consent-warnings` (which warnings are due, the email text, the sent record), `last-run` (outcome
   record for Show status), `auto-sync` (daily trigger on/off and the triggered run), `account-owners` (O1: owner per
   account, applied by Sync all after each connection's `listAccounts`).
-- `sheets/account-owners-tab.js`: the `account_owners` tab (read by header, rows only ever appended).
+- `sheets/account-owners-tab.js`: the `account_owners` tab (read by header, rows only ever appended; missing
+  columns added after the last header cell).
+- `core/data-coverage.js` (C1, pure): defaults for how a new account is fetched, the coverage row per account and
+  manual item, status against the frequency, the last good read per API account (`BS_ACCOUNTS_READ`); run at the end
+  of Sync all. `sheets/data-coverage-tab.js`: writes `data_coverage` (from the top, leftover rows cleared) and reads
+  the hand-kept `manual_balances`. The CSV import record keeps each account's export end (`CsvImportProvider.exportEnds`).
 - `lib/`: `jwt`, `http` (retry/backoff, carries the API error code), `hash` (FNV-1a),
   `flatten` (API object to dotted keys, account numbers masked), `gas-adapters` (the only
   place touching Apps Script services directly, including ScriptApp triggers, MailApp and Session).
@@ -753,6 +840,51 @@ CSV accounts with no owner) and names the CSV accounts without one. Type their o
 
 Phase 8 is simpler with this: a partner's own login is a new connection whose holder becomes the owner, and a shared
 account seen through either login is set to `common` on the tab.
+
+## C1: data sources and coverage (owner, 2026-11-01)
+
+Owner request: record per account how its data is fetched (API, automatic CSV, manual CSV upload, ...) and how often,
+and from when to when data exists, so a new manual CSV export is easy to get right. Chosen (owner): typed facts on
+`account_owners`, computed coverage on its own tab rewritten by every sync, so the sync never overwrites typed cells.
+Defaults agreed: BIL monthly, Avanza quarterly, `manual_balances` items monthly.
+
+Review of every account before C1 (2026-11-01, from the sheet):
+
+| Account | Source | Data |
+|---|---|---|
+| Danske Konto | API, daily (Enable Banking; consent to 2027-01-23) | ~late Jul 2026 (90-day start) to 2026-10-30 |
+| Revolut EUR, SEK | API, daily (Enable Banking; consent to 2027-01-22) | almost none (one card check; SEK dormant) |
+| Trading 212 EUR | API, daily, plus the monthly report CSV (automatic) | 2024-08-12 to 2026-10-27 on `transactions` |
+| Pluxee Lunch | API, daily (unofficial; login can lapse) | 2025-05-13 to 2026-10-25 |
+| BIL Current Private, Current Common, Private Current account | CSV, manual, no fixed schedule | 2025-04-05 / 2025-03-07 / 2025-03-14 to 2026-08-28 / 08-30 / 08-31 |
+| BIL Savings Plus (own, Marie-Aude's, child's) | CSV, manual | few rows; last 2026-03-20 / 2026-05-10 / 2026-03-24 |
+| Avanza Investerarsparkonto, Pensionssparande | CSV, manual (one file for both) | 2025-10-27 to 2026-10-22 (one year, not "Sedan start") |
+| Avanza values, BIL loans, flat, house | Manual entry on `manual_balances` | 2026-11-01; Marie-Aude's BIL balances and both properties still empty |
+
+So every BIL account is missing September and October 2026.
+
+As built (see `bank-sync/README.md`, "Data sources and coverage"):
+
+- `account_owners` gains `source`, `frequency`, `howTo` (`DataCoverage.defaults` fills them for a new account; a tab
+  without them gets the columns added after its last header cell when an account is appended; nothing typed is
+  rewritten). Empty cells count as the default.
+- `data_coverage`: written by Sync all after the owners (`deps.coverage`, so the daily sync, *Import CSV files* and
+  *Re-process stored rows* all update it): `owner`, `bank`, `accountName`, `source`, `frequency`, `rows`,
+  `firstDate`, `lastDate`, `upTo`, `exportFrom`, `status`, `nextStep`, `accountId`. A failure is reported in the
+  summary and never stops the sync.
+- `upTo`: API accounts from `BS_ACCOUNTS_READ` (accountId to the last day its connection was read OK); CSV accounts
+  from the import record (`accounts`: per account the latest date of the files of its source uploaded the same day as
+  its newest file; Drive's created date in the Bank Sync time zone), never earlier than its own last row; manual items
+  from their latest row with an amount.
+- Status: `OK` up to one period plus a day old, `due` up to two periods, `overdue` after; `no data yet`, `no schedule`.
+  The summary and *Show status* list what needs doing.
+- No new OAuth scope (`getDateCreated` is covered by `drive`); the web app is unchanged, so no `clasp deploy`.
+
+Deploy: `npm run check` (repo root) and `npm test` (`bank-sync/`), `clasp push` from `bank-sync/`, reload the sheet,
+*Sync all*. Expected: `data_coverage` appears with one row per account and manual item; BIL accounts `overdue` with
+`exportFrom` 2026-08-28 to 2026-08-31 (savings accounts take their export's end, if they were uploaded the same day);
+API accounts `OK`. A second *Sync all* changes nothing else (0 added, 0 updated). Record what was seen here in the next
+PR.
 
 ## Phase 8: second holder at the same bank (last)
 

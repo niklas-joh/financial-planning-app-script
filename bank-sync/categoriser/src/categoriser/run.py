@@ -1,7 +1,7 @@
 """Entry point: `python -m categoriser.run` (what Docker and launchd run).
 
 Applies the answers ticked in the review inbox (reviewed `manual` rows, and rules
-for "all like this"), reads transactions, the taxonomy and the rules, categorises
+for rows applied to a merchant), reads transactions, the taxonomy and the rules, categorises
 with the active rules and internal-transfer pairing, then lets the model (if one
 is trained) label the confident rest. Writes `categorised`, refreshes the rules'
 `hits`/`wins`/`lastMatched`/`sample`, fills the review inbox again and logs
@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .config import data_dir, load_settings, models_dir
+from .coverage import NOT_UNIQUE, NOT_WRITTEN, ORPHANED, check_coverage
 from .engine import REVIEW_DISAGREES, categorise, review_disagreements
 from .issues import DUPLICATE_ID, duplicate_issues
 from .merge import is_reviewed
@@ -57,7 +58,8 @@ from .taxonomy import Taxonomy, parse_taxonomy
 
 log = logging.getLogger("categoriser")
 
-CHECKED_TYPES = {DUPLICATE_ID, INVALID_RULE, REVIEW_DISAGREES, INVALID_REVIEW, REVIEW_CONFLICT}
+CHECKED_TYPES = {DUPLICATE_ID, INVALID_RULE, REVIEW_DISAGREES, INVALID_REVIEW, REVIEW_CONFLICT,
+                 NOT_UNIQUE, ORPHANED, NOT_WRITTEN}
 HISTORY_FILE = "review-history.jsonl"
 
 
@@ -131,7 +133,7 @@ def main() -> None:
     review_values = read_values(review_ws)
     rules_values = read_values(rules_ws)
 
-    # Answers first, so a rule made with "all like this" already applies in this run.
+    # Answers first, so a rule made from a review answer already applies in this run.
     by_id = transactions_by_id(transactions)
     answers = apply_answers(review_values, by_id, taxonomy, owners, before_upsert, rules_values,
                             today, now, settings.review_sheet)
@@ -161,11 +163,15 @@ def main() -> None:
     stats_written = write_rule_stats(rules_ws, settings, result.stats)
     _append_history(data_dir() / HISTORY_FILE, answers.history)
 
+    written = read_values(ws)
+    written_ids = {r.transactionId for r in produced + answers.manual_rows}
+    coverage = check_coverage(transactions, written, written_ids, settings.transactions_sheet,
+                              settings.output_sheet)
     inbox, review_written = _refill_inbox(review_ws, settings, review_values, answers, by_id,
-                                          read_values(ws), taxonomy, model, today)
+                                          written, taxonomy, model, today)
 
     found = (parsed.issues + review_disagreements(before_upsert, result.rows, settings.output_sheet)
-             + duplicate_issues(plan.duplicates, settings.output_sheet) + answers.issues)
+             + duplicate_issues(plan.duplicates, settings.output_sheet) + answers.issues + coverage.issues)
     issues = record_issues(issues_ws, settings, found, CHECKED_TYPES, now)
     log.info(
         "read=%d taxonomy=%d rules_active=%d rules_invalid=%d by_rule=%d by_transfer=%d uncovered=%d "
@@ -173,7 +179,8 @@ def main() -> None:
         "updated=%d appended=%d cleared=%d skipped_reviewed=%d skipped_moved=%d skipped_duplicate=%d "
         "context_filled=%d rule_stats_written=%d review_answers=%d review_invalid=%d review_rules_added=%d "
         "review_changed=%d review_spot_checks_right=%d review_spot_checks_wrong=%d review_size=%d review=%s "
-        "issues_opened=%d issues_reopened=%d issues_resolved=%d",
+        "issues_opened=%d issues_reopened=%d issues_resolved=%d "
+        "transactions=%d categorised=%d uncategorised=%d orphaned=%d not_written=%d ids_not_unique=%d",
         len(transactions), len(taxonomy), len(parsed.active), len(parsed.issues),
         result.by_rule, result.by_transfer, result.uncovered,
         model_status, len(model_rows), reviewed_checked, reviewed_wrong,
@@ -182,6 +189,8 @@ def main() -> None:
         len(answers.manual_rows), len(answers.keep), len(answers.new_rules), answers.changed,
         answers.spot_right, answers.spot_wrong, len(inbox), "written" if review_written else "skipped_busy",
         issues.opened, issues.reopened, issues.resolved,
+        coverage.transactions, coverage.categorised, coverage.uncategorised, coverage.orphaned,
+        coverage.not_written, coverage.not_unique,
     )
 
 

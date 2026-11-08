@@ -101,16 +101,25 @@
     const todayIso = function () { return formatDate(new Date()); };
     const startedAt = wired.nowMs();
     const env = providerEnv(function () { return startedAt + ns.Config.TRANSACTIONS.TIME_BUDGET_MS - wired.nowMs(); });
+    const store = transactionsStore(spreadsheet, formatDate);
     return {
       connections: ns.ProviderRegistry.connections(wired),
       isConnected: function (c) { return ns.ProviderRegistry.isConnected(c, wired); },
       providerFor: function (c) { return providerFor(c, wired, env); },
-      store: transactionsStore(spreadsheet, formatDate),
+      store: store,
       rawWriter: ns.RawWriter.create(spreadsheet),
       nowMs: wired.nowMs,
       todayIso: todayIso,
       fx: fxService(spreadsheet, formatDate, todayIso),
-      owners: ns.AccountOwners.create(ns.AccountOwnersTab.create(spreadsheet))
+      owners: ns.AccountOwners.create(ns.AccountOwnersTab.create(spreadsheet)),
+      coverage: ns.DataCoverage.create({
+        tab: ns.DataCoverageTab.create(spreadsheet, formatDate),
+        owners: ns.AccountOwnersTab.create(spreadsheet),
+        store: store,
+        read: ns.DataCoverage.readStore(wired.props),
+        csvCoverage: function () { return ns.CsvFolders.exportEnds(wired.props); },
+        todayIso: todayIso
+      })
     };
   }
 
@@ -170,8 +179,24 @@
     };
   }
 
+  /**
+   * Builds the Pluxee sign-in service for the Connect Pluxee / Finish Pluxee connection menu steps.
+   * @returns {{start: function(string): {holder: string, url: string}, finish: function(string): {holder: string}}}
+   */
+  function pluxeeConnect() {
+    const props = ns.Gas.props();
+    return ns.PluxeeConnect.create({
+      http: ns.Gas.http(),
+      tokenHttp: ns.Gas.http({ maxRetries: 0 }),
+      cache: ns.Gas.cache(),
+      uuid: function () { return Utilities.getUuid(); },
+      sha256: ns.Gas.sha256Base64Url,
+      saveToken: function (holder, token) { ns.PluxeeCredentials.saveToken(props, holder, token); }
+    });
+  }
+
   ns.Container = {
     services: services, providerFor: providerFor, fxService: fxService,
-    syncAllDeps: syncAllDeps, autoSyncDeps: autoSyncDeps, exportDeps: exportDeps
+    syncAllDeps: syncAllDeps, autoSyncDeps: autoSyncDeps, exportDeps: exportDeps, pluxeeConnect: pluxeeConnect
   };
 })(globalThis.BankSync);

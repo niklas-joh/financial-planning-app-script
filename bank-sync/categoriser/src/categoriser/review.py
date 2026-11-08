@@ -1,10 +1,11 @@
 """Review inbox (`categoriser_review`): the rows that most need the owner, and their answers.
 
 Each daily run first applies the ticked answers (`apply_answers`): each becomes a
-reviewed `manual` row on `categorised`, and "all like this" also adds an active
-rule. After categorising, the inbox is filled again (`plan_inbox`): one row per
-merchant without a label, biggest merchants first, plus a few spot checks of
-rows the model labelled. Pure: no I/O (see `sheets.write_review`).
+reviewed `manual` row on `categorised`, and an `applyTo` other than "This row only"
+also adds an active rule on the merchant text, the description text, or both.
+After categorising, the inbox is filled again (`plan_inbox`): one row per merchant
+without a label, biggest merchants first, plus a few spot checks of rows the
+model labelled. Pure: no I/O (see `sheets.write_review`).
 """
 
 from __future__ import annotations
@@ -21,19 +22,28 @@ from .schema import CATEGORISED_COLUMNS, CategorisedRow, Method, transaction_con
 from .taxonomy import Taxonomy, Triple
 
 REVIEW_COLUMNS: tuple[str, ...] = (
-    "transactionId", "bookingDate", "account", "amountEur", "counterparty", "description",
-    "why", "similar", "confidence",
+    # the transaction, and why it is listed (filled by the job)
+    "transactionId", "bookingDate", "account", "amountEur", "counterparty", "description", "why",
     # filled by the job, changed by the owner
-    "answer", "owner", "accept", "allLikeThis", "matchText",
-    # filled by the job only
-    "suggested", "kind",
+    "answer", "owner", "applyTo", "merchantText", "descriptionText", "accept",
+    # filled by the job only: the model's first guess and its probability, and the rows of this merchant
+    "suggested", "confidence", "similar",
 )
 VCOL = {name: i for i, name in enumerate(REVIEW_COLUMNS)}
+# The columns of the inbox before `applyTo` (one `allLikeThis` tick, one `matchText`, a `kind`).
+LEGACY_REVIEW_COLUMNS: tuple[str, ...] = (
+    "transactionId", "bookingDate", "account", "amountEur", "counterparty", "description",
+    "why", "similar", "confidence",
+    "answer", "owner", "accept", "allLikeThis", "matchText",
+    "suggested", "kind",
+)
 
 ANSWER_SEP = " › "  # not "/": "Wants/Pleasure" holds a slash
-KIND_MERCHANT, KIND_SPOT_CHECK = "merchant", "spot check"
+APPLY_ROW, APPLY_MERCHANT, APPLY_DESCRIPTION, APPLY_BOTH = (
+    "This row only", "Same merchant", "Description only", "Merchant + description")
+APPLY_TO: tuple[str, ...] = (APPLY_ROW, APPLY_MERCHANT, APPLY_DESCRIPTION, APPLY_BOTH)
 REVIEW_RULE_PRIORITY = 50  # ahead of mined rules (default 100)
-MIN_MATCH_TEXT = 3  # shorter "all like this" text would match far too much
+MIN_MATCH_TEXT = 3  # shorter match text would match far too much
 RULE_FIELDS = {"counterpartyContains": "counterparty", "descriptionContains": "description"}
 INVALID_REVIEW = "invalid_review_answer"
 REVIEW_CONFLICT = "review_conflicts_with_reviewed"
@@ -71,15 +81,18 @@ def merchant_key(txn: dict) -> tuple[str, str, str]:
     """(rule field, words, direction) shared by rows of the same merchant. The words are
     the counterparty's longest run of words without numbers, else the description's, so
     a rule built from them always matches the row (`apply_answers` checks an edited
-    `matchText` still does)."""
+    `merchantText` / `descriptionText` still does)."""
     words = _longest_plain_run(txn.get("counterparty", ""))
     if words:
         return "counterpartyContains", words, direction(txn)
     return "descriptionContains", _longest_plain_run(txn.get("description", "")), direction(txn)
 
 
-def review_rule_id(field: str, words: str, direction: str) -> str:
-    return "r-" + hashlib.sha1(f"{field}|{normalise(words)}|{direction}".encode()).hexdigest()[:8]
+def review_rule_id(needles: dict[str, str], direction: str) -> str:
+    """Stable id of the rule an answer makes: the same match words and direction give the same id.
+    (A single needle hashes as it did when a rule had one match text, so earlier rules keep their id.)"""
+    key = "|".join(f"{name}|{normalise(words)}" for name, words in needles.items())
+    return "r-" + hashlib.sha1(f"{key}|{direction}".encode()).hexdigest()[:8]
 
 
 def _cell(row: list, name: str) -> object:
@@ -87,8 +100,14 @@ def _cell(row: list, name: str) -> object:
     return row[i] if len(row) > i else ""
 
 
-OWNER_COLUMNS = ("transactionId", "answer", "owner", "accept", "allLikeThis", "matchText")
-_CHECKBOXES = ("accept", "allLikeThis")
+def is_spot_check(row: list) -> bool:
+    """A spot check is a row the model had already labelled: unlike a merchant row it has no `similar` count."""
+    value = _cell(row, "similar")
+    return not (isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0)
+
+
+OWNER_COLUMNS = ("transactionId", "answer", "owner", "applyTo", "merchantText", "descriptionText", "accept")
+_CHECKBOXES = ("accept",)
 
 
 def owner_cells(review: list[list]) -> list[tuple]:
@@ -158,13 +177,13 @@ def _number(value: object) -> float | None:
         return None
 
 
-def _rule_values(col: dict[str, int], rule_id: str, field_name: str, words: str, way: str, owner: str,
+def _rule_values(col: dict[str, int], rule_id: str, needles: dict[str, str], way: str, owner: str,
                  triple: Triple, today: str) -> list:
     """A row for the rules sheet, in the column order `col` (`rules.rule_columns`)."""
     values = [""] * (max(col.values()) + 1)
     named = {
         "ruleId": rule_id, "active": True, "priority": REVIEW_RULE_PRIORITY, "direction": way,
-        field_name: words, "owner": owner, "type": triple[0], "category": triple[1], "subCategory": triple[2],
+        **needles, "owner": owner, "type": triple[0], "category": triple[1], "subCategory": triple[2],
         "notes": f"from review {today}", "source": "review",
     }
     for name, value in named.items():
@@ -172,9 +191,34 @@ def _rule_values(col: dict[str, int], rule_id: str, field_name: str, words: str,
     return values
 
 
+def rule_needles(txn: dict, scope: str, merchant_text: str, description_text: str) -> tuple[dict[str, str], str]:
+    """(rule match columns -> words, error) for an `applyTo` other than "This row only".
+
+    "Same merchant" matches the merchant text (the description text for a row with no usable
+    counterparty); "Description only" matches the description text alone; "Merchant + description"
+    needs both. Each text must be at least `MIN_MATCH_TEXT` characters and whole words of this
+    row's own counterparty / description, so the rule always catches the row it came from. The error is empty when the needles are valid."""
+    uses_counterparty = merchant_key(txn)[0] == "counterpartyContains"
+    if scope == APPLY_BOTH:
+        wanted = {"counterpartyContains": ("merchantText", merchant_text),
+                  "descriptionContains": ("descriptionText", description_text)}
+    elif scope == APPLY_MERCHANT and uses_counterparty:
+        wanted = {"counterpartyContains": ("merchantText", merchant_text)}
+    else:
+        wanted = {"descriptionContains": ("descriptionText", description_text)}
+    needles: dict[str, str] = {}
+    for name, (cell_name, text) in wanted.items():
+        words, source = normalise(text), RULE_FIELDS[name]
+        if len(words) < MIN_MATCH_TEXT or not contains_words(txn.get(source), words):
+            return {}, (f"{cell_name} must be at least {MIN_MATCH_TEXT} characters and whole words of this row's "
+                        f"{source}; fix it or set applyTo to '{APPLY_ROW}'.")
+        needles[name] = words
+    return needles, ""
+
+
 def apply_answers(review: list[list], transactions: dict[str, dict], taxonomy: Taxonomy, owners: set[str],
                   categorised: list[list], rules: list[list], today: str, now: str, sheet: str) -> AnswerPlan:
-    """Turn ticked inbox rows into reviewed manual rows (and rules for "all like this").
+    """Turn ticked inbox rows into reviewed manual rows (and rules for an `applyTo` beyond the row).
 
     `review`, `categorised` and `rules` are whole sheets incl. header; new rules
     follow the rules sheet's column order and skip ruleIds already on it. An answer
@@ -225,26 +269,28 @@ def apply_answers(review: list[list], transactions: dict[str, dict], taxonomy: T
             continue
 
         rule_id = ""
-        if is_reviewed(_cell(row, "allLikeThis")):
-            field_name, _key_words, way = merchant_key(txn)
-            words = normalise(_cell(row, "matchText"))
-            if len(words) < MIN_MATCH_TEXT or not contains_words(txn.get(RULE_FIELDS[field_name]), words):
-                problem(row, tid, INVALID_REVIEW,
-                        f"matchText must be at least {MIN_MATCH_TEXT} characters and whole words of this row's "
-                        f"{RULE_FIELDS[field_name]}; fix it or untick allLikeThis.")
+        scope = _text(row, "applyTo") or APPLY_ROW
+        if scope not in APPLY_TO:
+            problem(row, tid, INVALID_REVIEW, f"applyTo must be one of: {', '.join(APPLY_TO)}.")
+            continue
+        if scope != APPLY_ROW:
+            needles, error = rule_needles(txn, scope, _text(row, "merchantText"), _text(row, "descriptionText"))
+            if error:
+                problem(row, tid, INVALID_REVIEW, error)
                 continue
-            rule_id = review_rule_id(field_name, words, way)
+            way = direction(txn)
+            rule_id = review_rule_id(needles, way)
             if rule_id not in rule_ids and rule_id not in added_rules:
                 added_rules.add(rule_id)
                 account_owner = owner_slug(txn.get("owner", ""))
-                plan.new_rules.append(_rule_values(rule_col, rule_id, field_name, words, way,
+                plan.new_rules.append(_rule_values(rule_col, rule_id, needles, way,
                                                    "" if owner == account_owner else owner, triple, today))
 
         plan.manual_rows.append(CategorisedRow(tid, owner, *triple, Method.MANUAL, None, rule_id, True, now,
                                                **transaction_context(txn)))
         plan.processed.add(tid)
         answer, suggested = answer_text(triple), _text(row, "suggested")
-        spot = _text(row, "kind") == KIND_SPOT_CHECK
+        spot = is_spot_check(row)
         plan.changed += bool(suggested) and suggested != answer
         if spot:
             plan.spot_right += suggested == answer
@@ -262,7 +308,7 @@ def _padded(row: list) -> list:
     return list(row[: len(REVIEW_COLUMNS)]) + [""] * (len(REVIEW_COLUMNS) - len(row))
 
 
-def _new_row(txn: dict, why: str, similar: object, kind: str) -> list:
+def _new_row(txn: dict, why: str, similar: object) -> list:
     values = [""] * len(REVIEW_COLUMNS)
     values[VCOL["transactionId"]] = str(txn.get("transactionId", "")).strip()
     values[VCOL["bookingDate"]] = str(txn.get("bookingDate", ""))[:10]
@@ -273,10 +319,12 @@ def _new_row(txn: dict, why: str, similar: object, kind: str) -> list:
     values[VCOL["why"]] = why
     values[VCOL["similar"]] = similar
     values[VCOL["owner"]] = owner_slug(txn.get("owner", ""))
+    values[VCOL["applyTo"]] = APPLY_ROW
+    field_name, words, _way = merchant_key(txn)
+    values[VCOL["merchantText"]] = words if field_name == "counterpartyContains" else ""
+    values[VCOL["descriptionText"]] = _longest_plain_run(txn.get("description", ""))
     for checkbox in _CHECKBOXES:
         values[VCOL[checkbox]] = False
-    values[VCOL["matchText"]] = merchant_key(txn)[1]
-    values[VCOL["kind"]] = kind
     return values
 
 
@@ -303,8 +351,7 @@ def plan_inbox(previous: list[list], answers: AnswerPlan, by_id: dict[str, dict]
         if (not tid or tid in kept_ids or tid in answers.processed or tid not in by_id
                 or is_reviewed(_cell(row, "accept"))):
             continue
-        kind = _text(row, "kind")
-        if (kind == KIND_MERCHANT and tid not in labelled) or (kind == KIND_SPOT_CHECK and tid in model_ids):
+        if (tid in model_ids) if is_spot_check(row) else (tid not in labelled):
             kept.append(row)
             kept_ids.add(tid)
 
@@ -321,16 +368,16 @@ def plan_inbox(previous: list[list], answers: AnswerPlan, by_id: dict[str, dict]
             if key not in taken_keys:
                 groups.setdefault(key, []).append(t)
 
-    kept_spots = sum(_text(r, "kind") == KIND_SPOT_CHECK for r in kept)
+    kept_spots = sum(is_spot_check(r) for r in kept)
     spot_new = max(0, spot_checks - kept_spots)
     merchant_new = max(0, size - len(kept) - spot_new)
 
-    chosen: list[tuple[dict, str, object, str]] = []
+    chosen: list[tuple[dict, str, int]] = []
     for key, members in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:merchant_new]:
         latest = max(members, key=lambda t: (str(t.get("bookingDate", "")), str(t.get("transactionId", ""))))
         n = len(members)
-        why = "1 row like this has no category" if n == 1 else f"{n} rows like this have no category"
-        chosen.append((latest, why, n, KIND_MERCHANT))
+        why = "No category yet · 1 row like this" if n == 1 else f"No category yet · {n} rows like this"
+        chosen.append((latest, why, n))
         taken_keys.add(key)
 
     spot_pool = sorted(tid for tid in model_ids
@@ -341,23 +388,58 @@ def plan_inbox(previous: list[list], answers: AnswerPlan, by_id: dict[str, dict]
     guesses = guess(new_txns) if guess is not None and new_txns else [None] * len(new_txns)
     merchant_rows, spot_rows = [], []
     for i, txn in enumerate(new_txns):
-        if i < len(chosen):
-            _t, why, similar, kind = chosen[i]
-        else:
-            why, similar, kind = "", "", KIND_SPOT_CHECK
-        row = _new_row(txn, why, similar, kind)
+        is_merchant = i < len(chosen)
+        _t, why, similar = chosen[i] if is_merchant else (txn, "", "")  # a spot check has no `similar`
+        row = _new_row(txn, why, similar)
         if guesses[i] is not None and tuple(guesses[i][0]) in taxonomy:
             triple, p = guesses[i]
             row[VCOL["answer"]] = row[VCOL["suggested"]] = answer_text(tuple(triple))
             row[VCOL["confidence"]] = round(p, 2)
-        if kind == KIND_SPOT_CHECK:
-            confidence = row[VCOL["confidence"]]
-            row[VCOL["why"]] = f"spot check: model {round(confidence * 100)}% sure" if confidence != "" else "spot check"
-            spot_rows.append(row)
-        else:
+        if is_merchant:
             merchant_rows.append(row)
+        else:
+            confidence = row[VCOL["confidence"]]
+            row[VCOL["why"]] = (f"Check the model: {round(confidence * 100)}% sure" if confidence != ""
+                                else "Check the model")
+            spot_rows.append(row)
 
-    kept_merchants = [r for r in kept if _text(r, "kind") != KIND_SPOT_CHECK]
-    kept_spot_rows = [r for r in kept if _text(r, "kind") == KIND_SPOT_CHECK]
+    kept_merchants = [r for r in kept if not is_spot_check(r)]
+    kept_spot_rows = [r for r in kept if is_spot_check(r)]
     ordered = sorted(kept_merchants + merchant_rows, key=lambda r: -_similar(r))
     return ordered + kept_spot_rows + spot_rows
+
+
+def is_legacy_review_header(header: list) -> bool:
+    return [str(h).strip() for h in header] == list(LEGACY_REVIEW_COLUMNS)
+
+
+def upgrade_legacy_review(values: list[list]) -> list[list]:
+    """The review tab (incl. header) from before `applyTo` in today's columns, keeping every answer.
+
+    A ticked `allLikeThis` becomes "Same merchant" with the old `matchText` as `merchantText`
+    (as `descriptionText` for a row with no usable counterparty, as the old rule matched the
+    description then). A spot check keeps no `similar`; any other row gets at least 1."""
+    old = {name: i for i, name in enumerate(LEGACY_REVIEW_COLUMNS)}
+
+    def get(row: list, name: str) -> object:
+        return row[old[name]] if len(row) > old[name] else ""
+
+    upgraded: list[list] = [list(REVIEW_COLUMNS)]
+    for row in values[1:]:
+        new = [""] * len(REVIEW_COLUMNS)
+        for name in REVIEW_COLUMNS:
+            if name in old:
+                new[VCOL[name]] = get(row, name)
+        if any(str(c).strip() for c in row):
+            has_counterparty = bool(_longest_plain_run(get(row, "counterparty")))
+            match_text = str(get(row, "matchText")).strip()
+            new[VCOL["applyTo"]] = APPLY_MERCHANT if is_reviewed(get(row, "allLikeThis")) else APPLY_ROW
+            new[VCOL["merchantText"]] = match_text if has_counterparty else ""
+            new[VCOL["descriptionText"]] = (_longest_plain_run(get(row, "description")) if has_counterparty
+                                            else match_text)
+            if str(get(row, "kind")).strip() == "spot check":
+                new[VCOL["similar"]] = ""
+            elif is_spot_check(new):
+                new[VCOL["similar"]] = 1
+        upgraded.append(new)
+    return upgraded

@@ -50,6 +50,15 @@ Created automatically. One row per issue, never repeated:
   ruleId); `rule_disagrees_with_review` (a reviewed row a rule would label differently, so the rule can be
   fixed); `invalid_review_answer` (a ticked inbox answer that can't be applied); `review_conflicts_with_reviewed`
   (an inbox answer that differs from a row already reviewed on `categorised`).
+- After writing, each run checks `categorised` against `transactions` (`coverage.py`) and logs
+  `transactions`, `categorised` (rows with a full label), `uncategorised`, `orphaned`, `not_written` and
+  `ids_not_unique` counts. It opens: `orphaned_categorised_row` (a `categorised` row whose transactionId is no
+  longer on `transactions`; never deleted by the job, since it may hold your answer: delete it yourself);
+  `categorised_row_not_written` (a row the run labelled that is missing after the write); and
+  `transaction_id_not_unique` (one transactionId on several `transactions` rows, e.g. identical BIL CSV rows on
+  two accounts: only the first is categorised until bank-sync gives them different ids).
+- Rows of `categorised` below the data read as `reviewed` = FALSE (an unticked checkbox) and are not rows: the
+  sheet grows past its first 1000 rows on its own when more are appended.
 - Missing job sheet → created with headers, frozen header row, and its checkboxes/dropdowns.
   Existing sheet with different headers → the run fails before writing anything.
 
@@ -87,7 +96,7 @@ sets one.
 | `amountMin`, `amountMax` | on the EUR magnitude (`abs(amountEur)`) |
 | `owner` | blank = the account's owner |
 | `type`, `category`, `subCategory` | must be a row of `categoriser_taxonomy` |
-| `notes`, `source` | free text; `manual`, `mined` or `review` (made with "all like this" in the review inbox) |
+| `notes`, `source` | free text; `manual`, `mined` or `review` (made from an `applyTo` in the review inbox) |
 | `hits` | written by the job: rows on `transactions` the rule matches **on its own**, ignoring other rules and `active` |
 | `lastMatched` | written by the job: the latest `bookingDate` among those rows |
 | `wins` | written by the job: rows the rule actually categorised (it was the first active rule to match) |
@@ -116,35 +125,48 @@ there. The rules sheet's dropdowns read from it.
 
 Each daily run fills this tab with up to `REVIEW_SIZE` rows (default 25) that most need you: one row per
 merchant with no category, merchants with the most such rows first, plus `REVIEW_SPOT_CHECKS` (default 3) rows
-the model labelled, as spot checks of how often it is right. Card rows are included.
+the model already labelled, to check how often it is right (their `why` starts "Check the model"). Card rows
+are included. Work left to right: pick the `answer`, choose what it applies to, tick `accept`.
 
 | column | meaning |
 |---|---|
 | `transactionId` … `description` | the transaction (`account` is `bank / accountName`) |
-| `why`, `similar` | why it is here; how many rows of this merchant have no category |
-| `confidence` | the model's probability for the pre-filled `answer` (blank without a model) |
+| `why` | why it is listed: "No category yet · 16 rows like this", or "Check the model: 84% sure" |
 | `answer` | one dropdown, `type › category › subCategory`; pre-filled with the model's best guess |
 | `owner` | pre-filled with the account's owner |
-| `accept` | tick when `answer` and `owner` are right |
-| `allLikeThis` | also tick to make a rule for every row of this merchant |
-| `matchText` | the words that rule matches (shorten them to widen it) |
-| `suggested`, `kind` | the model's first guess, and `merchant` or `spot check` (filled by the job) |
+| `applyTo` | `This row only` (default), `Same merchant`, `Description only` or `Merchant + description` |
+| `merchantText` | pre-filled with the counterparty's words (no numbers); edit to widen or narrow the rule |
+| `descriptionText` | pre-filled with the description's words (no numbers); type the words that matter, e.g. a name |
+| `accept` | tick when `answer`, `owner` and `applyTo` are right |
+| `suggested`, `confidence`, `similar` | filled by the job only: the model's first guess and its probability, and the uncategorised rows of this merchant (a spot check has none) |
+
+`applyTo` decides which of the two texts make a rule for every matching row:
+
+- `This row only`: no rule; the texts are ignored.
+- `Same merchant`: a rule on `merchantText` alone. A row with no usable counterparty uses `descriptionText` instead.
+- `Description only`: a rule on `descriptionText` alone, whoever the counterparty is (e.g. a rent or salary
+  reference sent from different accounts). Check its `hits` and `sample` after the next run: a broad text matches a lot.
+- `Merchant + description`: a rule on both texts; a row must contain both to match.
+
+Each text must be at least 3 characters and whole words of this row's own counterparty / description (case and
+punctuation ignored, digits allowed), so the rule always catches the row it came from.
 
 The next run (answers are not picked up before then):
 
 - Each ticked row becomes a `categorised` row with `method` = `manual` and `reviewed` = TRUE, and leaves the inbox.
-- With `allLikeThis`, an **active** rule is added to `categoriser_rules`: `ruleId` `r-…`, priority 50 (ahead of
-  mined rules), `counterpartyContains` = `matchText` (or `descriptionContains` when the row has no counterparty),
-  the row's direction, any account, `source` = `review`. It applies in the same run.
+- With an `applyTo` other than `This row only`, an **active** rule is added to `categoriser_rules`: `ruleId` `r-…`,
+  priority 50 (ahead of mined rules), `counterpartyContains` = `merchantText` and/or `descriptionContains` =
+  `descriptionText`, the row's direction, any account, `source` = `review`. It applies in the same run.
 - An answer that can't be applied (not in the taxonomy, unknown owner, row gone, on several `categorised` rows,
-  different from an already reviewed row, or `allLikeThis` with a `matchText` shorter than 3 characters or not
-  made of whole words of the row's counterparty/description) stays ticked in the inbox with an issue until you
-  fix it.
+  different from an already reviewed row, an unknown `applyTo`, or a text that is too short or not whole words of
+  the row) stays ticked in the inbox with an issue until you fix it.
 - Rows you have not ticked stay as they are, including an answer you typed; rows that got a label drop out.
-- If you tick or edit a row (`answer`, `owner`, `accept`, `allLikeThis`, `matchText`) while the job is running,
-  it leaves the inbox as it is that day (`review=skipped_busy` in the log), so the edit is not lost.
+- If you tick or edit a row (`answer`, `owner`, `applyTo`, `merchantText`, `descriptionText`, `accept`) while the
+  job is running, it leaves the inbox as it is that day (`review=skipped_busy` in the log), so the edit is not lost.
 - Each applied answer adds one line to `~/categoriser/data/review-history.jsonl` (what the model suggested and
   your answer), used later to measure the model. It stays in the runtime folder.
+- A tab with the earlier columns (`allLikeThis`, `matchText`, `kind`) is rewritten in these columns on the next run,
+  keeping every answer and tick: `allLikeThis` becomes `Same merchant` with the old `matchText` as `merchantText`.
 
 ### Mining and holdout accuracy (run by hand, never by the schedule)
 
@@ -196,6 +218,7 @@ bank-sync/categoriser/
                     taxonomy.py  legacy.py (read + join)  mine.py  evaluate.py  seed_taxonomy.py
                     model.py (features, train, predict, save/load)  train.py
                     review.py (review inbox: answers and refill, pure)
+                    coverage.py (after-write check of categorised vs transactions, pure)
                     smoke.py   run.py (entry point)
   tests/            pytest, no network
   Dockerfile  docker-compose.yml (dev)  deploy/docker-compose.runtime.yml

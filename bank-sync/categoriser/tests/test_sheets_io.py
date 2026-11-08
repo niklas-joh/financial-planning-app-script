@@ -261,7 +261,9 @@ from builders import review_row  # noqa: E402
 
 
 def validations(ss):
-    return {r["setDataValidation"]["range"]["startColumnIndex"]: r["setDataValidation"]["rule"] for r in ss.requests}
+    """Column -> rule of the dropdowns / checkboxes set (a request without a rule only clears)."""
+    return {r["setDataValidation"]["range"]["startColumnIndex"]: r["setDataValidation"]["rule"]
+            for r in ss.requests if "rule" in r.get("setDataValidation", {})}
 
 
 def review_ws(*rows):
@@ -270,13 +272,16 @@ def review_ws(*rows):
     return ss, ss.sheets["categoriser_review"]
 
 
-def test_creates_review_sheet_with_checkboxes_and_owner_dropdown():
+def test_creates_review_sheet_with_checkbox_and_apply_to_and_owner_dropdowns():
     ss = FakeSpreadsheet()
     ws = ensure_review_sheet(ss, SETTINGS)
     assert ws.values == [list(REVIEW_COLUMNS)] and ws.frozen_rows == 1
     rules = validations(ss)
     assert rules[VCOL["accept"]]["condition"]["type"] == "BOOLEAN"
-    assert rules[VCOL["allLikeThis"]]["condition"]["type"] == "BOOLEAN"
+    apply_to = rules[VCOL["applyTo"]]
+    assert [v["userEnteredValue"] for v in apply_to["condition"]["values"]] == \
+        ["This row only", "Same merchant", "Description only", "Merchant + description"]
+    assert apply_to["strict"] is True
     assert rules[VCOL["owner"]]["condition"]["values"][0]["userEnteredValue"] == "='account_owners'!A2:A"
 
 
@@ -296,7 +301,8 @@ def test_write_review_grows_the_grid_when_needed():
 
 
 @pytest.mark.parametrize("column,value", [("accept", True), ("answer", "A › B › C"), ("owner", "alice"),
-                                          ("allLikeThis", True), ("matchText", "acme"), ("transactionId", "b")])
+                                          ("applyTo", "Same merchant"), ("merchantText", "acme"),
+                                          ("descriptionText", "gift"), ("transactionId", "b")])
 def test_write_review_skips_when_the_owner_edited_a_row_meanwhile(column, value):
     ss, ws = review_ws(review_row("a"))
     read_at_start = [list(r) for r in ws.values]
@@ -333,3 +339,60 @@ def test_append_rows_reapplies_rule_dropdowns_with_review_source():
     append_rows(ss.sheets["categoriser_rules"], SETTINGS, [["r-1"] + [""] * (len(RULE_COLUMNS) - 1)])
     values = [v["userEnteredValue"] for v in validations(ss)[RCOL["source"]]["condition"]["values"]]
     assert values == ["manual", "mined", "review"]
+
+
+# --- an inbox with the columns from before `applyTo` ------------------------------
+
+from categoriser.review import LEGACY_REVIEW_COLUMNS  # noqa: E402
+
+
+def legacy_row(tid, **cells):
+    values = {c: "" for c in LEGACY_REVIEW_COLUMNS}
+    values.update(dict(transactionId=tid, counterparty="Acme Market 77", description="Gift card 5", similar=3,
+                       accept=False, allLikeThis=False, kind="merchant") | cells)
+    return [values[c] for c in LEGACY_REVIEW_COLUMNS]
+
+
+def legacy_ws(*rows):
+    ss = FakeSpreadsheet({"categoriser_review": FakeWorksheet("categoriser_review",
+                                                              [list(LEGACY_REVIEW_COLUMNS), *rows])})
+    return ss, ss.sheets["categoriser_review"]
+
+
+def test_old_inbox_is_rewritten_in_the_new_columns_keeping_the_answers():
+    ss, _ = legacy_ws(legacy_row("a", answer="A › B › C", owner="bob", accept=True, allLikeThis=True,
+                                 matchText="acme market", suggested="D › E › F", confidence=0.5),
+                      legacy_row("s", kind="spot check", similar="", why="spot check: model 96% sure"))
+    ws = ensure_review_sheet(ss, SETTINGS)
+    assert ws.values[0] == list(REVIEW_COLUMNS)
+    a, spot = ({c: r[VCOL[c]] for c in REVIEW_COLUMNS} for r in ws.values[1:])
+    assert (a["transactionId"], a["answer"], a["owner"], a["accept"]) == ("a", "A › B › C", "bob", True)
+    assert (a["applyTo"], a["merchantText"], a["descriptionText"]) == ("Same merchant", "acme market", "gift card")
+    assert (a["suggested"], a["confidence"], a["similar"]) == ("D › E › F", 0.5, 3)
+    assert spot["applyTo"] == "This row only" and spot["similar"] == ""
+    rules = validations(ss)
+    assert rules[VCOL["applyTo"]]["condition"]["type"] == "ONE_OF_LIST" and rules[VCOL["accept"]]["condition"]["type"] == "BOOLEAN"
+    cleared = [r for r in ss.requests if "setDataValidation" in r and "rule" not in r["setDataValidation"]]
+    assert len(cleared) == 1  # the old columns' dropdowns and checkboxes go before the new ones are set
+
+
+def test_old_row_without_a_counterparty_keeps_its_match_text_as_description_text():
+    ss, _ = legacy_ws(legacy_row("a", counterparty="", description="Corner Cafe 9", allLikeThis=True,
+                                 matchText="corner cafe"))
+    [row] = ensure_review_sheet(ss, SETTINGS).values[1:]
+    assert (row[VCOL["applyTo"]], row[VCOL["merchantText"]], row[VCOL["descriptionText"]]) == \
+        ("Same merchant", "", "corner cafe")
+
+
+def test_old_merchant_row_without_a_count_is_not_taken_for_a_spot_check():
+    ss, _ = legacy_ws(legacy_row("a", similar=""))
+    [row] = ensure_review_sheet(ss, SETTINGS).values[1:]
+    assert row[VCOL["similar"]] == 1
+
+
+def test_new_inbox_is_left_alone_and_unknown_headers_still_fail():
+    ss, ws = review_ws(review_row("a"))
+    assert ensure_review_sheet(ss, SETTINGS).values == ws.values and "update" not in ws.calls
+    bad = FakeSpreadsheet({"categoriser_review": FakeWorksheet("categoriser_review", [["nope"]])})
+    with pytest.raises(ValueError):
+        ensure_review_sheet(bad, SETTINGS)

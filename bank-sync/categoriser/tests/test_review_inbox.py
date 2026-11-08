@@ -1,6 +1,6 @@
 import random
 
-from categoriser.review import REVIEW_COLUMNS, VCOL, AnswerPlan, plan_inbox, transactions_by_id
+from categoriser.review import REVIEW_COLUMNS, VCOL, AnswerPlan, is_spot_check, plan_inbox, transactions_by_id
 from builders import TAXONOMY, review_row, review_sheet, txn
 
 GROCERY = ("Essentials", "Groceries", "Supermarket")
@@ -21,14 +21,14 @@ def test_biggest_merchant_groups_first_one_latest_row_each():
     txns += [txn(counterparty="Lone Shop", tid="l")]
     rows = inbox(txns, size=2)
     assert ids(rows) == ["a3", "c2"]
-    assert rows[0][VCOL["why"]] == "3 rows like this have no category" and rows[0][VCOL["similar"]] == 3
-    assert rows[0][VCOL["matchText"]] == "acme market" and rows[0][VCOL["kind"]] == "merchant"
+    assert rows[0][VCOL["why"]] == "No category yet · 3 rows like this" and rows[0][VCOL["similar"]] == 3
+    assert (rows[0][VCOL["applyTo"]], rows[0][VCOL["merchantText"]]) == ("This row only", "acme market")
     assert all(len(r) == len(REVIEW_COLUMNS) for r in rows)
 
 
 def test_one_row_group_says_row_in_the_singular():
     [row] = inbox([txn(counterparty="Lone Shop", tid="l")])
-    assert row[VCOL["why"]] == "1 row like this has no category"
+    assert row[VCOL["why"]] == "No category yet · 1 row like this"
 
 
 def test_row_fields_come_from_the_transaction():
@@ -75,8 +75,8 @@ def test_spot_checks_take_the_last_slots_from_model_rows():
             txn(counterparty="Lone Shop", tid="m2")]
     rows = inbox(txns, labelled={"m1", "m2"}, model_ids={"m1", "m2"}, size=2, spot=1,
                  guess=lambda ts: [(GROCERY, 0.96)] * len(ts))
-    assert [r[VCOL["kind"]] for r in rows] == ["merchant", "spot check"]
-    assert rows[1][VCOL["why"]] == "spot check: model 96% sure" and rows[1][VCOL["transactionId"]] in {"m1", "m2"}
+    assert [is_spot_check(r) for r in rows] == [False, True]
+    assert rows[1][VCOL["why"]] == "Check the model: 96% sure" and rows[1][VCOL["transactionId"]] in {"m1", "m2"}
     assert rows[1][VCOL["similar"]] == ""
 
 
@@ -87,7 +87,7 @@ def test_spot_checks_skip_merchants_already_in_the_inbox():
 
 
 def test_unanswered_spot_check_stays_while_the_model_still_labels_it():
-    old = review_row("m", kind="spot check")
+    old = review_row("m", spot_check=True)
     rows = inbox([txn(counterparty="Corner Cafe", tid="m")], previous=review_sheet(old), labelled={"m"},
                  model_ids={"m"}, spot=1)
     assert rows == [old]
@@ -112,7 +112,7 @@ def test_guess_is_called_once_for_all_new_rows():
 def test_without_a_model_the_answer_is_blank_and_owner_is_prefilled():
     [row] = inbox([txn("bob", counterparty="Acme Market", tid="a")])
     assert row[VCOL["answer"]] == "" and row[VCOL["owner"]] == "bob"
-    assert row[VCOL["accept"]] is False and row[VCOL["allLikeThis"]] is False
+    assert row[VCOL["accept"]] is False and row[VCOL["applyTo"]] == "This row only"
 
 
 def test_kept_rows_are_never_dropped_and_no_new_rows_beyond_size():
@@ -122,7 +122,8 @@ def test_kept_rows_are_never_dropped_and_no_new_rows_beyond_size():
 
 
 def test_kept_and_new_rows_sort_by_similar():
-    old = review_row("l")  # similar blank counts as 0
+    old = review_row("l")
+    old[VCOL["similar"]] = 1
     txns = [txn(counterparty="Lone Shop", tid="l")] + [txn(counterparty="Acme Market", tid=f"a{i}") for i in range(2)]
     assert ids(inbox(txns, previous=review_sheet(old))) == ["a1", "l"]
 
@@ -130,4 +131,17 @@ def test_kept_and_new_rows_sort_by_similar():
 def test_rows_without_merchant_words_are_not_grouped_together():
     txns = [txn(counterparty="123", description="", tid=f"x{i}") for i in range(3)]
     rows = inbox(txns)
-    assert len(rows) == 3 and {r[VCOL["why"]] for r in rows} == {"1 row like this has no category"}
+    assert len(rows) == 3 and {r[VCOL["why"]] for r in rows} == {"No category yet · 1 row like this"}
+
+
+def test_description_text_is_prefilled_and_merchant_text_is_blank_without_a_counterparty():
+    [with_merchant, without] = sorted(
+        inbox([txn(counterparty="Acme Market", description="Gift for Alice 12", tid="a"),
+               txn(counterparty="", description="Corner Cafe 99", tid="b")]), key=lambda r: r[0])
+    assert (with_merchant[VCOL["merchantText"]], with_merchant[VCOL["descriptionText"]]) == ("acme market", "gift for alice")
+    assert (without[VCOL["merchantText"]], without[VCOL["descriptionText"]]) == ("", "corner cafe")
+
+
+def test_a_row_with_only_a_reference_number_gets_a_blank_description_text():
+    [row] = inbox([txn(counterparty="Trading Markets Limited", description="33481779", tid="t")])
+    assert row[VCOL["merchantText"]] == "trading markets limited" and row[VCOL["descriptionText"]] == ""

@@ -24,6 +24,8 @@
    * @property {Array<string>} skipped - Files not imported, each with the reason (redacted); the first
    *   `CSV.MAX_SKIPPED_LISTED` only, each cut to `CSV.MAX_SKIPPED_CHARS`.
    * @property {number} [skippedMore] - Further files not imported and not named.
+   * @property {Object<string, string>} [accounts] - Per account id, the date its newest export reaches
+   *   (`CsvImportProvider.exportEnds`).
    */
 
   /**
@@ -115,5 +117,20 @@
     }, []);
   }
 
-  ns.CsvFolders = { connections: connections, folderId: folderId, imports: imports, statusLines: statusLines };
+  /**
+   * @param {{getKeys: function(): Array<string>, getProperty: function(string): ?string}} props - Script Properties.
+   * @returns {Object<string, string>} Per CSV account id, the date its newest export reaches (all folders, the
+   *   later date when two folders hold the same account).
+   */
+  function exportEnds(props) {
+    const out = {};
+    connections(props).forEach(function (c) {
+      const record = imports(props, c).load();
+      const ends = (record && record.accounts) || {};
+      Object.keys(ends).forEach(function (id) { if (ends[id] > (out[id] || '')) out[id] = ends[id]; });
+    });
+    return out;
+  }
+
+  ns.CsvFolders = { connections: connections, folderId: folderId, imports: imports, statusLines: statusLines, exportEnds: exportEnds };
 })(globalThis.BankSync);

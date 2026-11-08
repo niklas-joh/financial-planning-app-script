@@ -33,7 +33,8 @@ tested locally: `npm test` (Node 20+).
 
 ## Secrets
 
-The application ID and private key, and the Trading 212 API keys and secrets, live only in Script Properties. Never put
+The application ID and private key, the Trading 212 API keys and secrets, and the Pluxee refresh tokens live only in
+Script Properties. Never put
 them in the repo, logs, sheets or chat. `.gitignore` excludes `*.pem`, `*.key`,
 `.env`, `client_secret*.json` and `.clasprc.json`. Tests and docs use fake data.
 
@@ -150,6 +151,45 @@ tab, one row per account (`owner`, `bank`, `accountName`, `ibanMasked`, `connect
   reported as unreadable and every row keeps the owner it has.
 - An account is recognised by its `accountId` (for CSV accounts: the source plus a hash of the account number,
   see "CSV import"), so it keeps its owner across files and syncs.
+
+## Data sources and coverage
+
+Where each account's data comes from, how often it should be updated, and how far it reaches, so a missing month
+shows up and the next manual export starts at the right date.
+
+**How an account is fetched** is kept on `account_owners`, in three columns you can edit like the owner:
+
+| Column | Meaning | A new account starts with |
+|---|---|---|
+| `source` | How its data arrives | `API (automatic)` for a bank login, Trading 212 or Pluxee; `CSV (manual upload)` for a CSV account. Free text, e.g. `Manual entry` |
+| `frequency` | How often it should be updated | `daily` for API accounts; `monthly` for CSV accounts, `quarterly` for Avanza |
+| `howTo` | What updating it takes | A short note per provider; change it to whose login, which menu, ... |
+
+`frequency` sets the status below: `daily`, `weekly`, `monthly`, `quarterly` or `yearly`; anything else (e.g.
+`ad hoc`) means no schedule. A tab from before these columns gets them added after its last column at the next sync
+that adds an account; until a cell is filled, the default above counts.
+
+**What is covered** is on the `data_coverage` tab, which every sync (daily, *Sync all*, *Import CSV files*) rewrites, so
+never type in it. One row per account on `account_owners`, then one per item on `manual_balances`:
+
+- `rows`, `firstDate`, `lastDate`: the account's rows on the three transaction tabs and their booking dates.
+- `upTo`: the date its data is complete up to. API account: the last day its connection was read without an error.
+  CSV account: the end of its newest export. A BIL export does not state its period, so files of one source uploaded
+  the same day count as one export that reaches the latest date in any of them; a savings account with no movement
+  since March, exported with a current account up to 31 August, is complete up to 31 August. Manual item: the date
+  of its latest row with an amount.
+- `exportFrom` (CSV accounts): the date to start the next export at. Export from it to today: rows already stored
+  have the same id and are skipped, so the overlap is harmless.
+- `status`: `OK` while `upTo` is at most one period (plus a day) old, `due` up to two periods, `overdue` after that;
+  `no data yet`, or `no schedule`. `nextStep` says what to do: the export to make, the row to add on
+  `manual_balances`, or (an API account not read for days) to check *Show status* for a lapsed consent or login.
+
+The sync summary and *Show status* end with the accounts to update, e.g. "to update: BIL Current Private (export
+2026-08-28 to today)".
+
+`manual_balances` is a tab you keep by hand (`date`, `bank`, `accountName`, `owner`, `amount`, ...). It is only read.
+Each `bank` + `accountName` is one item; its default frequency is `monthly`, or add a `frequency` column and fill it on
+the item's latest row.
 
 ## Transactions (Phase 2)
 
@@ -328,6 +368,49 @@ uploaded yourself (see "CSV import").
   the app's export (instrument, shares, price, withholding tax, ATM fee); only the ones in "CSV import" are used. Its
   dividend rows have no `ID` and are skipped (dividends come from the API). If a report ever had other columns, the
   CSV import would skip it and name it in *Show status*.
+
+## Pluxee meal-voucher card
+
+The Pluxee Luxembourg lunch card (formerly Sodexo) is read through the Pluxee consumer API
+(`api.pluxee.app`), signing in the way the Pluxee mobile app does. Pluxee offers no public API and the card is
+not a bank account, so no open-banking provider serves it; this is unofficial and may break when Pluxee changes
+its login or API. Read only.
+
+Signing in takes a captcha and an emailed code, so a script cannot sign in. Instead you sign in once in a
+browser and hand Bank Sync the **refresh token** the sign-in produces; each sync uses it to get a fresh access
+token from PluxeeConnect and saves the new refresh token PluxeeConnect hands back. The sign-in uses the mobile
+app's OAuth client, which (unlike the portal's web login) is granted long-lived refresh tokens, so you should
+rarely need to sign in again. How long one lives without a new sign-in is still being confirmed (see the roadmap).
+
+1. The card id (e.g. `LUX000...`) is in the app's **Settings > Debug** screen as `CardIDs`, or in the portal's
+   card URL. In the Apps Script editor, **Project Settings > Script Properties**, add it once per card, holder in
+   upper case: `PLUXEE_CARD_<HOLDER>`, e.g. `PLUXEE_CARD_NIKLAS`.
+2. Reload the Sheet. In the **Bank Sync** menu, **Connect Pluxee...**: type the holder name (e.g. `niklas`), then
+   open the link it shows and sign in. Your browser will try to open an address starting
+   `app.pluxee.consumers.eva://` and fail to — that is expected. Copy that whole address from the address bar.
+3. **Bank Sync > Finish Pluxee connection...**: paste that address. Bank Sync exchanges it for the refresh token
+   and stores it in `PLUXEE_REFRESH_TOKEN_<HOLDER>` for you (never shown). The sign-in link lasts ~30 minutes.
+4. *Show status* lists both properties as `set`/`MISSING` (never the values). *Sync all* (and the daily sync)
+   includes every complete pair as connection `pluxee-<holder>`; its card starts with the holder as owner.
+
+What it writes:
+
+- The card is one account (`bank` Pluxee, `accountName` the product, e.g. "Pluxee Lunch", `ibanMasked` the card's
+  masked number as Pluxee shows it). No balances yet.
+- `transactions`: every approved payment (negative) and top-up (positive) of the card, `counterparty` the merchant
+  (`Pluxee` for top-ups), `description` Pluxee's kind (`Purchase`, `Reloading`, often blank), `category` Pluxee's code
+  (`PAYMENT`, `LOAD`), `classification` = `card`.
+  Declined payments are left out; a status other than approved is stored as pending. Amounts are in EUR.
+- Each sync reads the latest 99 transactions (what the portal asks for; the response has no paging) and stores all of
+  them, not only the 90-day first-run lookback other accounts use. On a lunch card that is over a year of history:
+  the first sync loads it, and later syncs find those rows unchanged and add only new ones. Anything older than the
+  99 rows is not available.
+- The API also wants the portal's subscription key, a fixed value in the portal's script that every visitor's browser
+  sends. Each sync reads it from `consumers.pluxee.lu`, once per Pluxee connection (nothing to set up, nothing stored); if Pluxee changes its
+  portal so it cannot be found, the sync says so for that connection without using up the refresh token.
+- When PluxeeConnect refuses the refresh token, the sync reports "Pluxee login has expired" for that connection
+  (the others still run): run **Connect Pluxee** and **Finish Pluxee connection** again (step 2-3). Each sync reads
+  the latest 99 transactions, so nothing is lost between sign-ins even if they are weeks apart.
 
 ## CSV import (Phase 6)
 
