@@ -134,7 +134,7 @@ are included. Work left to right: pick the `answer`, choose what it applies to, 
 | `why` | why it is listed: "No category yet · 16 rows like this", or "Check the model: 84% sure" |
 | `answer` | one dropdown, `type › category › subCategory`; pre-filled with the model's best guess |
 | `owner` | pre-filled with the account's owner |
-| `applyTo` | `This row only` (default), `Same merchant` or `Merchant + description` |
+| `applyTo` | `This row only` (default), `Same merchant`, `Description only` or `Merchant + description` |
 | `merchantText` | pre-filled with the counterparty's words (no numbers); edit to widen or narrow the rule |
 | `descriptionText` | pre-filled with the description's words (no numbers); type the words that matter, e.g. a name |
 | `accept` | tick when `answer`, `owner` and `applyTo` are right |
@@ -144,6 +144,8 @@ are included. Work left to right: pick the `answer`, choose what it applies to, 
 
 - `This row only`: no rule; the texts are ignored.
 - `Same merchant`: a rule on `merchantText` alone. A row with no usable counterparty uses `descriptionText` instead.
+- `Description only`: a rule on `descriptionText` alone, whoever the counterparty is (e.g. a rent or salary
+  reference sent from different accounts). Check its `hits` and `sample` after the next run: a broad text matches a lot.
 - `Merchant + description`: a rule on both texts; a row must contain both to match.
 
 Each text must be at least 3 characters and whole words of this row's own counterparty / description (case and
