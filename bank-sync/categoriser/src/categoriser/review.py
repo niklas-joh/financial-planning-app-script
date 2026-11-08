@@ -2,10 +2,10 @@
 
 Each daily run first applies the ticked answers (`apply_answers`): each becomes a
 reviewed `manual` row on `categorised`, and an `applyTo` other than "This row only"
-also adds an active rule on the merchant text (or on the merchant and the
-description text). After categorising, the inbox is filled again (`plan_inbox`): one row per
-merchant without a label, biggest merchants first, plus a few spot checks of
-rows the model labelled. Pure: no I/O (see `sheets.write_review`).
+also adds an active rule on the merchant text, the description text, or both.
+After categorising, the inbox is filled again (`plan_inbox`): one row per merchant
+without a label, biggest merchants first, plus a few spot checks of rows the
+model labelled. Pure: no I/O (see `sheets.write_review`).
 """
 
 from __future__ import annotations
@@ -39,8 +39,9 @@ LEGACY_REVIEW_COLUMNS: tuple[str, ...] = (
 )
 
 ANSWER_SEP = " › "  # not "/": "Wants/Pleasure" holds a slash
-APPLY_ROW, APPLY_MERCHANT, APPLY_BOTH = "This row only", "Same merchant", "Merchant + description"
-APPLY_TO: tuple[str, ...] = (APPLY_ROW, APPLY_MERCHANT, APPLY_BOTH)
+APPLY_ROW, APPLY_MERCHANT, APPLY_DESCRIPTION, APPLY_BOTH = (
+    "This row only", "Same merchant", "Description only", "Merchant + description")
+APPLY_TO: tuple[str, ...] = (APPLY_ROW, APPLY_MERCHANT, APPLY_DESCRIPTION, APPLY_BOTH)
 REVIEW_RULE_PRIORITY = 50  # ahead of mined rules (default 100)
 MIN_MATCH_TEXT = 3  # shorter match text would match far too much
 RULE_FIELDS = {"counterpartyContains": "counterparty", "descriptionContains": "description"}
@@ -194,14 +195,14 @@ def rule_needles(txn: dict, scope: str, merchant_text: str, description_text: st
     """(rule match columns -> words, error) for an `applyTo` other than "This row only".
 
     "Same merchant" matches the merchant text (the description text for a row with no usable
-    counterparty); "Merchant + description" needs both. Each text must be at least
-    `MIN_MATCH_TEXT` characters and whole words of this row's own counterparty / description, so
-    the rule always catches the row it came from. The error is empty when the needles are valid."""
+    counterparty); "Description only" matches the description text alone; "Merchant + description"
+    needs both. Each text must be at least `MIN_MATCH_TEXT` characters and whole words of this
+    row's own counterparty / description, so the rule always catches the row it came from. The error is empty when the needles are valid."""
     uses_counterparty = merchant_key(txn)[0] == "counterpartyContains"
     if scope == APPLY_BOTH:
         wanted = {"counterpartyContains": ("merchantText", merchant_text),
                   "descriptionContains": ("descriptionText", description_text)}
-    elif uses_counterparty:
+    elif scope == APPLY_MERCHANT and uses_counterparty:
         wanted = {"counterpartyContains": ("merchantText", merchant_text)}
     else:
         wanted = {"descriptionContains": ("descriptionText", description_text)}

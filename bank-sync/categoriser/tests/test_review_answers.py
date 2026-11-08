@@ -159,6 +159,27 @@ def test_same_merchant_uses_the_description_text_when_there_is_no_counterparty()
     assert bad.new_rules == [] and [i.type for i in bad.issues] == ["invalid_review_answer"]
 
 
+def test_description_only_makes_one_rule_on_the_description_text():
+    rent = txn("bob", counterparty="Bank Transfer 01", description="Rent flat 3B", tid="a")
+    other_sender = txn("bob", counterparty="Other Bank", description="Rent flat", tid="b")
+    p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True, apply_to="Description only",
+                                     merchant_text="bank transfer", description_text="rent flat")), [rent, other_sender])
+    [rule_values] = p.new_rules
+    [rule] = parse_rules(rules_sheet(rule_values), TAXONOMY, OWNERS, "categoriser_rules").active
+    assert (rule.counterpartyContains, rule.descriptionContains) == ("", "rent flat")
+    assert rule.matches(rent) and rule.matches(other_sender)
+    assert p.manual_rows[0].ruleId == rule.ruleId and p.issues == []
+
+
+@pytest.mark.parametrize("description_text", ["", "re", "salary", "ren"])
+def test_description_only_needs_a_valid_description_text(description_text):
+    row = review_row("a", answer=GROCERY, accept=True, apply_to="Description only",
+                     merchant_text="bank transfer", description_text=description_text)
+    p = plan(review_sheet(row), [txn(counterparty="Bank Transfer", description="Rent flat", tid="a")])
+    assert p.new_rules == [] and p.keep == [row]
+    assert [i.type for i in p.issues] == ["invalid_review_answer"] and "descriptionText" in p.issues[0].detail
+
+
 def test_match_texts_are_ignored_for_this_row_only():
     p = plan(review_sheet(review_row("a", answer=GROCERY, accept=True, merchant_text="shop", description_text="x")),
              [txn(counterparty="Acme Market", tid="a")])

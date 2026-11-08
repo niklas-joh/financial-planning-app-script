@@ -280,7 +280,7 @@ def test_creates_review_sheet_with_checkbox_and_apply_to_and_owner_dropdowns():
     assert rules[VCOL["accept"]]["condition"]["type"] == "BOOLEAN"
     apply_to = rules[VCOL["applyTo"]]
     assert [v["userEnteredValue"] for v in apply_to["condition"]["values"]] == \
-        ["This row only", "Same merchant", "Merchant + description"]
+        ["This row only", "Same merchant", "Description only", "Merchant + description"]
     assert apply_to["strict"] is True
     assert rules[VCOL["owner"]]["condition"]["values"][0]["userEnteredValue"] == "='account_owners'!A2:A"
 
