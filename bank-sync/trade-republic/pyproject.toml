@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tr-export"
+version = "0.1.0"
+description = "Exports the Trade Republic timeline (via pytr) to one CSV file in the Bank Sync CSV folder."
+requires-python = ">=3.12"
+dependencies = [
+  # Exact: pytr talks to Trade Republic's private API; an upgrade is a deliberate, tested change.
+  "pytr==0.4.10",
+  "google-auth>=2.30,<3",
+  "requests>=2.31,<3",
+  "tzdata>=2024.1",  # zoneinfo data for the slim image
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]

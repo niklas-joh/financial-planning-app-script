@@ -1,0 +1,12 @@
+# Secrets, sessions and data are mounted at runtime, never baked into the image.
+.env
+credentials/
+data/
+session/
+logs/
+.venv/
+**/__pycache__/
+.pytest_cache/
+*.csv
+*.json
+!pyproject.toml

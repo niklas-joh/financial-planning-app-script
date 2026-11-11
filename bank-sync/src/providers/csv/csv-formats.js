@@ -33,6 +33,8 @@
    * @property {string} [counterpartyBank] - The other party's bank, or ''.
    * @property {string} [reference] - Payment reference (e.g. end-to-end id), or ''.
    * @property {Object<string, string>} [extra] - Further parsed parts, kept on the raw tab only.
+   * @property {string} [classification] - 'card', 'transfer' or 'investment' when the file itself says which tab
+   *   the row belongs on (Trade Republic), else '' (the tab follows the source; see `TxnRouting.tabFor`).
    * @property {string} [id] - The file's own transaction id, when it has one.
    * @property {Array<*>} fingerprint - Identifying values for a content-hash id (when `id` is empty).
    */
@@ -62,7 +64,7 @@
    */
 
   /** @type {Array<CsvFormat>} */
-  const ALL = [ns.CsvBil.FORMAT, ns.CsvT212Report.FORMAT, ns.CsvAvanza.FORMAT];
+  const ALL = [ns.CsvBil.FORMAT, ns.CsvT212Report.FORMAT, ns.CsvAvanza.FORMAT, ns.CsvTradeRepublic.FORMAT];
 
   ns.CsvFormats = { ALL: ALL };
 })(globalThis.BankSync);
