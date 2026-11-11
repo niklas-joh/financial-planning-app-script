@@ -3,28 +3,18 @@
  * are the only names Apps Script needs at top level.
  */
 (function (ns) {
-  /**
-   * Escapes text for safe inclusion in HTML.
-   * @param {string} s - Raw text.
-   * @returns {string} Escaped text.
-   */
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  const escapeHtml = ns.SummaryView.escapeHtml;
 
   /**
    * Shows a summary in a modeless window: unlike `ui.alert`, it does not keep the run waiting until it
-   * is closed, so the execution ends as soon as the work is done. Text is escaped and kept as written.
+   * is closed, so the execution ends as soon as the work is done. Every text is escaped.
    * @param {string} title - Window title.
-   * @param {string} text - Summary (counts and names only).
+   * @param {string|import('../core/summary-view.js').View} summary - Text (one line each) or a view
+   *   (counts and names only).
    */
-  function showSummary(title, text) {
-    const lines = String(text).split('\n').length;
-    const html = HtmlService.createHtmlOutput(
-      '<pre style="font:13px/1.4 monospace;white-space:pre-wrap;margin:0">' + escapeHtml(text) + '</pre>')
-      .setWidth(560).setHeight(Math.min(560, 80 + lines * 20));
+  function showSummary(title, summary) {
+    const page = ns.SummaryView.render(typeof summary === 'string' ? ns.SummaryView.fromText(summary) : summary);
+    const html = HtmlService.createHtmlOutput(page.html).setWidth(page.width).setHeight(page.height);
     SpreadsheetApp.getUi().showModelessDialog(html, title);
   }
 
@@ -162,7 +152,7 @@
           throw e;
         }
         ns.AutoSync.recordManual(lastRun, { outcome: outcome }, now());
-        return ns.SyncAll.summarize(outcome);
+        return ns.SyncAll.view(outcome);
       });
       showSummary('Bank Sync: Sync all', summary);
     });
@@ -183,7 +173,7 @@
             '<HOLDER> with the Drive folder id in Script Properties (see the README).';
         }
         const outcome = ns.SyncAll.run(deps);
-        return ns.SyncAll.summarize(outcome) + '\n\n' + ns.CsvFolders.statusLines(wired.props).join('\n');
+        return ns.SyncAll.view(outcome, ns.CsvFolders.statusLines(wired.props));
       });
       showSummary('Bank Sync: Import CSV files', summary);
     });
@@ -199,7 +189,8 @@
       const summary = withLock(function () {
         const wired = ns.Container.services();
         const sync = ns.Container.syncAllDeps(wired);
-        return ns.Reprocess.summarize(ns.Reprocess.run({ sync: sync, rawReader: sync.rawWriter }));
+        const outcome = ns.Reprocess.run({ sync: sync, rawReader: sync.rawWriter });
+        return ns.SyncAll.view(outcome.sync, ns.Reprocess.maskedLines(outcome));
       });
       showSummary('Bank Sync: Re-process stored rows', summary);
     });

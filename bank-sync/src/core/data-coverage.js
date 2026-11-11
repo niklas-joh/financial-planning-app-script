@@ -213,12 +213,20 @@
 
   /**
    * @param {Object} row - Coverage row.
-   * @returns {string} e.g. "BIL Current Private (export 2026-08-31 to today)".
+   * @returns {{name: string, action: string}} e.g. "BIL Current Private" and "export 2026-08-31 to today".
    */
-  function dueText(row) {
+  function dueItem(row) {
     const name = [row.bank, row.accountName].filter(Boolean).join(' ');
-    if (row.exportFrom) return name + ' (export ' + row.exportFrom + ' to today)';
-    return name + (row.upTo ? ' (up to ' + row.upTo + ')' : ' (no data yet)');
+    if (row.exportFrom) return { name: name, action: 'export ' + row.exportFrom + ' to today' };
+    return { name: name, action: row.upTo ? 'up to ' + row.upTo : 'no data yet' };
+  }
+
+  /**
+   * @param {Array<Object>} rows - Coverage rows.
+   * @returns {Array<{name: string, action: string}>} Every row needing action.
+   */
+  function dueItems(rows) {
+    return rows.filter(needsAction).map(dueItem);
   }
 
   /**
@@ -226,7 +234,7 @@
    * @returns {string} The ones needing action, first `MAX_LISTED`, then "and N more"; '' if none.
    */
   function dueList(rows) {
-    const due = rows.filter(needsAction).map(dueText);
+    const due = dueItems(rows).map(function (d) { return d.name + ' (' + d.action + ')'; });
     const more = due.length - COV.MAX_LISTED;
     return due.slice(0, COV.MAX_LISTED).join(', ') + (more > 0 ? ' and ' + more + ' more' : '');
   }
@@ -254,6 +262,7 @@
    * @typedef {Object} CoverageOutcome
    * @property {number} rows - Rows written to `data_coverage`.
    * @property {string} due - Accounts needing action (`dueList`), or ''.
+   * @property {Array<{name: string, action: string}>} [dueItems] - The same accounts, all of them, one each.
    * @property {string} [error] - Redacted message when the tab could not be built or written.
    */
 
@@ -281,7 +290,7 @@
             read: read, csv: deps.csvCoverage(), today: today
           });
           deps.tab.write(rows);
-          return { rows: rows.length, due: dueList(rows) };
+          return { rows: rows.length, due: dueList(rows), dueItems: dueItems(rows) };
         } catch (e) {
           return { rows: 0, due: '', error: ns.Redact.text(e.name + ': ' + e.message) };
         }

@@ -108,6 +108,10 @@ test('coverage: a sync lists every account with its dates, export start and stat
   assert.strictEqual(rows[0].nextStep, 'Export 2026-08-28 to today and upload it to the CSV folder');
   assert.match(BS.SyncAll.summarize(outcome),
     /Data coverage: 2 rows on data_coverage; to update: BIL Current Private \(export 2026-08-28 to today\), BIL Savings Account/);
+  // The summary window lists the same accounts one per line.
+  assert.deepStrictEqual(BS.SyncAll.view(outcome).list.items, [
+    { name: 'BIL Current Private', action: 'export 2026-08-28 to today' },
+    { name: 'BIL Savings Account', action: 'export 2026-08-28 to today' }]);
   // account_owners got how each account is fetched.
   const owners = tabRows(r.book, 'account_owners');
   assert.deepStrictEqual(owners.map((o) => [o.source, o.frequency]), [['CSV (manual upload)', 'monthly'], ['CSV (manual upload)', 'monthly']]);
@@ -146,6 +150,7 @@ test('coverage: manual_balances items are listed by their latest value; one with
   ]);
   assert.match(r.coverage()[1].nextStep, /manual_balances/);
   assert.match(BS.DataCoverage.summaryLine(outcome.coverage), /to update: Property Flat \(no data yet\)/);
+  assert.deepStrictEqual(outcome.coverage.dueItems, [{ name: 'Property Flat', action: 'no data yet' }]);
 });
 
 test('coverage: an API account is up to its last good read; when reads stop it becomes due, then overdue', () => {

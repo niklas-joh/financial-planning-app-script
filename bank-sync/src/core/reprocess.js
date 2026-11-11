@@ -158,11 +158,20 @@
    * @returns {string} Multi-line summary.
    */
   function summarize(outcome) {
-    const lines = [ns.SyncAll.summarize(outcome.sync), ''];
+    return [ns.SyncAll.summarize(outcome.sync), ''].concat(maskedLines(outcome)).join('\n');
+  }
+
+  /**
+   * The rows still masked after a run (tab, connection, account, date, id and columns; never a value).
+   * @param {{remaining: Array<MaskedRow>}} outcome - From `run`.
+   * @returns {Array<string>} Lines.
+   */
+  function maskedLines(outcome) {
+    const lines = [];
     const rows = outcome.remaining;
     if (!rows.length) {
       lines.push('Still masked: none. Every stored row holds full account numbers.');
-      return lines.join('\n');
+      return lines;
     }
     const lost = rows.filter(function (r) { return !r.recoverable; });
     const again = rows.filter(function (r) { return r.recoverable; });
@@ -176,8 +185,8 @@
         ' (' + r.columns.join(', ') + ')' + (r.recoverable ? ' [run again]' : ''));
     });
     if (rows.length > max) lines.push('... and ' + (rows.length - max) + ' more.');
-    return lines.join('\n');
+    return lines;
   }
 
-  ns.Reprocess = { run: run, summarize: summarize, remaining: remaining };
+  ns.Reprocess = { run: run, summarize: summarize, maskedLines: maskedLines, remaining: remaining };
 })(globalThis.BankSync);
