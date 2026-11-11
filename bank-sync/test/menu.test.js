@@ -94,3 +94,24 @@ test('menu sync all and import: the window opens after the lock is released, nev
   assert.match(events[1].html.content, />csv-alex<\/td><td[^>]*>1<\/td><td[^>]*>0<\/td><td[^>]*>0</);
   assert.ok(p.getProperty('BS_LAST_RUN'), 'a manual Sync all is recorded');
 });
+
+test('menu re-process: the window opens after the lock is released and turns red when rows stay masked', () => {
+  const events = fakeApps();
+  const sync = { results: [{ connection: 'csv-alex', status: 'ok', transactions: { added: 0, updated: 2, removed: 0, complete: true } }], raw: null, details: null, fx: null };
+  const remaining = [{ tab: 'transactions', connection: 'csv-alex', accountName: 'A <b>', date: '2026-08-01', id: 't1', columns: ['description'], recoverable: false }];
+  const restore = stub({
+    Container: { services: () => ({ props: props() }), syncAllDeps: () => ({ rawWriter: {} }) },
+    Reprocess: { run: () => ({ sync, remaining }) }
+  });
+  try {
+    BS.Menu.reprocess();
+  } finally {
+    restore();
+  }
+  assert.deepStrictEqual(events.map((e) => e.kind), ['release', 'dialog']);
+  assert.strictEqual(events[1].title, 'Bank Sync: Re-process stored rows');
+  const content = events[1].html.content;
+  assert.match(content, /background:#fce8e6[^>]*>Re-process finished: 0 new transactions, 1 row still masked</);
+  assert.match(content, /- transactions \| csv-alex \| A &lt;b&gt; \| 2026-08-01 \| t1 \(description\)/);
+  assert.ok(!content.includes('<b>'));
+});

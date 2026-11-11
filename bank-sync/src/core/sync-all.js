@@ -254,8 +254,7 @@
       if (r.status === 'ok') {
         const t = r.transactions;
         return r.connection + ': ' + t.added + ' added, ' + t.updated + ' updated, ' + t.removed + ' pending removed' +
-          (t.unavailable ? ', ' + t.unavailable + ' date windows not served by the source' : '') +
-          (t.complete ? '' : ' (time budget reached; run again to continue)');
+          connectionNotes(r).map(function (note) { return ', ' + note; }).join('');
       }
       return r.connection + ': ' + r.status + (r.error ? ' (' + r.error + ')' : '');
     }).concat(stepLines(outcome).map(function (l) { return l.text; }));
@@ -269,9 +268,11 @@
    * connections as a table, the other steps, and the accounts to update as a list.
    * @param {Object} outcome - From `run`.
    * @param {Array<string>} [extraLines] - Lines to show below (e.g. the CSV folders).
+   * @param {string} [what] - What ran, for the headline; 'Sync' by default.
    * @returns {import('./summary-view.js').View} View (counts and account names only).
    */
-  function view(outcome, extraLines) {
+  function view(outcome, extraLines, what) {
+    const name = what || 'Sync';
     const ok = outcome.results.filter(function (r) { return r.status === 'ok'; });
     const coverage = outcome.coverage || null;
     const due = (coverage && !coverage.error && coverage.dueItems) || [];
@@ -282,7 +283,7 @@
     const unfinished = ok.filter(function (r) { return !r.transactions.complete; }).length;
     const added = ok.reduce(function (sum, r) { return sum + r.transactions.added; }, 0);
     const problems = failed || lines.some(function (l) { return l.error; });
-    const text = (problems ? 'Sync finished with problems' : unfinished ? 'Sync not finished, run it again to continue' : 'Sync finished') +
+    const text = name + (problems ? ' finished with problems' : unfinished ? ' not finished, run it again to continue' : ' finished') +
       ': ' + added + (added === 1 ? ' new transaction' : ' new transactions') +
       (failed ? ', ' + failed + (failed === 1 ? ' connection' : ' connections') + ' not read' : '') +
       (due.length ? ', ' + due.length + (due.length === 1 ? ' account' : ' accounts') + ' to update' : '');

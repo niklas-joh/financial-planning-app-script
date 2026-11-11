@@ -25,8 +25,17 @@
   const MAX_HEIGHT = 560;
   /** Longest text before the first ": " that is still shown as a label. */
   const MAX_LABEL = 44;
-  /** Characters that fit on one line of the window, for the height estimate. */
+  /**
+   * The height estimate, in text lines: characters that fit on one line, pixels per line, pixels around the
+   * content, and how many lines each part takes besides its rows.
+   */
   const LINE_CHARS = 70;
+  const LINE_PX = 22;
+  const FRAME_PX = 50;
+  const HEADLINE_LINES = 2.5;
+  const TABLE_LINES = 3;
+  const TABLE_ROW_LINES = 1.2;
+  const LIST_LINES = 3.5;
 
   /**
    * Escapes text for safe inclusion in HTML.
@@ -139,11 +148,11 @@
       linesTable(lines) +
       (view.list ? todoBox(view.list) : '') +
       linesTable(extra) + '</div>';
-    const units = (view.headline ? 2.5 : 0) +
-      (view.table ? 3 + view.table.rows.reduce(function (n, r) { return n + 1.2 + (r.note || r.error ? 1 : 0); }, 0) : 0) +
+    const units = (view.headline ? HEADLINE_LINES : 0) +
+      (view.table ? TABLE_LINES + view.table.rows.reduce(function (n, r) { return n + TABLE_ROW_LINES + (r.note || r.error ? 1 : 0); }, 0) : 0) +
       lines.concat(extra).reduce(function (n, l) { return n + wraps(l.text); }, 0) + (lines.length && extra.length ? 1 : 0) +
-      (view.list ? 3.5 + view.list.items.length + (view.list.more ? 1 : 0) : 0);
-    return { html: html, width: WIDTH, height: Math.min(MAX_HEIGHT, Math.round(50 + units * 22)) };
+      (view.list ? LIST_LINES + view.list.items.length + (view.list.more ? 1 : 0) : 0);
+    return { html: html, width: WIDTH, height: Math.min(MAX_HEIGHT, Math.round(FRAME_PX + units * LINE_PX)) };
   }
 
   ns.SummaryView = { escapeHtml: escapeHtml, fromText: fromText, render: render };

@@ -189,8 +189,7 @@
       const summary = withLock(function () {
         const wired = ns.Container.services();
         const sync = ns.Container.syncAllDeps(wired);
-        const outcome = ns.Reprocess.run({ sync: sync, rawReader: sync.rawWriter });
-        return ns.SyncAll.view(outcome.sync, ns.Reprocess.maskedLines(outcome));
+        return ns.Reprocess.view(ns.Reprocess.run({ sync: sync, rawReader: sync.rawWriter }));
       });
       showSummary('Bank Sync: Re-process stored rows', summary);
     });

@@ -58,13 +58,13 @@ test('sync view: failures are red (connection, step); an unfinished connection a
   assert.strictEqual(unfinished.table.rows[0].note, '2 date windows not served by the source; time budget reached; run again to continue');
 });
 
-test('sync view: summarize keeps its text (Show status and re-process use it)', () => {
+test('sync view: the plain-text summary names the same things', () => {
   const text = BS.SyncAll.summarize({
     results: [ok('testbank-alex', 1, { complete: false, unavailable: 2 })], raw: null, details: null, fx: fx(),
     coverage: { rows: 2, due: 'Testbank Account 0 (export 2026-08-31 to today)', dueItems: due(1) }
   });
   assert.strictEqual(text, [
-    'testbank-alex: 1 added, 0 updated, 0 pending removed, 2 date windows not served by the source (time budget reached; run again to continue)',
+    'testbank-alex: 1 added, 0 updated, 0 pending removed, 2 date windows not served by the source, time budget reached; run again to continue',
     "EUR conversion: 1 transactions converted, 1 waiting for today's rate.",
     'Data coverage: 2 rows on data_coverage; to update: Testbank Account 0 (export 2026-08-31 to today).'].join('\n'));
 });
