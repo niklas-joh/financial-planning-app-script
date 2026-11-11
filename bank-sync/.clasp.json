@@ -65,6 +65,7 @@
     "src/core/schedule.js",
     "src/core/consent-warnings.js",
     "src/core/last-run.js",
+    "src/core/summary-view.js",
     "src/core/sync-all.js",
     "src/core/reprocess.js",
     "src/core/auto-sync.js",

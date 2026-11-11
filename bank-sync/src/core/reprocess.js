@@ -152,17 +152,34 @@
   }
 
   /**
-   * Turns a run into the text shown to the user: the Sync all summary, then the rows still masked (tab,
-   * connection, account, date, id and column names only; never amounts or text).
+   * Turns a run into the summary window's view: the Sync all view, then the rows still masked. The headline
+   * says how many rows stay masked: red when some cannot be recovered, yellow when running again will do.
    * @param {{sync: Object, remaining: Array<MaskedRow>}} outcome - From `run`.
-   * @returns {string} Multi-line summary.
+   * @returns {import('./summary-view.js').View} View (names, dates, ids and column names only; never amounts or text).
    */
-  function summarize(outcome) {
-    const lines = [ns.SyncAll.summarize(outcome.sync), ''];
+  function view(outcome) {
+    const out = ns.SyncAll.view(outcome.sync, maskedLines(outcome), 'Re-process');
+    const rows = outcome.remaining;
+    if (!rows.length) return out;
+    const lost = rows.some(function (r) { return !r.recoverable; });
+    out.headline = {
+      tone: lost || out.headline.tone === 'error' ? 'error' : 'warn',
+      text: out.headline.text + ', ' + rows.length + (rows.length === 1 ? ' row' : ' rows') + ' still masked'
+    };
+    return out;
+  }
+
+  /**
+   * The rows still masked after a run (tab, connection, account, date, id and columns; never a value).
+   * @param {{remaining: Array<MaskedRow>}} outcome - From `run`.
+   * @returns {Array<string>} Lines.
+   */
+  function maskedLines(outcome) {
+    const lines = [];
     const rows = outcome.remaining;
     if (!rows.length) {
       lines.push('Still masked: none. Every stored row holds full account numbers.');
-      return lines.join('\n');
+      return lines;
     }
     const lost = rows.filter(function (r) { return !r.recoverable; });
     const again = rows.filter(function (r) { return r.recoverable; });
@@ -176,8 +193,8 @@
         ' (' + r.columns.join(', ') + ')' + (r.recoverable ? ' [run again]' : ''));
     });
     if (rows.length > max) lines.push('... and ' + (rows.length - max) + ' more.');
-    return lines.join('\n');
+    return lines;
   }
 
-  ns.Reprocess = { run: run, summarize: summarize, remaining: remaining };
+  ns.Reprocess = { run: run, view: view, maskedLines: maskedLines, remaining: remaining };
 })(globalThis.BankSync);

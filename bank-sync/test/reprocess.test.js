@@ -290,9 +290,11 @@ test('re-process: rows synced with masking on are rewritten whole, in place; a s
     ['raw_transactions', 'revolut-niklas', '2026-06-10',
       'api.creditor_account.other.identification,api.debtor_account_additional_identification[0].identification', false]
   ]);
-  const text = BS.Reprocess.summarize(first);
-  assert.match(text, /Still masked: 3 rows\. 3 cannot be recovered/);
-  assert.match(text, /revolut-niklas: 0 added, \d+ updated, 0 pending removed, 1 date windows not served by the source/);
+  const shown = BS.Reprocess.view(first);
+  assert.deepStrictEqual([shown.headline.tone, /^Re-process finished: 0 new transactions.*, 3 rows still masked$/.test(shown.headline.text)], ['error', true]);
+  assert.strictEqual(shown.table.rows.find((r) => r.name === 'revolut-niklas').note, '1 date windows not served by the source');
+  const text = BS.SummaryView.render(shown).html;
+  assert.match(text, />Still masked<\/td><td[^>]*>3 rows\. 3 cannot be recovered/);
   assert.ok(!/824|9\.99|DEMO PERSON/.test(text), 'no amounts or text in the summary');
 
   const second = w.reprocess();
@@ -323,7 +325,8 @@ test('re-process: nothing left masked is said plainly; refused while masking is 
   BS.SyncAll.run(w.sync());
   const out = w.reprocess();
   assert.deepStrictEqual(out.remaining, []);
-  assert.match(BS.Reprocess.summarize(out), /Still masked: none/);
+  assert.match(BS.Reprocess.maskedLines(out).join('\n'), /Still masked: none/);
+  assert.deepStrictEqual(BS.Reprocess.view(out).headline, { tone: 'ok', text: 'Re-process finished: 0 new transactions' });
   withMasking(BS, true, () => assert.throws(() => w.reprocess(), { name: 'ConfigError' }));
 });
 
@@ -333,7 +336,11 @@ test('re-process: rows of a connection cut short by the time budget are listed a
   const deps = { sync: { store: { load: () => rows } }, rawReader: { readTable: () => [] } };
   const left = BS.Reprocess.remaining(deps, (key) => key !== 'csv-alex');
   assert.deepStrictEqual(left.map((r) => [r.connection, r.recoverable]), [['csv-alex', true], ['trading212-niklas', false]]);
-  const text = BS.Reprocess.summarize({ sync: { results: [], raw: null, details: null, fx: null, moved: null }, remaining: left });
+  const outcome = { sync: { results: [], raw: null, details: null, fx: null, moved: null }, remaining: left };
+  const text = BS.Reprocess.maskedLines(outcome).join('\n');
+  assert.strictEqual(BS.Reprocess.view(outcome).headline.tone, 'error');
+  assert.deepStrictEqual(BS.Reprocess.view({ sync: outcome.sync, remaining: left.slice(0, 1) }).headline,
+    { tone: 'warn', text: 'Re-process finished: 0 new transactions, 1 row still masked' });
   assert.match(text, /1 cannot be recovered.*; 1 were not re-read in this run: run Re-process again/);
   assert.match(text, /\[run again\]/);
 });

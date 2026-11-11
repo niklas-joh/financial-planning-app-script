@@ -66,7 +66,7 @@ test('menu status: the summary opens in a modeless window, escaped, height cappe
   assert.strictEqual(title, 'Bank Sync: Status');
   assert.ok(html.content.includes('A &lt;b&gt; &amp; &quot;c&quot;'));
   assert.ok(!html.content.includes('<b>'));
-  assert.ok(html.content.includes('Rows: transactions 3, investment_transactions 0, unclassified_transactions 0'));
+  assert.match(html.content, />Rows<\/td><td[^>]*>transactions 3, investment_transactions 0, unclassified_transactions 0</);
   assert.deepStrictEqual([html.width, html.height], [560, 560]);
 });
 
@@ -90,6 +90,28 @@ test('menu sync all and import: the window opens after the lock is released, nev
   }
   assert.deepStrictEqual(events.map((e) => e.kind), ['release', 'dialog', 'release', 'dialog']);
   assert.deepStrictEqual(events.filter((e) => e.kind === 'dialog').map((e) => e.title), ['Bank Sync: Sync all', 'Bank Sync: Import CSV files']);
-  assert.match(events[1].html.content, /csv-alex: 1 added, 0 updated, 0 pending removed/);
+  assert.match(events[1].html.content, /Sync finished: 1 new transaction</);
+  assert.match(events[1].html.content, />csv-alex<\/td><td[^>]*>1<\/td><td[^>]*>0<\/td><td[^>]*>0</);
   assert.ok(p.getProperty('BS_LAST_RUN'), 'a manual Sync all is recorded');
+});
+
+test('menu re-process: the window opens after the lock is released and turns red when rows stay masked', () => {
+  const events = fakeApps();
+  const sync = { results: [{ connection: 'csv-alex', status: 'ok', transactions: { added: 0, updated: 2, removed: 0, complete: true } }], raw: null, details: null, fx: null };
+  const remaining = [{ tab: 'transactions', connection: 'csv-alex', accountName: 'A <b>', date: '2026-08-01', id: 't1', columns: ['description'], recoverable: false }];
+  const restore = stub({
+    Container: { services: () => ({ props: props() }), syncAllDeps: () => ({ rawWriter: {} }) },
+    Reprocess: { run: () => ({ sync, remaining }) }
+  });
+  try {
+    BS.Menu.reprocess();
+  } finally {
+    restore();
+  }
+  assert.deepStrictEqual(events.map((e) => e.kind), ['release', 'dialog']);
+  assert.strictEqual(events[1].title, 'Bank Sync: Re-process stored rows');
+  const content = events[1].html.content;
+  assert.match(content, /background:#fce8e6[^>]*>Re-process finished: 0 new transactions, 1 row still masked</);
+  assert.match(content, /- transactions \| csv-alex \| A &lt;b&gt; \| 2026-08-01 \| t1 \(description\)/);
+  assert.ok(!content.includes('<b>'));
 });

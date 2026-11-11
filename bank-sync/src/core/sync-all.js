@@ -193,6 +193,55 @@
   }
 
   /**
+   * @param {ConnectionResult} r - One connection's result (status 'ok').
+   * @returns {Array<string>} What to say besides its counts: date windows the source did not serve, an unfinished run.
+   */
+  function connectionNotes(r) {
+    const t = r.transactions;
+    return (t.unavailable ? [t.unavailable + ' date windows not served by the source'] : [])
+      .concat(t.complete ? [] : ['time budget reached; run again to continue']);
+  }
+
+  /**
+   * @typedef {Object} SummaryLine
+   * @property {string} text - The line.
+   * @property {boolean} [error] - True when it reports a failure.
+   */
+
+  /**
+   * The summary lines after the connections: raw tabs, report details, EUR conversion, moved rows, owners.
+   * @param {Object} outcome - From `run`.
+   * @returns {Array<SummaryLine>} Lines (counts and account names only).
+   */
+  function stepLines(outcome) {
+    const lines = [];
+    const raw = outcome.raw;
+    if (raw) lines.push({ text: 'Raw tabs: ' + raw.accounts + ' accounts, ' + raw.balances + ' balances, ' + raw.transactions + ' transactions' +
+      (raw.holdings === undefined ? '' : ', ' + raw.holdings + ' holdings') +
+      (raw.dailyValues === undefined ? '' : ', ' + raw.dailyValues + ' daily values') + '.' });
+    const details = outcome.details;
+    if (details) {
+      lines.push({ text: 'Details from reports: ' + details.enriched + ' transactions updated (' + details.read + ' read).' +
+        (details.error ? ' Failed (' + details.error + ')' : ''), error: !!details.error });
+    }
+    const fx = outcome.fx;
+    if (fx) {
+      lines.push({ text: 'EUR conversion: ' + fx.changed + ' transactions converted' +
+        (fx.missing ? ', ' + fx.missing + ' without a rate' : '') +
+        (fx.waiting ? ', ' + fx.waiting + " waiting for today's rate" : '') +
+        (fx.balancesMissing ? ', ' + fx.balancesMissing + ' balances without a rate' : '') +
+        (fx.holdingsMissing ? ', ' + fx.holdingsMissing + ' holdings without a rate' : '') + '.' });
+      fx.failed.forEach(function (f) { lines.push({ text: 'Rates unavailable for ' + f, error: true }); });
+      if (fx.error) lines.push({ text: 'EUR conversion failed (' + fx.error + ')', error: true });
+    }
+    const moved = ns.TxnRouting.movedText(outcome.moved);
+    if (moved) lines.push({ text: 'Moved between tabs: ' + moved + '.' });
+    const owners = ns.AccountOwners.summaryLine(outcome.owners || null);
+    if (owners) lines.push({ text: owners, error: !!(outcome.owners && outcome.owners.error) });
+    return lines;
+  }
+
+  /**
    * Turns a run into the text shown to the user. Counts and account names only, no transaction content.
    * @param {{results: Array<ConnectionResult>, raw: ?Object, details: ?Object, fx: ?FxOutcome,
    *   moved: (?Object<string,number>|undefined), owners: (?import('./account-owners.js').OwnersOutcome|undefined),
@@ -205,38 +254,60 @@
       if (r.status === 'ok') {
         const t = r.transactions;
         return r.connection + ': ' + t.added + ' added, ' + t.updated + ' updated, ' + t.removed + ' pending removed' +
-          (t.unavailable ? ', ' + t.unavailable + ' date windows not served by the source' : '') +
-          (t.complete ? '' : ' (time budget reached; run again to continue)');
+          connectionNotes(r).map(function (note) { return ', ' + note; }).join('');
       }
       return r.connection + ': ' + r.status + (r.error ? ' (' + r.error + ')' : '');
-    });
-    const raw = outcome.raw;
-    if (raw) lines.push('Raw tabs: ' + raw.accounts + ' accounts, ' + raw.balances + ' balances, ' + raw.transactions + ' transactions' +
-      (raw.holdings === undefined ? '' : ', ' + raw.holdings + ' holdings') +
-      (raw.dailyValues === undefined ? '' : ', ' + raw.dailyValues + ' daily values') + '.');
-    const details = outcome.details;
-    if (details) {
-      lines.push('Details from reports: ' + details.enriched + ' transactions updated (' + details.read + ' read).' +
-        (details.error ? ' Failed (' + details.error + ')' : ''));
-    }
-    const fx = outcome.fx;
-    if (fx) {
-      lines.push('EUR conversion: ' + fx.changed + ' transactions converted' +
-        (fx.missing ? ', ' + fx.missing + ' without a rate' : '') +
-        (fx.waiting ? ', ' + fx.waiting + " waiting for today's rate" : '') +
-        (fx.balancesMissing ? ', ' + fx.balancesMissing + ' balances without a rate' : '') +
-        (fx.holdingsMissing ? ', ' + fx.holdingsMissing + ' holdings without a rate' : '') + '.');
-      fx.failed.forEach(function (f) { lines.push('Rates unavailable for ' + f); });
-      if (fx.error) lines.push('EUR conversion failed (' + fx.error + ')');
-    }
-    const moved = ns.TxnRouting.movedText(outcome.moved);
-    if (moved) lines.push('Moved between tabs: ' + moved + '.');
-    const owners = ns.AccountOwners.summaryLine(outcome.owners || null);
-    if (owners) lines.push(owners);
+    }).concat(stepLines(outcome).map(function (l) { return l.text; }));
     const coverage = ns.DataCoverage.summaryLine(outcome.coverage || null);
     if (coverage) lines.push(coverage);
     return lines.join('\n');
   }
 
-  ns.SyncAll = { run: run, summarize: summarize };
+  /**
+   * The same run as `summarize`, as a view for the summary window (`SummaryView.render`): a headline, the
+   * connections as a table, the other steps, and the accounts to update as a list.
+   * @param {Object} outcome - From `run`.
+   * @param {Array<string>} [extraLines] - Lines to show below (e.g. the CSV folders).
+   * @param {string} [what] - What ran, for the headline; 'Sync' by default.
+   * @returns {import('./summary-view.js').View} View (counts and account names only).
+   */
+  function view(outcome, extraLines, what) {
+    const name = what || 'Sync';
+    const ok = outcome.results.filter(function (r) { return r.status === 'ok'; });
+    const coverage = outcome.coverage || null;
+    const due = (coverage && !coverage.error && coverage.dueItems) || [];
+    const lines = stepLines(outcome);
+    const coverageLine = ns.DataCoverage.summaryLine(coverage);
+    if (coverageLine && !due.length) lines.push({ text: coverageLine, error: !!coverage.error });
+    const failed = outcome.results.length - ok.length;
+    const unfinished = ok.filter(function (r) { return !r.transactions.complete; }).length;
+    const added = ok.reduce(function (sum, r) { return sum + r.transactions.added; }, 0);
+    const problems = failed || lines.some(function (l) { return l.error; });
+    const text = name + (problems ? ' finished with problems' : unfinished ? ' not finished, run it again to continue' : ' finished') +
+      ': ' + added + (added === 1 ? ' new transaction' : ' new transactions') +
+      (failed ? ', ' + failed + (failed === 1 ? ' connection' : ' connections') + ' not read' : '') +
+      (due.length ? ', ' + due.length + (due.length === 1 ? ' account' : ' accounts') + ' to update' : '');
+    const max = ns.Config.COVERAGE.MAX_LISTED;
+    return {
+      headline: { tone: problems ? 'error' : unfinished || due.length ? 'warn' : 'ok', text: text },
+      table: {
+        title: 'Connections',
+        columns: ['Connection', 'Added', 'Updated', 'Pending removed'],
+        rows: outcome.results.map(function (r) {
+          if (r.status !== 'ok') return { name: r.connection, error: r.status + (r.error ? ' (' + r.error + ')' : '') };
+          const t = r.transactions;
+          return { name: r.connection, counts: [t.added, t.updated, t.removed], note: connectionNotes(r).join('; ') };
+        })
+      },
+      lines: lines,
+      list: due.length ? {
+        title: due.length + (due.length === 1 ? ' account needs' : ' accounts need') + ' an update (see ' + ns.Config.TABS.DATA_COVERAGE + ')',
+        items: due.slice(0, max),
+        more: Math.max(0, due.length - max)
+      } : null,
+      extra: extraLines || []
+    };
+  }
+
+  ns.SyncAll = { run: run, summarize: summarize, view: view };
 })(globalThis.BankSync);
