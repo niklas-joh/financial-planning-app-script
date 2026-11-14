@@ -20,7 +20,7 @@
     "@commitlint/config-conventional": "^21.2.4",
     "@eslint/js": "^10.0.1",
     "@google/clasp": "^3.4.1",
-    "@types/google-apps-script": "^2.0.14",
+    "@types/google-apps-script": "^2.0.15",
     "eslint": "^10.14.0",
     "espree": "^11.2.0",
     "globals": "^17.14.0",
